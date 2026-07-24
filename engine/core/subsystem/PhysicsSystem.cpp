@@ -922,6 +922,38 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
     return true;
 }
 
+// Hull, mesh and heightfield shapes read their geometry from an entity, and that geometry
+// can land several frames after Scene::load: models are parsed on a worker thread and
+// terrains wait on their heightmap. The parent walk covers multi-node models, whose child
+// meshes are filled in by the ancestor holding the ModelComponent.
+bool PhysicsSystem::isShapeSourceLoading(Entity entity, const Shape3D& shapeData) const{
+    if (shapeData.type != Shape3DType::CONVEX_HULL && shapeData.type != Shape3DType::MESH && shapeData.type != Shape3DType::HEIGHTFIELD){
+        return false;
+    }
+    if (shapeData.source == Shape3DSource::RAW_VERTICES || shapeData.source == Shape3DSource::RAW_MESH){
+        return false;
+    }
+
+    Entity current = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
+
+    while (current != NULL_ENTITY){
+        ModelComponent* model = scene->findComponent<ModelComponent>(current);
+        if (model && !model->filename.empty() && model->needUpdateModel){
+            return true;
+        }
+
+        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(current);
+        if (terrain && !terrain->heightMap.empty() && terrain->needUpdateTerrain){
+            return true;
+        }
+
+        Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+
+    return false;
+}
+
 bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
     if (!body.body.IsInvalid()){
         destroyBody3D(body);
@@ -929,6 +961,11 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
     }
 
     for (size_t i = 0; i < body.numShapes; i++){
+        // a source still loading is not a failure: fixedUpdate retries the body every step
+        if (isShapeSourceLoading(entity, body.shapes[i])){
+            return false;
+        }
+
         if (!createShape3DForIndex(entity, body, i)){
             Log::error("Cannot create runtime shape %i for 3D Body entity: %u", i, entity);
             return false;

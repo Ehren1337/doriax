@@ -65,6 +65,7 @@ namespace doriax{
 
 		bool syncBody2DShapes(Entity entity, Body2DComponent& body);
 		bool syncBody3DShapes(Entity entity, Body3DComponent& body);
+		bool isShapeSourceLoading(Entity entity, const Shape3D& shapeData) const;
 		bool createShape3DForIndex(Entity entity, Body3DComponent& body, size_t index);
 
 		void createGenericJoltBody(Entity entity, Body3DComponent& body, const JPH::ShapeRefC shape);
