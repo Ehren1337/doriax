@@ -24,17 +24,11 @@
 </p>
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=3eqhaAZBNss">
-    <img src="https://img.youtube.com/vi/3eqhaAZBNss/maxresdefault.jpg" alt="Introducing Doriax Engine - watch the introduction video on YouTube" width="70%">
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=3eqhaAZBNss"><strong>Watch the introduction video</strong></a>
-</p>
-
-<p align="center">
   <img src="https://raw.githubusercontent.com/doriaxengine/doriax-site/main/screenshots/editor-lighting.png" alt="Doriax Engine Editor">
+</p>
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=3eqhaAZBNss">Introducing Doriax Engine - see feature highlights</a>
 </p>
 
 ## Overview
