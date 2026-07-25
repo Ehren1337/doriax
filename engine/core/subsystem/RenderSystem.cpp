@@ -2471,6 +2471,22 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     mesh.needUpdateBuffer = false;
 }
 
+// Uploads a terrain view's CDLOD node selection, before the first pass of the frame
+// that draws it — the same rule as updateMeshBuffers. The depth and G-buffer passes
+// draw the main camera's selection and take their instance count from the CPU-side
+// buffer, so without this they would draw this frame's node count out of the previous
+// frame's node data.
+void RenderSystem::updateTerrainNodesBuffer(TerrainComponent& terrain, int viewIndex){
+    if (!terrain.views[viewIndex].needUpdateNodesBuffer)
+        return;
+
+    for (int s = 0; s < 2; s++){
+        terrain.views[viewIndex].nodesbuffer[s].getRender()->updateBuffer(terrain.views[viewIndex].nodesbuffer[s].getSize(), terrain.views[viewIndex].nodesbuffer[s].getData());
+    }
+
+    terrain.views[viewIndex].needUpdateNodesBuffer = false;
+}
+
 bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, bool renderToTexture, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView){
     if (mesh.loaded && !mesh.needReload){
 
@@ -2499,12 +2515,8 @@ bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraCom
             }
         }
 
-        if (terrain && terrain->views[terrainView].needUpdateNodesBuffer){
-            for (int s = 0; s < 2; s++){
-                terrain->views[terrainView].nodesbuffer[s].getRender()->updateBuffer(terrain->views[terrainView].nodesbuffer[s].getSize(), terrain->views[terrainView].nodesbuffer[s].getData());
-            }
-
-            terrain->views[terrainView].needUpdateNodesBuffer = false;
+        if (terrain){
+            updateTerrainNodesBuffer(*terrain, terrainView);
         }
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
@@ -2669,6 +2681,11 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, con
         }
 
         updateMeshBuffers(mesh);
+
+        // the depth pass renders the main camera's selection (view 0)
+        if (terrain){
+            updateTerrainNodesBuffer(*terrain, 0);
+        }
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
             if (mesh.submeshes[i].vertexCount == 0){
@@ -3010,6 +3027,11 @@ bool RenderSystem::drawMeshGBuffer(MeshComponent& mesh, const float cameraFar, c
     }
 
     updateMeshBuffers(mesh);
+
+    // the G-buffer pass renders the main camera's selection (view 0)
+    if (terrain){
+        updateTerrainNodesBuffer(*terrain, 0);
+    }
 
     for (int i = 0; i < mesh.numSubmeshes; i++){
         // the G-buffer shader/render only exist when SSR was enabled at load time; a

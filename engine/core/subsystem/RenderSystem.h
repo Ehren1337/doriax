@@ -412,6 +412,7 @@ namespace doriax{
 	protected:
 
 		void updateMeshBuffers(MeshComponent& mesh);
+		void updateTerrainNodesBuffer(TerrainComponent& terrain, int viewIndex);
 		bool drawMesh(MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, bool renderToTexture, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView = 0);
 		bool drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO = false);
 		void destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets = false);
