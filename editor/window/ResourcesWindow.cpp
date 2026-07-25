@@ -21,6 +21,7 @@
 
 #include "Backend.h"
 #include "App.h"
+#include "Theme.h"
 #include "Stream.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
@@ -1024,9 +1025,9 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 ImVec4 headerHovered = style.Colors[ImGuiCol_HeaderHovered];
                 ImVec4 headerActive = style.Colors[ImGuiCol_HeaderActive];
                 ImVec4 borderV = style.Colors[ImGuiCol_Border];
-                ImVec4 bgV = App::ThemeColors::FileCardBackground;
+                ImVec4 bgV = Theme::Colors::FileCardBackground;
 
-                if (hovered) bgV = App::ThemeColors::FileCardBackgroundHovered;
+                if (hovered) bgV = Theme::Colors::FileCardBackgroundHovered;
                 if (isSelected) bgV = header;
 
                 ImU32 bgCol = ImGui::ColorConvertFloat4ToU32(bgV);

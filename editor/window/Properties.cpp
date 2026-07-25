@@ -29,6 +29,7 @@
 #include "window/Structure.h"
 #include "App.h"
 #include "Backend.h"
+#include "Theme.h"
 #include "Factory.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaActionComponent.h"
@@ -1664,7 +1665,7 @@ bool editor::Properties::drawSpriteFramePreview(Texture* texture, const Rect& re
     float rounding = ImGui::GetStyle().FrameRounding;
     ImU32 borderColor = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
 
-    drawList->AddRectFilled(p_min, p_max, ImGui::GetColorU32(App::ThemeColors::filenameLabel), rounding, ImDrawFlags_RoundCornersAll);
+    drawList->AddRectFilled(p_min, p_max, ImGui::GetColorU32(Theme::Colors::filenameLabel), rounding, ImDrawFlags_RoundCornersAll);
     drawList->AddImageRounded((ImTextureID)(intptr_t)texture->getRender()->getGLHandler(), imageMin, imageMax, uv0, uv1, IM_COL32_WHITE, rounding, ImDrawFlags_RoundCornersAll);
     drawList->AddRect(p_min, p_max, borderColor, rounding, ImDrawFlags_RoundCornersAll, 1.0f);
 
@@ -3299,7 +3300,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         ImGui::BeginGroup();
         ImGui::PushID(("font_"+id).c_str());
 
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, App::ThemeColors::filenameLabel);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
         // Use calculated width for the frame
         ImGui::BeginChild("fontframe", ImVec2(- ImGui::CalcTextSize(ICON_FA_GEAR).x - ImGui::GetStyle().ItemSpacing.x * 2 - ImGui::GetStyle().FramePadding.x * 2, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2), 
@@ -3427,7 +3428,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         ImGui::BeginGroup();
         ImGui::PushID(("texture_"+id).c_str());
 
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, App::ThemeColors::filenameLabel);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
         bool isCameraTexture = CameraTextureLink::isCameraTexture(newValue);
 
@@ -3687,7 +3688,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             float iconButtonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
             float rowHeight = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2;
 
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, App::ThemeColors::filenameLabel);
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
             ImGui::BeginChild("textureframe", ImVec2(- iconButtonWidth - ImGui::GetStyle().ItemSpacing.x, rowHeight),
                 false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -3801,7 +3802,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                 float iconButtonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
                 float rowHeight = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2;
 
-                ImGui::PushStyleColor(ImGuiCol_ChildBg, App::ThemeColors::filenameLabel);
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
                 ImGui::BeginChild("textureframe", ImVec2(- iconButtonWidth - ImGui::GetStyle().ItemSpacing.x, rowHeight),
                     false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -3943,7 +3944,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             }
         }
 
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, App::ThemeColors::filenameLabel);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
         ImVec2 arrowButtonSize = ImGui::CalcItemSize(ImVec2(0, 0), ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
         ImVec2 unlinkButtonSize = arrowButtonSize;
@@ -4485,9 +4486,9 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         ImVec2 inputSize = ImVec2(ImGui::GetContentRegionAvail().x - clearButtonWidth - ImGui::GetStyle().ItemSpacing.x - clearButtonFramePadding * 2, 0);
 
         // Tint button color to differentiate ExternalEntity from LocalEntity
-        ImGui::PushStyleColor(ImGuiCol_Button, App::ThemeColors::ExtEntityButton);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, App::ThemeColors::ExtEntityButtonHovered);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, App::ThemeColors::ExtEntityButtonActive);
+        ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ExtEntityButton);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::Colors::ExtEntityButtonHovered);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, Theme::Colors::ExtEntityButtonActive);
 
         std::string extPickerPopupId = "##ep_ext_" + id;
 
@@ -4655,9 +4656,9 @@ bool editor::Properties::propertyRowWithAutoButton(RowPropertyType propType, Com
     }
 
     if (allAuto) {
-        ImGui::PushStyleColor(ImGuiCol_Button, App::ThemeColors::ButtonActivated);
+        ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
     } else if (anyAuto) {
-        ImGui::PushStyleColor(ImGuiCol_Button, App::ThemeColors::ButtonActivated);
+        ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
     } else {
         ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
@@ -5572,7 +5573,7 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
         float availWidth = ImGui::GetContentRegionAvail().x;
         float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2;
 
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, App::ThemeColors::filenameLabel);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
         ImGui::BeginChild("modelfilename", ImVec2(availWidth - buttonWidth - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFrameHeight()),
             false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -6634,7 +6635,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
 
         ImGui::BeginGroup();
 
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, App::ThemeColors::filenameLabel);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
         ImGui::BeginChild("audiofilename", ImVec2(availWidth - buttonWidth - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFrameHeight()),
             false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
@@ -7246,7 +7247,7 @@ void editor::Properties::drawTilemapComponent(ComponentType cpType, SceneProject
 
                 // sub-selected in the scene viewport: same marking as occluder points
                 if (isTileSelected) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::SubSelectionText);
+                    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
                     ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + label).c_str());
                     ImGui::PopStyleColor();
                 } else {
@@ -7571,7 +7572,7 @@ void editor::Properties::drawOccluder2DComponent(ComponentType cpType, SceneProj
 
             ImGui::PushID(static_cast<int>(i));
             if (pointSelected){
-                ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::SubSelectionText);
+                ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
                 propertyHeader(std::string(ICON_FA_CARET_RIGHT) + " Point " + std::to_string(i), -1, false, false);
                 ImGui::PopStyleColor();
             }else{
@@ -7809,9 +7810,9 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
         ImGui::Indent(indentation);
 
         // Custom styling for script headers
-        ImGui::PushStyleColor(ImGuiCol_Header, App::ThemeColors::NestedHeader);
-        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, App::ThemeColors::NestedHeaderHovered);
-        ImGui::PushStyleColor(ImGuiCol_HeaderActive, App::ThemeColors::NestedHeaderActive);
+        ImGui::PushStyleColor(ImGuiCol_Header, Theme::Colors::NestedHeader);
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, Theme::Colors::NestedHeaderHovered);
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, Theme::Colors::NestedHeaderActive);
 
         // Add icon to distinguish from component headers
         std::string headerText = ICON_FA_FILE_CODE " " + scriptLabel + typeLabel;
@@ -8313,7 +8314,7 @@ void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneP
 
     if (ProjectUtils::hasModelMeshChildrenWithoutRootGeometry(sceneProject->scene, entity)){
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::WarningText);
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
         ImGui::TextWrapped(
             ICON_FA_TRIANGLE_EXCLAMATION
             " Instances will not render: this model stores its geometry in child mesh entities. "
@@ -8367,7 +8368,7 @@ void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneP
 
         // sub-selected in the scene viewport: same marking as occluder points
         if (isInstanceSelected) {
-            ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::SubSelectionText);
+            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
             ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + instanceLabel).c_str());
             ImGui::PopStyleColor();
         } else {
@@ -8540,9 +8541,9 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
     const float subsectionIndent = 10.0f;
 
     ImGui::Indent(subsectionIndent);
-    ImGui::PushStyleColor(ImGuiCol_Header, App::ThemeColors::NestedHeader);
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, App::ThemeColors::NestedHeaderHovered);
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive, App::ThemeColors::NestedHeaderActive);
+    ImGui::PushStyleColor(ImGuiCol_Header, Theme::Colors::NestedHeader);
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, Theme::Colors::NestedHeaderHovered);
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, Theme::Colors::NestedHeaderActive);
     bool initializersOpen = ImGui::CollapsingHeader("Initializers");
     ImGui::PopStyleColor(3);
     if (initializersOpen) {
@@ -8633,9 +8634,9 @@ void editor::Properties::drawParticlesComponent(ComponentType cpType, SceneProje
     ImGui::Unindent(subsectionIndent);
 
     ImGui::Indent(subsectionIndent);
-    ImGui::PushStyleColor(ImGuiCol_Header, App::ThemeColors::NestedHeader);
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, App::ThemeColors::NestedHeaderHovered);
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive, App::ThemeColors::NestedHeaderActive);
+    ImGui::PushStyleColor(ImGuiCol_Header, Theme::Colors::NestedHeader);
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, Theme::Colors::NestedHeaderHovered);
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, Theme::Colors::NestedHeaderActive);
     bool modifiersOpen = ImGui::CollapsingHeader("Modifiers");
     ImGui::PopStyleColor(3);
     if (modifiersOpen) {
@@ -9025,7 +9026,7 @@ void editor::Properties::drawLinesComponent(ComponentType cpType, SceneProject* 
 
         // sub-selected in the scene viewport: same marking as occluder points
         if (isLineSelected) {
-            ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::SubSelectionText);
+            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
             ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + lineLabel).c_str());
             ImGui::PopStyleColor();
         } else {
@@ -9154,7 +9155,7 @@ void editor::Properties::drawPolygonComponent(ComponentType cpType, SceneProject
 
         // sub-selected in the scene viewport: same marking as occluder/line points
         if (vertexSelected) {
-            ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::SubSelectionText);
+            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
             ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + pointLabel).c_str());
             ImGui::PopStyleColor();
         } else {
@@ -9294,7 +9295,7 @@ void editor::Properties::drawMeshPolygonComponent(ComponentType cpType, ScenePro
 
         // sub-selected in the scene viewport: same marking as occluder/line points
         if (vertexSelected) {
-            ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::SubSelectionText);
+            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
             ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + pointLabel).c_str());
             ImGui::PopStyleColor();
         } else {
@@ -9734,7 +9735,7 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".sensorEvents", "Sensor Events", sceneProject, entities);
         }
         if (shape.type == Shape2DType::POLYGON){
-            ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::SubtleText);
+            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
             propertyHeader("Reset shape");
             ImGui::PopStyleColor();
             if (ImGui::SmallButton(("Box##shape_preset_box_" + std::to_string(s)).c_str())){

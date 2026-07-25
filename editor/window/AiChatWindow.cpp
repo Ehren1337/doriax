@@ -3,6 +3,7 @@
 #include "App.h"
 #include "AppSettings.h"
 #include "Backend.h"
+#include "Theme.h"
 #include "Base64.h"
 #include "ai/EditorActionExecutor.h"
 #include "ai/EditorActionRegistry.h"
@@ -2418,7 +2419,7 @@ void AiChatWindow::drawComposerControls() {
     ImGui::BeginDisabled(busy);
 
     const ImVec4* approvalColor = settings.approvalMode == ai::ApprovalMode::FullAgent
-        ? &App::ThemeColors::DisabledGreenText
+        ? &Theme::Colors::DisabledGreenText
         : nullptr;
     drawEditableSettingLabel(approvalDisplayName(settings.approvalMode), approvalWidth,
                              "##AiApprovalEdit", "AI Approval##AiApprovalPopup",

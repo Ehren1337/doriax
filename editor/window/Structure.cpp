@@ -1,6 +1,7 @@
 #include "Structure.h"
 
 #include "App.h"
+#include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -1094,7 +1095,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]); // Use theme's disabled color
         pushedHighlightColor = true;
     } else if (node.isChildScene) {
-        ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::ChildSceneText);
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ChildSceneText);
         pushedHighlightColor = true;
     } else if (node.isBundle && !node.isParentBundle) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.9f, 0.8f, 1.0f)); // Pale gold for bundle root
@@ -1761,7 +1762,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
     if (node.isChildScene) {
         bool startActive = project->isChildSceneStartActive(node.ownerSceneId, node.childSceneId);
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, App::ThemeColors::ChildSceneText);
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ChildSceneText);
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().FramePadding.y * 0.5f);
         ImGui::SetWindowFontScale(0.7f);
         ImGui::TextUnformatted(startActive ? ICON_FA_PLAY : ICON_FA_PAUSE);

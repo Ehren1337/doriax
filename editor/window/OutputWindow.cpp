@@ -2,6 +2,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "App.h"
+#include "Theme.h"
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -680,7 +681,7 @@ void OutputWindow::show() {
     // Auto-scroll lock button
     const bool highlightSB = autoScrollLockedButton && autoScroll;
     if (highlightSB) {
-        ImGui::PushStyleColor(ImGuiCol_Button, App::ThemeColors::ButtonActivated);
+        ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
     }
     float w = ImGui::CalcTextSize(ICON_FA_LOCK).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     if (ImGui::Button(autoScrollLockedButton ? ICON_FA_LOCK : ICON_FA_LOCK_OPEN, ImVec2(w, 0.0f))) {
@@ -705,7 +706,7 @@ void OutputWindow::show() {
         }
     }
     if (anyFilterDisabled || filter.IsActive()) {
-        ImGui::PushStyleColor(ImGuiCol_Button, App::ThemeColors::ButtonActivated);
+        ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
     }
     if (ImGui::Button(ICON_FA_FILTER)) {
         ImGui::OpenPopup("FilterPopup");
