@@ -402,7 +402,7 @@ bool editor::Exporter::configureBuild() {
         }
         emcmake = emsdk.emcmake;
         Out::info("Using Emscripten %s", emsdk.description.c_str());
-        kitId = "web\n" + emcmake + "\n" + config.buildType;
+        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend;
     } else {
         std::string effectiveGenerator = getEffectiveGenerator();
         // The Xcode generator builds a macOS .app bundle (MACOSX_BUNDLE in the
@@ -417,7 +417,7 @@ bool editor::Exporter::configureBuild() {
             }
             return false;
         }
-        kitId = "desktop\n" + effectiveGenerator + "\n" + config.cmakeCCompiler + "\n" + config.cmakeCxxCompiler + "\n" + config.buildType;
+        kitId = "desktop\n" + effectiveGenerator + "\n" + config.cmakeCCompiler + "\n" + config.cmakeCxxCompiler + "\n" + config.buildType + "\n" + config.graphicBackend;
     }
 
     // CMake cannot switch generators or toolchains in place: wipe the build
@@ -468,6 +468,9 @@ bool editor::Exporter::configureBuild() {
         }
     }
     cmd += "-DCMAKE_BUILD_TYPE=" + config.buildType + " ";
+    if (!config.graphicBackend.empty()) {
+        cmd += "-DGRAPHIC_BACKEND=" + config.graphicBackend + " ";
+    }
     cmd += "\"" + toCMakePath(config.targetDir.string()) + "\" ";
     cmd += "-B \"" + toCMakePath(buildDir.string()) + "\"";
 
@@ -1629,25 +1632,44 @@ bool editor::Exporter::buildAndSaveShaders() {
     };
 
     std::vector<ShaderFormat> requiredFormats;
-    // Collect formats based on selected platforms
-    if (config.selectedPlatforms.count(Platform::Linux)) {
-        requiredFormats.push_back({shadercompiler::LANG_GLSL, 410, false, shadercompiler::SHADER_DEFAULT, "glsl410"});
-    }
-    if (config.selectedPlatforms.count(Platform::Windows)) {
-        requiredFormats.push_back({shadercompiler::LANG_HLSL, 50, false, shadercompiler::SHADER_DEFAULT, "hlsl5"});
-    }
-    if (config.selectedPlatforms.count(Platform::Android) || config.selectedPlatforms.count(Platform::Web)) {
-        requiredFormats.push_back({shadercompiler::LANG_GLSL, 300, true, shadercompiler::SHADER_DEFAULT, "glsl300es"});
-    }
-    if (config.selectedPlatforms.count(Platform::MacOS)) {
-        requiredFormats.push_back({shadercompiler::LANG_MSL, 21, false, shadercompiler::SHADER_MACOS, "msl21macos"});
-    }
-    if (config.selectedPlatforms.count(Platform::iOS)) {
-        requiredFormats.push_back({shadercompiler::LANG_MSL, 21, false, shadercompiler::SHADER_IOS, "msl21ios"});
-    }
-    if (config.selectedPlatforms.count(Platform::Linux) || config.selectedPlatforms.count(Platform::Windows)) {
-        // Vulkan (GRAPHIC_BACKEND=vulkan) is available on desktop Linux and Windows
-        requiredFormats.push_back({shadercompiler::LANG_SPIRV, 10, false, shadercompiler::SHADER_DEFAULT, "spirv10"});
+    if (!config.graphicBackend.empty() && config.mode != ExportMode::SourceCode) {
+        // Built exports only need the shader language consumed by their selected
+        // runtime backend.
+        if (config.graphicBackend == "glcore") {
+            requiredFormats.push_back({shadercompiler::LANG_GLSL, 410, false, shadercompiler::SHADER_DEFAULT, "glsl410"});
+        } else if (config.graphicBackend == "gles3") {
+            requiredFormats.push_back({shadercompiler::LANG_GLSL, 300, true, shadercompiler::SHADER_DEFAULT, "glsl300es"});
+        } else if (config.graphicBackend == "d3d11") {
+            requiredFormats.push_back({shadercompiler::LANG_HLSL, 50, false, shadercompiler::SHADER_DEFAULT, "hlsl5"});
+        } else if (config.graphicBackend == "metal") {
+            requiredFormats.push_back({shadercompiler::LANG_MSL, 21, false, shadercompiler::SHADER_MACOS, "msl21macos"});
+        } else if (config.graphicBackend == "vulkan") {
+            requiredFormats.push_back({shadercompiler::LANG_SPIRV, 10, false, shadercompiler::SHADER_DEFAULT, "spirv10"});
+        }
+    } else {
+        // Source exports may target multiple platforms/backends, so retain every
+        // format supported by the selected platforms.
+        if (config.selectedPlatforms.count(Platform::Linux)
+            || config.selectedPlatforms.count(Platform::Windows)
+            || config.selectedPlatforms.count(Platform::MacOS)) {
+            requiredFormats.push_back({shadercompiler::LANG_GLSL, 410, false, shadercompiler::SHADER_DEFAULT, "glsl410"});
+        }
+        if (config.selectedPlatforms.count(Platform::Windows)) {
+            requiredFormats.push_back({shadercompiler::LANG_HLSL, 50, false, shadercompiler::SHADER_DEFAULT, "hlsl5"});
+        }
+        if (config.selectedPlatforms.count(Platform::Android) || config.selectedPlatforms.count(Platform::Web)) {
+            requiredFormats.push_back({shadercompiler::LANG_GLSL, 300, true, shadercompiler::SHADER_DEFAULT, "glsl300es"});
+        }
+        if (config.selectedPlatforms.count(Platform::MacOS)) {
+            requiredFormats.push_back({shadercompiler::LANG_MSL, 21, false, shadercompiler::SHADER_MACOS, "msl21macos"});
+        }
+        if (config.selectedPlatforms.count(Platform::iOS)) {
+            requiredFormats.push_back({shadercompiler::LANG_MSL, 21, false, shadercompiler::SHADER_IOS, "msl21ios"});
+        }
+        if (config.selectedPlatforms.count(Platform::Linux) || config.selectedPlatforms.count(Platform::Windows)) {
+            // Vulkan is available on desktop Linux and Windows.
+            requiredFormats.push_back({shadercompiler::LANG_SPIRV, 10, false, shadercompiler::SHADER_DEFAULT, "spirv10"});
+        }
     }
 
     // Default to glsl410 if no platforms require anything
@@ -1797,7 +1819,7 @@ editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath)
             if (fs::exists(candidate, ec)) {
                 info.found = true;
                 info.emcmake = candidate.string();
-                info.description = "from " + source + " (" + candidate.string() + ")";
+                info.description = "from " + source;
                 return true;
             }
         }

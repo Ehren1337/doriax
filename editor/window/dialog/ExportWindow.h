@@ -61,6 +61,10 @@ namespace doriax::editor {
         };
         std::vector<PlatformEntry> m_platformEntries;
 
+        // Desktop backend selection. The entries themselves are host-specific
+        // and live in ExportWindow.cpp.
+        int m_graphicBackendIndex = 0;
+
         // Cached tool checks: both spawn processes, so never probe per-frame.
         std::string m_emsdkOverride;           // mirrors AppSettings::getEmsdkPath()
         EmsdkInfo m_emsdkInfo;
@@ -73,11 +77,13 @@ namespace doriax::editor {
         void refreshEmsdkStatus();
         void selectMode(ExportMode mode);
         void drawModeSelect();
-        bool drawModeCard(const char* id, const char* icon, const char* title, const char* description, const ImVec2& size);
+        bool drawModeCard(const char* id, const char* icon, const char* title, const char* description,
+                          const ImVec2& size, const char* disabledText = nullptr);
         void drawSettings();
         void drawOutputDirRow(const char* label);
         void drawAssetsLuaRows();
         void drawStartSceneRow();
+        void drawGraphicBackendRow();
         void drawDesktopKitRows();
         void drawEmsdkRow();
         void drawShaderSection();

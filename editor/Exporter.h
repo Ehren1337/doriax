@@ -47,6 +47,9 @@ namespace doriax::editor {
         std::string cmakeGenerator;
         unsigned int buildJobs = 0;          // 0 = automatic
         std::string buildType = "Release";
+        // Desktop/Web: value passed to the exported CMake GRAPHIC_BACKEND
+        // setting (glcore, gles3, d3d11, metal, or vulkan).
+        std::string graphicBackend;
         // Web: emsdk root override ("" = auto-detect via EMSDK env / PATH)
         std::string emsdkPath;
     };

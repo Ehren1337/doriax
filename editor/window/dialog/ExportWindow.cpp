@@ -10,6 +10,42 @@
 namespace doriax::editor {
 
 namespace {
+    struct GraphicBackendOption {
+        const char* name;
+        const char* cmakeValue;
+    };
+
+    // Desktop exports build for the current host, so only expose backends
+    // supported by that host's standalone CMake configuration.
+    #if defined(_WIN32)
+    constexpr GraphicBackendOption desktopGraphicBackends[] = {
+        { "Direct3D 11", "d3d11" },
+        { "Vulkan",      "vulkan" },
+        { "OpenGL",      "glcore" }
+    };
+    #elif defined(__APPLE__)
+    constexpr GraphicBackendOption desktopGraphicBackends[] = {
+        { "Metal",  "metal" },
+        { "OpenGL", "glcore" }
+    };
+    #else
+    constexpr GraphicBackendOption desktopGraphicBackends[] = {
+        { "OpenGL", "glcore" },
+        { "Vulkan", "vulkan" }
+    };
+    #endif
+
+    constexpr int desktopGraphicBackendCount =
+        static_cast<int>(sizeof(desktopGraphicBackends) / sizeof(desktopGraphicBackends[0]));
+
+    void beginSettingsRow(const char* label) {
+        ImGui::TableNextRow(ImGuiTableRowFlags_None, ImGui::GetFrameHeight());
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(label);
+        ImGui::TableNextColumn();
+    }
+
     Platform hostPlatform() {
         #if defined(_WIN32)
         return Platform::Windows;
@@ -49,6 +85,7 @@ void ExportWindow::open(Project* project) {
     m_emsdkOverride = AppSettings::getEmsdkPath();
     m_emsdkInfo = EmsdkInfo();
     m_missingBuildTools.clear();
+    m_graphicBackendIndex = 0;
 
     populateShaderList();
     populatePlatformList();
@@ -167,7 +204,8 @@ void ExportWindow::show() {
     }
 }
 
-bool ExportWindow::drawModeCard(const char* id, const char* icon, const char* title, const char* description, const ImVec2& size) {
+bool ExportWindow::drawModeCard(const char* id, const char* icon, const char* title, const char* description,
+                                const ImVec2& size, const char* disabledText) {
     ImVec2 cardPos = ImGui::GetCursorPos();
 
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -205,12 +243,22 @@ bool ExportWindow::drawModeCard(const char* id, const char* icon, const char* ti
     ImGui::PopFont();
 
     // Description
-    ImGui::SetCursorPos(ImVec2(cardPos.x + padX, titleY + titleSize.y + 8.0f));
+    const float descriptionY = titleY + titleSize.y + 8.0f;
+    const float wrapWidth = size.x - padX * 2.0f;
+    ImGui::SetCursorPos(ImVec2(cardPos.x + padX, descriptionY));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
     ImGui::PushTextWrapPos(cardPos.x + size.x - padX);
     ImGui::TextWrapped("%s", description);
     ImGui::PopTextWrapPos();
     ImGui::PopStyleColor();
+
+    if (disabledText) {
+        const float descriptionHeight = ImGui::CalcTextSize(description, nullptr, false, wrapWidth).y;
+        ImGui::SetCursorPos(ImVec2(cardPos.x + padX, descriptionY + descriptionHeight + 4.0f));
+        ImGui::PushTextWrapPos(cardPos.x + size.x - padX);
+        ImGui::TextDisabled("%s", disabledText);
+        ImGui::PopTextWrapPos();
+    }
 
     // Re-anchor the layout cursor to the card rect so SameLine() places the
     // next card correctly after the overlay drawing above.
@@ -230,7 +278,8 @@ void ExportWindow::drawModeSelect() {
     const ImVec2 cardSize(cardWidth, 185.0f);
 
     if (drawModeCard("##mode_source", ICON_FA_CODE, "Source Code",
-                     "Generate a C++ project with the engine source, buildable for all supported platforms", cardSize)) {
+                     "C++ engine source for every supported platform:", cardSize,
+                     "Android \xc2\xb7 iOS \xc2\xb7 Web \xc2\xb7 Windows \xc2\xb7 Mac \xc2\xb7 Linux")) {
         selectMode(ExportMode::SourceCode);
     }
     ImGui::SameLine();
@@ -256,10 +305,7 @@ void ExportWindow::drawModeSelect() {
 }
 
 void ExportWindow::drawOutputDirRow(const char* label) {
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::Text("%s", label);
-    ImGui::TableNextColumn();
+    beginSettingsRow(label);
     {
         float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
         float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
@@ -288,10 +334,7 @@ void ExportWindow::drawOutputDirRow(const char* label) {
 
 void ExportWindow::drawAssetsLuaRows() {
     // Assets directory row
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::Text("Assets Directory");
-    ImGui::TableNextColumn();
+    beginSettingsRow("Assets Directory");
     {
         float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
         float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
@@ -315,10 +358,7 @@ void ExportWindow::drawAssetsLuaRows() {
     }
 
     // Lua directory row
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::Text("Lua Directory");
-    ImGui::TableNextColumn();
+    beginSettingsRow("Lua Directory");
     {
         float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
         float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
@@ -343,10 +383,7 @@ void ExportWindow::drawAssetsLuaRows() {
 }
 
 void ExportWindow::drawStartSceneRow() {
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::Text("Start Scene");
-    ImGui::TableNextColumn();
+    beginSettingsRow("Start Scene");
     {
         const auto& scenes = m_project->getScenes();
         const SceneProject* selectedScene = m_project->getScene(m_startSceneId);
@@ -384,6 +421,36 @@ void ExportWindow::drawStartSceneRow() {
     }
 }
 
+void ExportWindow::drawGraphicBackendRow() {
+    beginSettingsRow("Graphic Backend");
+
+    if (m_mode == ExportMode::Web) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("WebGL 2 (OpenGL ES 3)");
+        ImGui::SetItemTooltip("Web exports currently use the WebGL 2 backend");
+        return;
+    }
+
+    if (m_graphicBackendIndex < 0 || m_graphicBackendIndex >= desktopGraphicBackendCount) {
+        m_graphicBackendIndex = 0;
+    }
+
+    const char* preview = desktopGraphicBackends[m_graphicBackendIndex].name;
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##GraphicBackend", preview)) {
+        for (int i = 0; i < desktopGraphicBackendCount; ++i) {
+            const bool selected = (m_graphicBackendIndex == i);
+            if (ImGui::Selectable(desktopGraphicBackends[i].name, selected)) {
+                m_graphicBackendIndex = i;
+            }
+            if (selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+}
+
 void ExportWindow::drawDesktopKitRows() {
     std::string cCompiler = m_project->getCMakeCCompiler();
     std::string cxxCompiler = m_project->getCMakeCxxCompiler();
@@ -399,18 +466,14 @@ void ExportWindow::drawDesktopKitRows() {
         }
     }
 
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::Text("Compiler");
-    ImGui::TableNextColumn();
+    beginSettingsRow("Compiler");
+    ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", kitDisplay.c_str());
     ImGui::SetItemTooltip("Change in Project Settings");
 
     unsigned int jobs = m_project->getCMakeBuildJobs();
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::Text("Build Jobs");
-    ImGui::TableNextColumn();
+    beginSettingsRow("Build Jobs");
+    ImGui::AlignTextToFramePadding();
     if (jobs == 0) {
         ImGui::TextDisabled("Automatic (%u)", Generator::getAutomaticParallelBuildJobs());
     } else {
@@ -420,9 +483,18 @@ void ExportWindow::drawDesktopKitRows() {
 }
 
 void ExportWindow::drawEmsdkRow() {
-    ImGui::TableNextRow();
+    ImGui::TableNextRow(ImGuiTableRowFlags_None, ImGui::GetFrameHeight());
     ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("Emscripten SDK");
+    ImGui::SameLine(0.0f, 4.0f);
+    if (m_emsdkInfo.found) {
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK);
+        ImGui::SetItemTooltip("Emscripten found %s", m_emsdkInfo.description.c_str());
+    } else {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SetItemTooltip("Emscripten SDK not found. Set EMSDK, add emcmake to PATH, or choose the emsdk folder.");
+    }
     ImGui::TableNextColumn();
     {
         float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
@@ -540,32 +612,22 @@ void ExportWindow::drawSettings() {
 
     ImGui::PushItemWidth(-1);
     ImGui::BeginTable("export_settings", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp);
-    ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120);
+    ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 140);
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
     drawOutputDirRow(m_mode == ExportMode::SourceCode ? "Target Directory" : "Destination Directory");
     drawAssetsLuaRows();
     drawStartSceneRow();
     if (m_mode == ExportMode::Desktop) {
+        drawGraphicBackendRow();
         drawDesktopKitRows();
     } else if (m_mode == ExportMode::Web) {
+        drawGraphicBackendRow();
         drawEmsdkRow();
     }
 
     ImGui::EndTable();
     ImGui::PopItemWidth();
-
-    // Emscripten status line (kept out of the table so it can wrap)
-    if (m_mode == ExportMode::Web) {
-        ImGui::Spacing();
-        if (m_emsdkInfo.found) {
-            ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " Emscripten found %s", m_emsdkInfo.description.c_str());
-        } else {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
-            ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Emscripten SDK not found. Set the EMSDK environment variable, add emcmake to PATH, or choose the emsdk folder above.");
-            ImGui::PopStyleColor();
-        }
-    }
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -672,11 +734,17 @@ void ExportWindow::startConfiguredExport() {
         // Drives the shader formats compiled into the build.
         exportConfig.selectedPlatforms.insert(m_mode == ExportMode::Desktop ? hostPlatform() : Platform::Web);
         if (m_mode == ExportMode::Desktop) {
+            const int backendIndex =
+                (m_graphicBackendIndex >= 0 && m_graphicBackendIndex < desktopGraphicBackendCount)
+                    ? m_graphicBackendIndex
+                    : 0;
+            exportConfig.graphicBackend = desktopGraphicBackends[backendIndex].cmakeValue;
             exportConfig.cmakeCCompiler = m_project->getCMakeCCompiler();
             exportConfig.cmakeCxxCompiler = m_project->getCMakeCxxCompiler();
             exportConfig.cmakeGenerator = m_project->getCMakeGenerator();
             exportConfig.buildJobs = m_project->getCMakeBuildJobs();
         } else {
+            exportConfig.graphicBackend = "gles3";
             exportConfig.emsdkPath = m_emsdkOverride;
         }
     }
