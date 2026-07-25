@@ -23,6 +23,7 @@ int AppSettings::resourcesItemViewStyle = 1;
 float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
+PanelVisibilitySettings AppSettings::panelVisibility;
 ai::Settings AppSettings::aiSettings;
 
 bool AppSettings::initialize() {
@@ -137,6 +138,16 @@ bool AppSettings::loadSettings() {
             if (editorNode["multi_viewport"]) {
                 multiViewportEnabled = editorNode["multi_viewport"].as<bool>();
             }
+            if (editorNode["panels"]) {
+                auto panelsNode = editorNode["panels"];
+                if (panelsNode["structure"]) panelVisibility.structure = panelsNode["structure"].as<bool>();
+                if (panelsNode["properties"]) panelVisibility.properties = panelsNode["properties"].as<bool>();
+                if (panelsNode["resources"]) panelVisibility.resources = panelsNode["resources"].as<bool>();
+                if (panelsNode["output"]) panelVisibility.output = panelsNode["output"].as<bool>();
+                if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
+                if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
+                if (panelsNode["ai_chat"]) panelVisibility.aiChat = panelsNode["ai_chat"].as<bool>();
+            }
         }
 
         // Load AI assistant settings (no API keys)
@@ -220,6 +231,15 @@ bool AppSettings::saveSettings() {
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
+        YAML::Node panelsNode;
+        panelsNode["structure"] = panelVisibility.structure;
+        panelsNode["properties"] = panelVisibility.properties;
+        panelsNode["resources"] = panelVisibility.resources;
+        panelsNode["output"] = panelVisibility.output;
+        panelsNode["animation"] = panelVisibility.animation;
+        panelsNode["terrain"] = panelVisibility.terrain;
+        panelsNode["ai_chat"] = panelVisibility.aiChat;
+        editorNode["panels"] = panelsNode;
         settingsData["editor"] = editorNode;
 
         // AI assistant settings. Secrets must never be serialized here.
@@ -392,6 +412,15 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+PanelVisibilitySettings AppSettings::getPanelVisibility() {
+    return panelVisibility;
+}
+
+void AppSettings::setPanelVisibility(const PanelVisibilitySettings& visibility) {
+    panelVisibility = visibility;
+    saveSettings();
 }
 
 ai::Settings AppSettings::getAiSettings() {

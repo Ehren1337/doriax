@@ -379,6 +379,7 @@ void editor::App::showMenu(){
                 resourcesWindow->setOpen(true);
                 outputWindow->setOpen(true);
                 animationWindow->setOpen(true);
+                terrainEditWindow->setOpen(false);
                 aiChatWindow->setOpen(true);
                 buildDockspace(true);
             }
@@ -1263,6 +1264,10 @@ void editor::App::show(){
     // Keep the persisted tab list in sync with the live tab order so a user's
     // drag-reordering of scene/code tabs is saved (and restored on next launch).
     captureTabOrder();
+
+    // Closing a panel through its title-bar button changes the same state as the
+    // View menu, so mirror the live state after all panels have rendered.
+    persistPanelVisibilitySettings();
 }
 
 void editor::App::engineInit(int argc, char** argv) {
@@ -1986,6 +1991,33 @@ bool editor::App::isMainThread() const {
 
 void editor::App::initializeSettings() {
     AppSettings::initialize();
+    applyPanelVisibilitySettings();
+}
+
+void editor::App::applyPanelVisibilitySettings() {
+    const PanelVisibilitySettings visibility = AppSettings::getPanelVisibility();
+    structureWindow->setOpen(visibility.structure);
+    propertiesWindow->setOpen(visibility.properties);
+    resourcesWindow->setOpen(visibility.resources);
+    outputWindow->setOpen(visibility.output);
+    animationWindow->setOpen(visibility.animation);
+    terrainEditWindow->setOpen(visibility.terrain);
+    aiChatWindow->setOpen(visibility.aiChat);
+}
+
+void editor::App::persistPanelVisibilitySettings() {
+    PanelVisibilitySettings visibility;
+    visibility.structure = structureWindow->isOpen();
+    visibility.properties = propertiesWindow->isOpen();
+    visibility.resources = resourcesWindow->isOpen();
+    visibility.output = outputWindow->isOpen();
+    visibility.animation = animationWindow->isOpen();
+    visibility.terrain = terrainEditWindow->isOpen();
+    visibility.aiChat = aiChatWindow->isOpen();
+
+    if (visibility != AppSettings::getPanelVisibility()) {
+        AppSettings::setPanelVisibility(visibility);
+    }
 }
 
 int editor::App::getInitialWindowWidth() const {

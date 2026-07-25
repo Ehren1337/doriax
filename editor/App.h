@@ -140,6 +140,8 @@ namespace doriax::editor{
         void captureTabOrder();
         std::string tabWindowName(const TabEntry& tab) const;
         ImGuiID getCentralDockId();
+        void applyPanelVisibilitySettings();
+        void persistPanelVisibilitySettings();
         void kewtStyleTheme();
         void processNextSaveDialog();
         bool popSaveDialogQueueItem();

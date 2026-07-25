@@ -8,6 +8,30 @@
 
 namespace doriax::editor {
 
+struct PanelVisibilitySettings {
+    bool structure = true;
+    bool properties = true;
+    bool resources = true;
+    bool output = true;
+    bool animation = true;
+    bool terrain = false;
+    bool aiChat = true;
+
+    bool operator==(const PanelVisibilitySettings& other) const {
+        return structure == other.structure
+            && properties == other.properties
+            && resources == other.resources
+            && output == other.output
+            && animation == other.animation
+            && terrain == other.terrain
+            && aiChat == other.aiChat;
+    }
+
+    bool operator!=(const PanelVisibilitySettings& other) const {
+        return !(*this == other);
+    }
+};
+
 class AppSettings {
 private:
     static std::filesystem::path configFilePath;
@@ -43,6 +67,7 @@ private:
 
     // Editor viewport settings
     static bool multiViewportEnabled;
+    static PanelVisibilitySettings panelVisibility;
 
     // AI assistant settings (API keys are intentionally not stored here)
     static ai::Settings aiSettings;
@@ -106,6 +131,10 @@ public:
     // Multi-viewport: allow dockable windows to be dragged out into their own OS window
     static bool getMultiViewportEnabled();
     static void setMultiViewportEnabled(bool enabled);
+
+    // Panels toggled from the View menu
+    static PanelVisibilitySettings getPanelVisibility();
+    static void setPanelVisibility(const PanelVisibilitySettings& visibility);
 
     // AI assistant settings
     static ai::Settings getAiSettings();
