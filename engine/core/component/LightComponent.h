@@ -9,7 +9,9 @@
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
 #include "render/FramebufferRender.h"
+#include "texture/Texture.h"
 #include "Engine.h"
+#include <cmath>
 
 namespace doriax{
 
@@ -42,6 +44,31 @@ namespace doriax{
 
         float innerConeCos = 0.766044438f; // cos(Angle::defaultToRad(80 / 2));
         float outerConeCos = 0.642787635f; // cos(Angle::defaultToRad(100 / 2));
+
+        // Optional projected grayscale/alpha mask. An empty mask keeps the default
+        // circular angular attenuation; a loaded mask defines the complete spot shape.
+        Texture spotMask;
+
+        // Runtime projection state derived from spotMask and the entity transform.
+        // These values are intentionally not serialized.
+        Vector3 worldUp;
+        float spotMaskAspect = 1.0f;
+        bool spotMaskReady = false;
+
+        Vector3 getLocalSpotProjectionUp() const {
+            Vector3 localDirection = direction.normalized();
+            if (localDirection == Vector3::ZERO){
+                return Vector3(0, 1, 0);
+            }
+
+            Vector3 referenceUp = Vector3(0, 1, 0);
+            if (std::abs(localDirection.dotProduct(referenceUp)) > 0.999f){
+                referenceUp = Vector3(0, 0, 1);
+            }
+
+            Vector3 localRight = localDirection.crossProduct(referenceUp).normalized();
+            return localRight.crossProduct(localDirection).normalized();
+        }
 
         bool shadows = false;
         bool automaticShadowCamera = true;

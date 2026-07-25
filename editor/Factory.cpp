@@ -1217,6 +1217,7 @@ std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegist
     code << ind << "light.color = " << formatVector3(light.color) << ";\n";
     code << ind << "light.innerConeCos = " << formatFloat(light.innerConeCos) << ";\n";
     code << ind << "light.outerConeCos = " << formatFloat(light.outerConeCos) << ";\n";
+    code << formatTexture(indentSpaces, light.spotMask, "light.spotMask", fs::path());
     code << ind << "light.shadowBias = " << formatFloat(light.shadowBias) << ";\n";
     code << ind << "light.mapResolution = " << formatUInt(light.mapResolution) << ";\n";
     code << ind << "light.automaticShadowCamera = " << formatBool(light.automaticShadowCamera) << ";\n";

@@ -1643,7 +1643,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      for terrain (generates the base-tile UV in-shader), so the terrain G-buffer
     //      pipeline's vertex layout is continuous and passes sokol validation.
     // v15: skinning capacity increased to 128 bones; every skinned shader uniform block changed.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v15";
+    // v16: projected spotlight masks add spotUp_maskAspect[MAX_LIGHTS] to u_fs_lighting
+    //      and add the shared u_spotMaskAtlas sampler to punctual mesh variants,
+    //      using the engine's native texture Y orientation.
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v16";
 }
 
 void editor::App::pushTabNotificationStyle(){

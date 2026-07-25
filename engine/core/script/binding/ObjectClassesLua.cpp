@@ -297,6 +297,11 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("setInnerConeAngle", &Light::setInnerConeAngle)
         .addProperty("outerConeAngle", &Light::getOuterConeAngle, &Light::setOuterConeAngle)
         .addFunction("setOuterConeAngle", &Light::setOuterConeAngle)
+        .addProperty("spotMask", &Light::getSpotMask)
+        .addFunction("setSpotMask",
+            luabridge::overload<const std::string&>(&Light::setSpotMask),
+            luabridge::overload<const std::string&, TextureData>(&Light::setSpotMask))
+        .addFunction("clearSpotMask", &Light::clearSpotMask)
         .addProperty("shadows", &Light::isShadows, &Light::setShadows)
         .addFunction("setShadows", &Light::setShadows)
         .addFunction("setShadowCameraNearFar", &Light::setShadowCameraNearFar)

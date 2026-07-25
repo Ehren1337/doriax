@@ -22,6 +22,8 @@ namespace doriax::editor{
         float outerConeCos = 0.0f;
         Vector3 direction = Vector3::ZERO;
         float range = 0.0f;
+        bool spotMaskReady = false;
+        float spotMaskAspect = 1.0f;
     };
 
     struct BodyObjects{

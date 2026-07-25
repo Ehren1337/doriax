@@ -38,6 +38,11 @@ namespace doriax{
         void setOuterConeAngle(float outer);
         float getOuterConeAngle() const;
 
+        void setSpotMask(const std::string& texture);
+        void setSpotMask(const std::string& id, TextureData data);
+        void clearSpotMask();
+        Texture getSpotMask() const;
+
         void setShadows(bool shadows);
         bool isShadows() const;
 

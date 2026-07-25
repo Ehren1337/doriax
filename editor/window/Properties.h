@@ -75,6 +75,10 @@ namespace doriax::editor{
         std::vector<EnumEntry>* enumEntries = nullptr;
         std::vector<int>* sliderValues = nullptr;
         std::function<void()> onValueChanged = nullptr;
+        // Some texture properties only accept file/data-backed images.
+        bool allowCameraTexture = true;
+        // Hide sampler controls when the consumer owns its filtering and wrapping.
+        bool allowTextureSettings = true;
         // Optional filter for LocalEntity picker: only show entities matching all bits
         Signature entityFilter;
         // Entities hidden from the LocalEntity picker and rejected on drag-drop

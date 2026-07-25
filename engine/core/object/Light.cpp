@@ -159,6 +159,32 @@ float Light::getOuterConeAngle() const{
     return lightcomp.outerConeCos;
 }
 
+void Light::setSpotMask(const std::string& texture){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    lightcomp.spotMask.setPath(texture);
+    lightcomp.spotMaskReady = false;
+    lightcomp.needUpdateShadowCamera = true;
+}
+
+void Light::setSpotMask(const std::string& id, TextureData data){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    lightcomp.spotMask.setData(id, data);
+    lightcomp.spotMaskReady = false;
+    lightcomp.needUpdateShadowCamera = true;
+}
+
+void Light::clearSpotMask(){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    lightcomp.spotMask = Texture();
+    lightcomp.spotMaskReady = false;
+    lightcomp.spotMaskAspect = 1.0f;
+    lightcomp.needUpdateShadowCamera = true;
+}
+
+Texture Light::getSpotMask() const{
+    return getComponent<LightComponent>().spotMask;
+}
+
 void Light::setShadows(bool shadows){
     LightComponent& lightcomp = getComponent<LightComponent>();
 

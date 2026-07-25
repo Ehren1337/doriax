@@ -29,8 +29,10 @@
 #include "buffer/ExternalBuffer.h"
 #include "Engine.h"
 #include <map>
+#include <array>
 #include <memory>
 #include <queue>
+#include <string>
 #include <unordered_map>
 
 namespace doriax{
@@ -39,6 +41,7 @@ namespace doriax{
 	    Vector4 color_intensity[MAX_LIGHTS];
 	    Vector4 position_type[MAX_LIGHTS];
 	    Vector4 inCon_ouCon_shadows_cascades[MAX_LIGHTS];
+	    Vector4 spotUp_maskAspect[MAX_LIGHTS]; // world up.xyz; w > 0 means a ready mask and stores its width/height
 		Vector4 eyePos;
 		Vector4 cameraDir; // xyz = camera backward axis, w = 3D shadow PCF tap radius
 		Vector4 globalIllum; //global illumination
@@ -179,6 +182,27 @@ namespace doriax{
 			}
 		};
 
+		struct SpotMaskAtlasEntry{
+			std::string sourceId;
+			const std::array<TextureData, 6>* sourceOwner = nullptr;
+			const void* sourcePixels = nullptr;
+			int width = 0;
+			int height = 0;
+			float aspect = 1.0f;
+
+			bool empty() const{
+				return sourceId.empty();
+			}
+
+			bool operator==(const SpotMaskAtlasEntry& other) const{
+				return sourceId == other.sourceId &&
+					sourceOwner == other.sourceOwner &&
+					sourcePixels == other.sourcePixels &&
+					width == other.width &&
+					height == other.height;
+			}
+		};
+
 		Scene* scene;
 
 		// visible ranges of the tilemap submesh being drawn, refilled by
@@ -214,6 +238,13 @@ namespace doriax{
 		bool hasReflectionProbes;
 		bool hasMultipleCameras;
 		bool capturingReflectionProbe;
+
+		// Projected spotlight masks share one horizontal R8 atlas. Each punctual-light
+		// array index maps directly to one fixed-size atlas tile.
+		TextureRender spotMaskAtlas;
+		std::array<SpotMaskAtlasEntry, MAX_LIGHTS> spotMaskAtlasEntries;
+		std::vector<unsigned char> spotMaskAtlasPixels;
+		bool spotMaskAtlasCreated;
 
 		struct ReflectionProbeRuntime{
 			FramebufferRender captureFramebuffer;
@@ -362,6 +393,8 @@ namespace doriax{
 		int checkLightsAndShadow();
 		bool loadLights(int numLights);
 		void processLights(int numLights, CameraComponent& camera, Transform& cameraTransform);
+		void updateSpotMaskAtlas(int numLights);
+		void loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& render);
 		bool loadLights2D();
 		void processLights2D();
 		bool ensureShadow2DAtlas(unsigned int width);

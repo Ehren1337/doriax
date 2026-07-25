@@ -316,6 +316,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_albedoTexture";
     }else if (type == TextureShaderType::SHADOW2DATLAS){
         texstr = "u_shadow2DAtlas";
+    }else if (type == TextureShaderType::SPOTMASKATLAS){
+        texstr = "u_spotMaskAtlas";
     }
 
     if (texstr.empty()){

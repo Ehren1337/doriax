@@ -3456,12 +3456,12 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
         // sampler settings (min/mag filter, wrap) only apply to an actual image texture,
         // not to a camera/framebuffer link or an empty slot
-        bool showTexSettings = !isCameraTexture && !newValue.empty();
+        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !newValue.empty();
 
         ImVec2 texButtonSize = ImGui::CalcItemSize(ImVec2(0, 0), ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
         // reserve room for the action buttons (file + camera, plus a settings button when
         // applicable), with one gap between each item and a trailing gap on the right
-        int texButtonCount = 2;
+        int texButtonCount = settings.allowCameraTexture ? 2 : 1;
         if (showTexSettings) texButtonCount++;
         float texButtonsReserve = texButtonSize.x * texButtonCount + ImGui::GetStyle().ItemSpacing.x * (texButtonCount + 1);
         ImGui::BeginChild("textureframe", ImVec2(-texButtonsReserve, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2),
@@ -3525,12 +3525,14 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         }
         ImGui::SetItemTooltip("Image file");
 
-        ImGui::SameLine();
+        if (settings.allowCameraTexture) {
+            ImGui::SameLine();
 
-        if (ImGui::Button(ICON_FA_VIDEO, texButtonSize)) {
-            ImGui::OpenPopup("cameratexturepopup");
+            if (ImGui::Button(ICON_FA_VIDEO, texButtonSize)) {
+                ImGui::OpenPopup("cameratexturepopup");
+            }
+            ImGui::SetItemTooltip("Camera as source (render to texture)");
         }
-        ImGui::SetItemTooltip("Camera as source (render to texture)");
 
         if (showTexSettings) {
             ImGui::SameLine();
@@ -3544,7 +3546,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
         drawTextureSettingsPopup("texturesettingspopup", cpType, id, sceneProject, entities, settings.onValueChanged);
 
-        if (ImGui::BeginPopup("cameratexturepopup")) {
+        if (settings.allowCameraTexture && ImGui::BeginPopup("cameratexturepopup")) {
             Scene* scene = sceneProject->scene;
             auto camerasArray = scene->getComponentArray<CameraComponent>();
             bool hasCamera = false;
@@ -7445,8 +7447,17 @@ void editor::Properties::drawLightComponent(ComponentType cpType, SceneProject* 
         propertyRow(RowPropertyType::Direction, cpType, "direction", "Direction", sceneProject, entities);
     }
     if (light.type == LightType::SPOT){
-        propertyRow(RowPropertyType::HalfCone, cpType, "innerConeCos", "Inner Cone", sceneProject, entities, settingsCone);
-        propertyRow(RowPropertyType::HalfCone, cpType, "outerConeCos", "Outer Cone", sceneProject, entities, settingsCone);
+        RowSettings settingsMask;
+        settingsMask.allowCameraTexture = false;
+        settingsMask.allowTextureSettings = false;
+        settingsMask.help = "Optional image projected by the spotlight. Alpha controls intensity when transparency is present; otherwise luminance is used. Empty uses the default circular cone.";
+        propertyRow(RowPropertyType::Texture, cpType, "spotMask", "Mask", sceneProject, entities, settingsMask);
+        if (light.spotMask.empty()){
+            propertyRow(RowPropertyType::HalfCone, cpType, "innerConeCos", "Inner Cone", sceneProject, entities, settingsCone);
+            propertyRow(RowPropertyType::HalfCone, cpType, "outerConeCos", "Outer Cone", sceneProject, entities, settingsCone);
+        }else{
+            propertyRow(RowPropertyType::HalfCone, cpType, "outerConeCos", "Angle Cone", sceneProject, entities, settingsCone);
+        }
     }
     endTable();
 

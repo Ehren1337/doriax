@@ -4798,6 +4798,7 @@ YAML::Node editor::Stream::encodeLightComponent(const LightComponent& light) {
     node["intensity"] = light.intensity;
     node["innerConeCos"] = light.innerConeCos;
     node["outerConeCos"] = light.outerConeCos;
+    node["spotMask"] = encodeTexture(light.spotMask);
     node["shadows"] = light.shadows;
     node["automaticShadowCamera"] = light.automaticShadowCamera;
     node["shadowBias"] = light.shadowBias;
@@ -4824,6 +4825,7 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["intensity"]) light.intensity = node["intensity"].as<float>();
     if (node["innerConeCos"]) light.innerConeCos = node["innerConeCos"].as<float>();
     if (node["outerConeCos"]) light.outerConeCos = node["outerConeCos"].as<float>();
+    if (node["spotMask"]) light.spotMask = decodeTexture(node["spotMask"]);
     if (node["shadows"]) light.shadows = node["shadows"].as<bool>();
     if (node["automaticShadowCamera"]) light.automaticShadowCamera = node["automaticShadowCamera"].as<bool>();
     if (node["shadowBias"]) light.shadowBias = node["shadowBias"].as<float>();

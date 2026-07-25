@@ -19,17 +19,84 @@
 #include "util/Color.h"
 #include "buffer/ExternalBuffer.h"
 #include "math/AABB.h"
+#include "pool/TextureDataPool.h"
 #include <memory>
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <random>
 #include <cstdint>
+#include <cstring>
 
 using namespace doriax;
 
 namespace {
+    constexpr int SPOT_MASK_TILE_SIZE = 256;
+
     bool usesAlphaMask(const Material& material, bool textureShadow){
         return material.alphaMode == MaterialAlphaMode::MASK ||
             (material.alphaMode == MaterialAlphaMode::AUTO && textureShadow);
+    }
+
+    float readSpotMaskTexel(TextureData& source, int x, int y, bool useAlpha){
+        x = std::clamp(x, 0, source.getWidth() - 1);
+        y = std::clamp(y, 0, source.getHeight() - 1);
+
+        const int channels = source.getChannels();
+        const int bytesPerChannel = TextureData::getBytesPerChannel(source.getColorFormat());
+        const size_t pixelOffset =
+            (static_cast<size_t>(y) * static_cast<size_t>(source.getWidth()) + static_cast<size_t>(x)) *
+            static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
+        const unsigned char* pixels = static_cast<const unsigned char*>(source.getData());
+
+        if (source.getColorFormat() == ColorFormat::RED16){
+            uint16_t value = 0;
+            std::memcpy(&value, pixels + pixelOffset, sizeof(value));
+            return static_cast<float>(value) / 65535.0f;
+        }
+
+        if (useAlpha && channels >= 4){
+            return static_cast<float>(pixels[pixelOffset + 3]) / 255.0f;
+        }
+
+        if (channels >= 3){
+            const float r = static_cast<float>(pixels[pixelOffset]);
+            const float g = static_cast<float>(pixels[pixelOffset + 1]);
+            const float b = static_cast<float>(pixels[pixelOffset + 2]);
+            return (0.2126f * r + 0.7152f * g + 0.0722f * b) / 255.0f;
+        }
+
+        return static_cast<float>(pixels[pixelOffset]) / 255.0f;
+    }
+
+    void rasterizeSpotMaskTile(TextureData& source, int tileIndex, int atlasWidth, std::vector<unsigned char>& atlas){
+        const bool useAlpha = source.getColorFormat() == ColorFormat::RGBA && source.hasAlpha();
+        const float sourceWidth = static_cast<float>(source.getWidth());
+        const float sourceHeight = static_cast<float>(source.getHeight());
+
+        for (int y = 0; y < SPOT_MASK_TILE_SIZE; y++){
+            const float sourceY = ((static_cast<float>(y) + 0.5f) / static_cast<float>(SPOT_MASK_TILE_SIZE)) * sourceHeight - 0.5f;
+            const int y0 = static_cast<int>(std::floor(sourceY));
+            const int y1 = y0 + 1;
+            const float fy = sourceY - static_cast<float>(y0);
+
+            for (int x = 0; x < SPOT_MASK_TILE_SIZE; x++){
+                const float sourceX = ((static_cast<float>(x) + 0.5f) / static_cast<float>(SPOT_MASK_TILE_SIZE)) * sourceWidth - 0.5f;
+                const int x0 = static_cast<int>(std::floor(sourceX));
+                const int x1 = x0 + 1;
+                const float fx = sourceX - static_cast<float>(x0);
+
+                const float top = readSpotMaskTexel(source, x0, y0, useAlpha) * (1.0f - fx) +
+                                  readSpotMaskTexel(source, x1, y0, useAlpha) * fx;
+                const float bottom = readSpotMaskTexel(source, x0, y1, useAlpha) * (1.0f - fx) +
+                                     readSpotMaskTexel(source, x1, y1, useAlpha) * fx;
+                const float value = top * (1.0f - fy) + bottom * fy;
+
+                const int atlasX = tileIndex * SPOT_MASK_TILE_SIZE + x;
+                atlas[static_cast<size_t>(y) * static_cast<size_t>(atlasWidth) + static_cast<size_t>(atlasX)] =
+                    static_cast<unsigned char>(std::round(std::clamp(value, 0.0f, 1.0f) * 255.0f));
+            }
+        }
     }
 }
 
@@ -76,6 +143,7 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     needUpdateShadowBindings = false;
     hasShadowAtlas = false;
     hasShadowPointAtlas = false;
+    spotMaskAtlasCreated = false;
     initShadowAtlasRects();
     initShadowPointAtlasRects();
 
@@ -132,6 +200,12 @@ void RenderSystem::destroy(){
     shadow2DAtlasWidth = 0;
     hasShadow2DAtlas = false;
     destroyOccluder2DPass();
+    if (spotMaskAtlasCreated){
+        spotMaskAtlas.destroyTexture();
+        spotMaskAtlasCreated = false;
+    }
+    spotMaskAtlasPixels.clear();
+    spotMaskAtlasEntries.fill({});
 
     auto skys = scene->getComponentArray<SkyComponent>();
     if (skys->size() > 0){
@@ -401,6 +475,202 @@ bool RenderSystem::loadLights(int numLights){
     return true;
 }
 
+void RenderSystem::updateSpotMaskAtlas(int numLights){
+    auto lights = scene->getComponentArray<LightComponent>();
+    std::array<SpotMaskAtlasEntry, MAX_LIGHTS> newEntries;
+    std::array<TextureData*, MAX_LIGHTS> sources{};
+    std::array<std::shared_ptr<std::array<TextureData, 6>>, MAX_LIGHTS> sourceOwners;
+    std::array<bool, MAX_LIGHTS> previousReady{};
+    std::array<float, MAX_LIGHTS> previousAspects{};
+
+    for (int i = 0; i < MAX_LIGHTS; i++){
+        if (i >= numLights){
+            continue;
+        }
+
+        LightComponent& light = lights->getComponentFromIndex(i);
+        previousReady[i] = light.spotMaskReady;
+        previousAspects[i] = light.spotMaskAspect;
+
+        if (light.type == LightType::SPOT && !light.spotMask.empty() && !light.spotMask.isFramebuffer()){
+            const std::string sourceId = light.spotMask.getId();
+
+            auto acceptSource = [&](const std::shared_ptr<std::array<TextureData, 6>>& owner){
+                if (!owner){
+                    return false;
+                }
+
+                TextureData& source = owner->at(0);
+                if (!source.getData() || source.getWidth() <= 0 || source.getHeight() <= 0 || source.getChannels() <= 0){
+                    return false;
+                }
+
+                sourceOwners[i] = owner;
+                sources[i] = &sourceOwners[i]->at(0);
+                newEntries[i].sourceId = sourceId;
+                newEntries[i].sourceOwner = owner.get();
+                newEntries[i].sourcePixels = source.getData();
+                newEntries[i].width = source.getWidth();
+                newEntries[i].height = source.getHeight();
+                newEntries[i].aspect = std::clamp(
+                    static_cast<float>(source.getWidth()) / static_cast<float>(source.getHeight()),
+                    0.1f, 10.0f);
+                return true;
+            };
+
+            std::shared_ptr<std::array<TextureData, 6>> pooledSource = TextureDataPool::get(sourceId);
+            bool hasSource = acceptSource(pooledSource);
+
+            if (!hasSource){
+                const SpotMaskAtlasEntry& committedEntry = spotMaskAtlasEntries[i];
+                const bool canReuseCommittedTile =
+                    spotMaskAtlasCreated &&
+                    pooledSource &&
+                    pooledSource.get() == committedEntry.sourceOwner &&
+                    sourceId == committedEntry.sourceId &&
+                    !committedEntry.empty();
+
+                if (canReuseCommittedTile){
+                    newEntries[i] = committedEntry;
+                }else{
+                    TextureLoadResult result = light.spotMask.load();
+                    if (result.state == ResourceLoadState::Finished){
+                        acceptSource(result.data);
+                    }
+                }
+            }
+        }
+    }
+
+    auto applyCommittedReadiness = [&](){
+        for (int i = 0; i < numLights; i++){
+            LightComponent& light = lights->getComponentFromIndex(i);
+            const bool ready =
+                spotMaskAtlasCreated &&
+                !newEntries[i].empty() &&
+                newEntries[i] == spotMaskAtlasEntries[i];
+
+            light.spotMaskReady = ready;
+            light.spotMaskAspect = ready ? spotMaskAtlasEntries[i].aspect : 1.0f;
+
+            if (previousReady[i] != light.spotMaskReady ||
+                std::abs(previousAspects[i] - light.spotMaskAspect) > 0.0001f){
+                light.needUpdateShadowCamera = true;
+            }
+        }
+
+        for (int i = numLights; i < static_cast<int>(lights->size()); i++){
+            LightComponent& light = lights->getComponentFromIndex(i);
+            if (light.spotMaskReady || std::abs(light.spotMaskAspect - 1.0f) > 0.0001f){
+                light.spotMaskReady = false;
+                light.spotMaskAspect = 1.0f;
+                light.needUpdateShadowCamera = true;
+            }
+        }
+    };
+
+    if (spotMaskAtlasCreated && newEntries == spotMaskAtlasEntries){
+        applyCommittedReadiness();
+        return;
+    }
+    if (!Engine::isViewLoaded()){
+        applyCommittedReadiness();
+        return;
+    }
+
+    const bool hasSpotMasks = std::any_of(
+        newEntries.begin(),
+        newEntries.end(),
+        [](const SpotMaskAtlasEntry& entry){ return !entry.empty(); });
+    if (!hasSpotMasks){
+        if (spotMaskAtlasCreated){
+            spotMaskAtlas.destroyTexture();
+            spotMaskAtlasCreated = false;
+        }
+        spotMaskAtlasEntries.fill({});
+        spotMaskAtlasPixels.clear();
+        applyCommittedReadiness();
+        return;
+    }
+
+    const int atlasWidth = SPOT_MASK_TILE_SIZE * MAX_LIGHTS;
+    const size_t atlasSize =
+        static_cast<size_t>(atlasWidth) * static_cast<size_t>(SPOT_MASK_TILE_SIZE);
+    std::vector<unsigned char> newPixels = spotMaskAtlasPixels;
+    const bool rebuildAllTiles = newPixels.size() != atlasSize;
+    if (rebuildAllTiles){
+        newPixels.assign(atlasSize, 255);
+    }
+
+    for (int i = 0; i < MAX_LIGHTS; i++){
+        if (sources[i] &&
+            (rebuildAllTiles || !spotMaskAtlasCreated || !(newEntries[i] == spotMaskAtlasEntries[i]))){
+            rasterizeSpotMaskTile(*sources[i], i, atlasWidth, newPixels);
+        }else if (newEntries[i].empty() &&
+                  (rebuildAllTiles || !spotMaskAtlasEntries[i].empty())){
+            const int tileStart = i * SPOT_MASK_TILE_SIZE;
+            for (int y = 0; y < SPOT_MASK_TILE_SIZE; y++){
+                auto row = newPixels.begin() +
+                    static_cast<size_t>(y) * static_cast<size_t>(atlasWidth) +
+                    static_cast<size_t>(tileStart);
+                std::fill(row, row + SPOT_MASK_TILE_SIZE, 255);
+            }
+        }
+    }
+
+    void* data[6] = {};
+    size_t size[6] = {};
+    data[0] = newPixels.data();
+    size[0] = newPixels.size();
+
+    TextureRender newAtlas;
+    const bool newAtlasCreated = newAtlas.createTexture(
+        "spot-mask-atlas",
+        atlasWidth,
+        SPOT_MASK_TILE_SIZE,
+        ColorFormat::RED,
+        TextureType::TEXTURE_2D,
+        1,
+        data,
+        size,
+        TextureFilter::LINEAR,
+        TextureFilter::LINEAR,
+        TextureWrap::CLAMP_TO_EDGE,
+        TextureWrap::CLAMP_TO_EDGE);
+
+    if (!newAtlasCreated){
+        newAtlas.destroyTexture();
+        applyCommittedReadiness();
+        return;
+    }
+
+    if (spotMaskAtlasCreated){
+        spotMaskAtlas.destroyTexture();
+    }
+    spotMaskAtlas = newAtlas;
+    spotMaskAtlasCreated = true;
+    spotMaskAtlasPixels = std::move(newPixels);
+    spotMaskAtlasEntries = newEntries;
+    applyCommittedReadiness();
+
+    // The atlas owns its resampled copy, so honor the source Texture's normal
+    // release-after-upload policy instead of retaining full-resolution pixels.
+    for (int i = 0; i < numLights; i++){
+        LightComponent& light = lights->getComponentFromIndex(i);
+        if (sourceOwners[i] && light.spotMask.isReleaseDataAfterLoad()){
+            sourceOwners[i]->at(0).releaseImageData();
+            spotMaskAtlasEntries[i].sourcePixels = nullptr;
+        }
+    }
+}
+
+void RenderSystem::loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& render){
+    render.addTexture(
+        shaderData.getTextureIndex(TextureShaderType::SPOTMASKATLAS),
+        ShaderStageType::FRAGMENT,
+        spotMaskAtlasCreated ? &spotMaskAtlas : &emptyWhite);
+}
+
 void RenderSystem::processLights(int numLights, CameraComponent& camera, Transform& cameraTransform){
     auto lights = scene->getComponentArray<LightComponent>();
 
@@ -462,6 +732,11 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
         fs_lighting.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, light.intensity);
         fs_lighting.position_type[i] = Vector4(worldPosition.x, worldPosition.y, worldPosition.z, (float)type);
         fs_lighting.inCon_ouCon_shadows_cascades[i] = Vector4(light.innerConeCos, light.outerConeCos, light.shadowMapIndex, light.numShadowCascades);
+        fs_lighting.spotUp_maskAspect[i] = Vector4(
+            light.worldUp.x,
+            light.worldUp.y,
+            light.worldUp.z,
+            (light.type == LightType::SPOT && light.spotMaskReady) ? light.spotMaskAspect : 0.0f);
     }
 
     // PCF tap radius of the 3D shadow filter, packed into cameraDir.w
@@ -507,6 +782,7 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
     // Setting intensity of other lights to zero
     for (int i = numLights; i < MAX_LIGHTS; i++){
         fs_lighting.color_intensity[i].w = 0.0;
+        fs_lighting.spotUp_maskAspect[i].w = 0.0;
     }
 }
 
@@ -1350,6 +1626,10 @@ bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, O
         }else{
             render.addTexture(slotTex, ShaderStageType::FRAGMENT, &emptyNormal);
         }
+    }
+
+    if (hasLights && receiveLights){
+        loadSpotMaskTexture(shaderData, render);
     }
 
     return true;
@@ -2588,7 +2868,9 @@ bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraCom
             bool submeshLit = !(mesh.submeshes[i].shaderProperties & (1u << 0));
 
             if (submeshLit){
-                render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(float) * (16 * MAX_LIGHTS + 20), &fs_lighting);
+                ShaderData& lightingShaderData = mesh.submeshes[i].shader.get()->shaderData;
+                loadSpotMaskTexture(lightingShaderData, render);
+                render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), &fs_lighting);
                 if (hasShadows && (mesh.submeshes[i].shaderProperties & (1u << 4))){
                     render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &vs_shadows);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &fs_shadows);
@@ -5125,6 +5407,7 @@ Matrix4 RenderSystem::getDirLightProjection(const Matrix4& viewMatrix, const Mat
 
 void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transform, CameraComponent& camera, Transform& cameraTransform){
     light.worldDirection = transform.worldRotation * light.direction;
+    light.worldUp = (transform.worldRotation * light.getLocalSpotProjectionUp()).normalized();
 
     if (hasShadows && (light.intensity > 0)){
         
@@ -5228,9 +5511,15 @@ void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transf
             Matrix4 projectionMatrix;
             Matrix4 viewMatrix;
 
-            viewMatrix = Matrix4::lookAtMatrix(transform.worldPosition, light.worldDirection + transform.worldPosition, up);
+            Vector3 projectionUp = light.spotMaskReady ? light.worldUp : up;
+            float projectionAspect = light.spotMaskReady ? light.spotMaskAspect : 1.0f;
+            viewMatrix = Matrix4::lookAtMatrix(transform.worldPosition, light.worldDirection + transform.worldPosition, projectionUp);
 
-            projectionMatrix = Matrix4::perspectiveMatrix(acos(light.outerConeCos)*2, 1, light.shadowCameraNearFar.x, light.shadowCameraNearFar.y);
+            projectionMatrix = Matrix4::perspectiveMatrix(
+                acos(light.outerConeCos) * 2,
+                projectionAspect,
+                light.shadowCameraNearFar.x,
+                light.shadowCameraNearFar.y);
 
             light.cameras[0].lightViewMatrix = viewMatrix;
             light.cameras[0].lightProjectionMatrix = projectionMatrix;
@@ -5608,6 +5897,7 @@ void RenderSystem::update(double dt){
     Transform& mainCameraTransform =  scene->getComponent<Transform>(mainCameraEntity);
 
     loadLights(numLights);
+    updateSpotMaskAtlas(numLights);
     loadLights2D();
     loadAndProcessFog();
 

@@ -1535,13 +1535,9 @@ void editor::SceneRender3D::createDirectionalLightArrow(Entity entity, const Tra
     Vector3 endPos = position + direction * arrowLength;
     lo.lines->addLine(position, endPos, arrowColor);
 
-    // Create orthonormal basis vectors perpendicular to light direction
-    Vector3 up = Vector3(0, 1, 0);
-    if (std::abs(direction.dotProduct(up)) > 0.9f) {
-        up = Vector3(1, 0, 0);
-    }
+    // Use the same local projection frame as runtime lighting and shadows.
+    Vector3 up = light.getLocalSpotProjectionUp();
     Vector3 right = direction.crossProduct(up).normalized();
-    up = right.crossProduct(direction).normalized();
 
     // Arrow head base position
     Vector3 arrowHeadBase = endPos - direction * arrowHeadLength;
@@ -1647,7 +1643,9 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
         lo.innerConeCos == light.innerConeCos && 
         lo.outerConeCos == light.outerConeCos && 
         lo.direction == light.direction && 
-        lo.range == range) {
+        lo.range == range &&
+        lo.spotMaskReady == light.spotMaskReady &&
+        lo.spotMaskAspect == light.spotMaskAspect) {
         return;
     }
 
@@ -1656,6 +1654,8 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
     lo.outerConeCos = light.outerConeCos;
     lo.direction = light.direction;
     lo.range = range;
+    lo.spotMaskReady = light.spotMaskReady;
+    lo.spotMaskAspect = light.spotMaskAspect;
 
     lo.lines->clearLines();
 
@@ -1666,13 +1666,9 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
     float innerRadius = range * std::tan(std::acos(light.innerConeCos));
     float outerRadius = range * std::tan(std::acos(light.outerConeCos));
 
-    // Create orthonormal basis vectors perpendicular to light direction
-    Vector3 up = Vector3(0, 1, 0);
-    if (std::abs(direction.dotProduct(up)) > 0.9f) {
-        up = Vector3(1, 0, 0);
-    }
+    // Use the same local projection frame as runtime lighting and shadows.
+    Vector3 up = light.getLocalSpotProjectionUp();
     Vector3 right = direction.crossProduct(up).normalized();
-    up = right.crossProduct(direction).normalized();
 
     // End position of the cone
     Vector3 endPos = position + direction * range;
@@ -1683,6 +1679,23 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
     // Colors for inner and outer cones
     Vector4 innerConeColor = Vector4(1.0, 1.0, 0.0, 0.8); // Yellow for inner cone
     Vector4 outerConeColor = Vector4(1.0, 0.5, 0.0, 0.6); // Orange for outer cone
+
+    if (light.spotMaskReady){
+        float outerHalfWidth = outerRadius * light.spotMaskAspect;
+        Vector3 corners[4] = {
+            endPos - right * outerHalfWidth - up * outerRadius,
+            endPos + right * outerHalfWidth - up * outerRadius,
+            endPos + right * outerHalfWidth + up * outerRadius,
+            endPos - right * outerHalfWidth + up * outerRadius
+        };
+
+        for (int i = 0; i < 4; i++){
+            lo.lines->addLine(position, corners[i], outerConeColor);
+            lo.lines->addLine(corners[i], corners[(i + 1) % 4], outerConeColor);
+        }
+        lo.lines->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
+        return;
+    }
 
     // Draw outer cone
     for (int i = 0; i < numSegments; i++) {

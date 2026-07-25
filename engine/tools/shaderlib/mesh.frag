@@ -81,6 +81,7 @@ uniform u_fs_pbrParams {
         vec4 color_intensity[MAX_LIGHTS]; //color.xyz and intensity.w
         vec4 position_type[MAX_LIGHTS]; //position.xyz and type.w
         vec4 inCone_ouCone_shadows_cascades[MAX_LIGHTS]; //innerConeCos.x, outerConeCos.y, shadowMapIndex.z (-1.0 if no shadow), numCascades.w
+        vec4 spotUp_maskAspect[MAX_LIGHTS]; //spot projection up.xyz; mask width/height in .w (0 = default circle)
         vec4 eyePos; //eyePos.xyz
         vec4 cameraDir; //camera backward axis.xyz
         vec4 globalIllum; //globalColor.xyz and globalIntensity.w
@@ -101,6 +102,11 @@ uniform u_fs_pbrParams {
         uniform texture2D u_shadow2DAtlas;
         uniform sampler u_shadow2DAtlas_smp;
     #endif
+#endif
+
+#ifdef USE_PUNCTUAL
+    uniform texture2D u_spotMaskAtlas;
+    uniform sampler u_spotMaskAtlas_smp;
 #endif
 
 #ifdef USE_SSAO
@@ -335,6 +341,8 @@ void main() {
                     lighting.color_intensity[i].w,
                     lighting.inCone_ouCone_shadows_cascades[i].x,
                     lighting.inCone_ouCone_shadows_cascades[i].y,
+                    lighting.spotUp_maskAspect[i].xyz,
+                    lighting.spotUp_maskAspect[i].w,
                     (lighting.inCone_ouCone_shadows_cascades[i].z < 0.0)?false:true,
                     int(lighting.inCone_ouCone_shadows_cascades[i].z),
                     int(lighting.inCone_ouCone_shadows_cascades[i].w)
@@ -374,7 +382,7 @@ void main() {
                     if (NdotL > 0.0 || NdotV > 0.0){
                         // Calculation of analytical light
                         // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB
-                        vec3 intensity = getLighIntensity(light, pointToLight);
+                        vec3 intensity = getLighIntensity(light, pointToLight, i);
                         f_diffuse += shadow * intensity * NdotL *  BRDF_lambertian(materialInfo.f0, materialInfo.f90, materialInfo.albedoColor, VdotH);
                         f_specular += shadow * intensity * NdotL * BRDF_specularGGX(materialInfo.f0, materialInfo.f90, materialInfo.alphaRoughness, VdotH, NdotL, NdotV, NdotH);
                     }
