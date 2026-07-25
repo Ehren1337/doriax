@@ -1828,13 +1828,15 @@ void editor::SceneWindow::show() {
                         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 175.0f);
                         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 80.0f);
 
-                        auto drawSettingRow = [](const char* name, bool& value, bool disabled = false) {
+                        auto drawSettingRow = [this](const char* name, bool& value, bool disabled = false) {
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);
                             if (disabled) ImGui::BeginDisabled();
                             ImGui::Text("%s", name);
                             ImGui::TableSetColumnIndex(1);
-                            ImGui::Checkbox((std::string("##") + name).c_str(), &value);
+                            if (ImGui::Checkbox((std::string("##") + name).c_str(), &value)) {
+                                project->saveProjectFile();
+                            }
                             if (disabled) ImGui::EndDisabled();
                         };
 
@@ -1867,6 +1869,9 @@ void editor::SceneWindow::show() {
                             ImGui::TableSetColumnIndex(1);
                             ImGui::SetNextItemWidth(-1);
                             ImGui::DragFloat("##GridSpacing3D", &sceneProject.displaySettings.gridSpacing3D, 0.1f, 0.1f, 1000.0f, "%.1f");
+                            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                                project->saveProjectFile();
+                            }
                         } else {
                             drawSettingRow(ICON_FA_BORDER_ALL " Snap tile", sceneProject.displaySettings.snapTile);
                             drawSettingRow(ICON_FA_TABLE_CELLS " Show grid", sceneProject.displaySettings.showGrid2D);
@@ -1877,6 +1882,9 @@ void editor::SceneWindow::show() {
                                 ImGui::TableSetColumnIndex(1);
                                 ImGui::SetNextItemWidth(-1);
                                 ImGui::DragFloat("##GridSpacing2D", &sceneProject.displaySettings.gridSpacing2D, 1.0f, 1.0f, 10000.0f, "%.0f");
+                                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                                    project->saveProjectFile();
+                                }
                             }
                         }
 
@@ -1889,6 +1897,9 @@ void editor::SceneWindow::show() {
                         if (!sceneProject.displaySettings.snapRotation) ImGui::BeginDisabled();
                         ImGui::SetNextItemWidth(-1);
                         ImGui::DragFloat("##RotationSnapDegrees", &sceneProject.displaySettings.rotationSnapDegrees, 1.0f, 0.1f, 180.0f, "%.1f");
+                        if (ImGui::IsItemDeactivatedAfterEdit()) {
+                            project->saveProjectFile();
+                        }
                         if (!sceneProject.displaySettings.snapRotation) ImGui::EndDisabled();
 
                         if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender) {
@@ -1910,6 +1921,7 @@ void editor::SceneWindow::show() {
                                     if (ImGui::Button((std::string(ICON_FA_ROTATE_LEFT) + "##" + id).c_str())) {
                                         apply(defaultValue);
                                         sceneProject.needUpdateRender = true;
+                                        project->saveProjectFile();
                                     }
                                     ImGui::PopStyleColor(2);
                                     ImGui::PopStyleVar(3);
@@ -1922,6 +1934,9 @@ void editor::SceneWindow::show() {
                                     apply(editedValue);
                                     validate();
                                     sceneProject.needUpdateRender = true;
+                                }
+                                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                                    project->saveProjectFile();
                                 }
                             };
 
