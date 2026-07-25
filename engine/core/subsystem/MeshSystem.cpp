@@ -35,6 +35,83 @@ using namespace doriax;
 
 namespace {
     thread_local int g_imageDecodeMaxDimension = 0;
+
+    // One tile that made it into a tilemap vertex buffer, in vertex-buffer order.
+    struct TilemapAcceptedTile{
+        unsigned int vertexBase; // first vertex of the tile quad
+        unsigned int submeshId;
+        unsigned int chunk;
+        AABB aabb;               // local-space quad bounds
+    };
+
+    // Emits the index data of an already-built tilemap vertex buffer, grouping the
+    // quads into a spatial grid so the renderer can frustum-cull parts of a large map
+    // instead of submitting every tile. Vertices keep their tile order: only the index
+    // order changes, which makes each (submesh, chunk) pair one contiguous run of
+    // indices that a single draw call can address.
+    void buildTilemapChunks(TilemapComponent& tilemap, std::vector<TilemapAcceptedTile>& tiles, std::vector<std::vector<uint16_t>>& indexMap){
+        const unsigned int numSubmeshes = (unsigned int)indexMap.size();
+
+        tilemap.chunks.clear();
+        tilemap.chunkStart.assign(numSubmeshes + 1, 0);
+
+        unsigned int chunksPerAxis = 1;
+        if (tiles.size() >= TILEMAP_MIN_CHUNKED_TILES && tilemap.width > 0 && tilemap.height > 0){
+            chunksPerAxis = (unsigned int)std::ceil(std::sqrt((double)tiles.size() / TILEMAP_CHUNK_TARGET_TILES));
+            chunksPerAxis = std::clamp(chunksPerAxis, 1u, (unsigned int)MAX_TILEMAP_CHUNKS_PER_AXIS);
+        }
+
+        // tiles were clamped to non-negative local coords, so the grid spans
+        // (0,0)..(width,height) and a tile is placed by the chunk of its center
+        const float chunkWidth = (float)tilemap.width / chunksPerAxis;
+        const float chunkHeight = (float)tilemap.height / chunksPerAxis;
+
+        for (TilemapAcceptedTile& tile : tiles){
+            const Vector3 center = tile.aabb.getCenter();
+            unsigned int cx = (chunkWidth > 0) ? (unsigned int)(center.x / chunkWidth) : 0;
+            unsigned int cy = (chunkHeight > 0) ? (unsigned int)(center.y / chunkHeight) : 0;
+            tile.chunk = (std::min(cy, chunksPerAxis - 1) * chunksPerAxis) + std::min(cx, chunksPerAxis - 1);
+        }
+
+        // Groups the tiles by submesh, and by chunk within it, so both are contiguous
+        // index runs. Stable, so tiles of the same chunk keep their tile order.
+        std::stable_sort(tiles.begin(), tiles.end(), [](const TilemapAcceptedTile& a, const TilemapAcceptedTile& b){
+            if (a.submeshId != b.submeshId)
+                return a.submeshId < b.submeshId;
+            return a.chunk < b.chunk;
+        });
+
+        size_t t = 0;
+        for (unsigned int s = 0; s < numSubmeshes; s++){
+            tilemap.chunkStart[s] = (unsigned int)tilemap.chunks.size();
+
+            // tiles of a submesh are contiguous once sorted, so a submesh without
+            // tiles just leaves indexMap[s] empty and gets no chunk
+            while (t < tiles.size() && tiles[t].submeshId == s){
+                const unsigned int chunk = tiles[t].chunk;
+
+                TilemapChunk range;
+                range.offset = (unsigned int)indexMap[s].size();
+
+                while (t < tiles.size() && tiles[t].submeshId == s && tiles[t].chunk == chunk){
+                    const uint16_t base = (uint16_t)tiles[t].vertexBase;
+                    indexMap[s].push_back(base + 0);
+                    indexMap[s].push_back(base + 1);
+                    indexMap[s].push_back(base + 2);
+                    indexMap[s].push_back(base + 0);
+                    indexMap[s].push_back(base + 2);
+                    indexMap[s].push_back(base + 3);
+
+                    range.aabb.merge(tiles[t].aabb);
+                    t++;
+                }
+
+                range.count = (unsigned int)indexMap[s].size() - range.offset;
+                tilemap.chunks.push_back(range);
+            }
+        }
+        tilemap.chunkStart[numSubmeshes] = (unsigned int)tilemap.chunks.size();
+    }
 }
 
 struct MeshSystem::AsyncModelLoadResult {
@@ -361,11 +438,21 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
 
     mesh.buffer.setUsage(BufferUsage::DYNAMIC);
 
+    // Chunking reorders the index data whenever a tile crosses a chunk boundary, so
+    // the indices must be updatable like the vertices — an immutable index buffer is
+    // skipped by the needUpdateBuffer upload and would leave the GPU on the old order
+    // while the chunk offsets already describe the new one.
+    const bool indexUsageChanged = mesh.indices.getUsage() != BufferUsage::DYNAMIC;
+    mesh.indices.setUsage(BufferUsage::DYNAMIC);
+
     tilemap.width = 0;
     tilemap.height = 0;
 
     std::vector<std::vector<uint16_t>> indexMap;
     indexMap.resize(mesh.numSubmeshes);
+
+    std::vector<TilemapAcceptedTile> acceptedTiles;
+    acceptedTiles.reserve(tilemap.numTiles);
 
     unsigned int numTiles = 0;
     unsigned int reserveTiles = tilemap.reserveTiles;
@@ -378,6 +465,13 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
 
         if (tilemap.tiles[i].rectId < 0 || (unsigned int)tilemap.tiles[i].rectId >= tilemap.numTilesRect){
             continue;
+        }
+
+        // A quad past this point can no longer be addressed by the 16-bit index
+        // buffer, so stop instead of wrapping vertex indices into other tiles.
+        if (numTiles >= MAX_TILEMAP_RENDERED_TILES){
+            Log::error("Tilemap exceeds the maximum of %i rendered tiles, remaining tiles were dropped", MAX_TILEMAP_RENDERED_TILES);
+            break;
         }
 
         if (reserveTiles > 0){
@@ -462,13 +556,29 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         mesh.buffer.addVector4(attColor, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
         mesh.buffer.addVector4(attColor, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
 
-        indexMap[submeshId].push_back(0 + (i*4));
-        indexMap[submeshId].push_back(1 + (i*4));
-        indexMap[submeshId].push_back(2 + (i*4));
-        indexMap[submeshId].push_back(0 + (i*4));
-        indexMap[submeshId].push_back(2 + (i*4));
-        indexMap[submeshId].push_back(3 + (i*4));
+        // Indices must address the vertex buffer by the tile's position in it, which
+        // only matches the loop counter while no tile is skipped — an invalidated
+        // rectId or an empty tile past the reserve budget shifts every later tile.
+        const unsigned int vertexBase = (numTiles - 1) * 4;
+        const float tileX = tilemap.tiles[i].position.x;
+        const float tileY = tilemap.tiles[i].position.y;
+        acceptedTiles.push_back({vertexBase, (unsigned int)submeshId, 0,
+            AABB(Vector3(tileX, tileY, 0), Vector3(tileX + tilemap.tiles[i].width, tileY + tilemap.tiles[i].height, 0))});
 
+    }
+
+    buildTilemapChunks(tilemap, acceptedTiles, indexMap);
+
+    // Each submesh's index range is baked into its GPU bindings (offset) and vertex
+    // count when the mesh loads, so any change in how the tiles are spread over the
+    // submeshes needs a reload — even when the total tile count stayed the same,
+    // like a tile switching to a rect of a different texture.
+    std::vector<size_t> previousIndexCounts(mesh.numSubmeshes, 0);
+    for (int i = 0; i < mesh.numSubmeshes; i++){
+        auto indexAttribute = mesh.submeshes[i].attributes.find(AttributeType::INDEX);
+        if (indexAttribute != mesh.submeshes[i].attributes.end()){
+            previousIndexCounts[i] = indexAttribute->second.getCount();
+        }
     }
 
     mesh.indices.clear();
@@ -476,23 +586,24 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     for (int i = 0; i < mesh.numSubmeshes; i++){
         addSubmeshAttribute(mesh.submeshes[i], "indices", AttributeType::INDEX, 1, AttributeDataType::UNSIGNED_SHORT, indexMap[i].size(), mesh.indices.getCount() * sizeof(uint16_t), false);
 
+        // a submesh without indices draws nothing (see RenderSystem::loadMesh)
         if (indexMap[i].size() > 0){
             mesh.indices.setValues(mesh.indices.getCount(), mesh.indices.getAttribute(AttributeType::INDEX), indexMap[i].size(), (char*)&indexMap[i].front(), sizeof(uint16_t));
             mesh.indices.setRenderAttributes(false);
         }
-
-        //TODO: necessary?
-        //if (indexMap[i].size() == 0) {
-        //     submesh not visible
-        //} else {
-        //     submesh visible
-        //}
     }
 
     calculateMeshAABB(mesh);
 
     if (mesh.loaded){
-        if (tilemap.renderedTiles != numTiles){
+        bool indexLayoutChanged = tilemap.renderedTiles != numTiles;
+        for (int i = 0; i < mesh.numSubmeshes && !indexLayoutChanged; i++){
+            indexLayoutChanged = previousIndexCounts[i] != indexMap[i].size();
+        }
+
+        // a GPU buffer keeps the usage it was created with, so a mesh already loaded
+        // with immutable indices has to reload before it can be updated
+        if (indexLayoutChanged || indexUsageChanged){
             mesh.needReload = true;
         }else{
             mesh.needUpdateBuffer = true; // buffer is not immutable

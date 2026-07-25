@@ -25,6 +25,7 @@ namespace doriax{
         void updateBuffer(unsigned int size, void* data);
         void destroyBuffer();
         bool isCreated();
+        BufferUsage getCreatedUsage() const;
     };
 }
 

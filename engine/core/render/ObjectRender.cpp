@@ -59,8 +59,8 @@ void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){
     backend.applyUniformBlock(slot, count, data);
 }
 
-void ObjectRender::draw(unsigned int vertexCount, unsigned int instanceCount){
-    backend.draw(vertexCount, instanceCount);
+void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
+    backend.draw(baseElement, vertexCount, instanceCount);
 }
 
 void ObjectRender::destroy(){

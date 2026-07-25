@@ -80,7 +80,7 @@ namespace doriax{
 
         bool beginDraw(PipelineType pipType);
         void applyUniformBlock(int slot, unsigned int count, void* data);
-        void draw(unsigned int vertexCount, unsigned int instanceCount);
+        void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
 

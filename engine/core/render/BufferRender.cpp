@@ -38,3 +38,7 @@ void BufferRender::destroyBuffer(){
 bool BufferRender::isCreated(){
     return backend.isCreated();
 }
+
+BufferUsage BufferRender::getCreatedUsage() const{
+    return backend.getCreatedUsage();
+}

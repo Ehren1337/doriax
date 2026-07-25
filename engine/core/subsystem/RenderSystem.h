@@ -19,6 +19,7 @@
 #include "component/PointsComponent.h"
 #include "component/LinesComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
 #include "render/ObjectRender.h"
@@ -160,8 +161,16 @@ namespace doriax{
 			PointsComponent* points;
 			InstancedMeshComponent* instmesh;
 			TerrainComponent* terrain;
+			TilemapComponent* tilemap;
 			Transform* transform;
 			float distanceToCamera;
+		};
+
+		// One merged run of tilemap indices to draw, in elements relative to the
+		// submesh index range (see selectTilemapChunks).
+		struct TilemapDrawRange{
+			unsigned int offset;
+			unsigned int count;
 		};
 
 		struct TransparentRenderComparison{
@@ -171,6 +180,10 @@ namespace doriax{
 		};
 
 		Scene* scene;
+
+		// visible ranges of the tilemap submesh being drawn, refilled by
+		// selectTilemapChunks and consumed by the draw right after it
+		std::vector<TilemapDrawRange> tilemapDrawRanges;
 
 		// Editor-only viewport debug override that forces all meshes to render
 		// without face culling. Defaults to false and is never set at runtime, so
@@ -391,12 +404,16 @@ namespace doriax{
 		AABB getTerrainNodeAABB(Transform& transform, TerrainNode& terrainNode);
 		bool isTerrainNodeInSphere(Vector3 position, float radius, const AABB& box);
 
+		// tilemap
+		bool selectTilemapChunks(TilemapComponent& tilemap, unsigned int submeshIndex, const float cameraFar, const Plane frustumPlanes[6]);
+
 		float lerp(float a, float b, float fraction);
 
 	protected:
 
-		bool drawMesh(MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, bool renderToTexture, InstancedMeshComponent* instmesh, TerrainComponent* terrain, int terrainView = 0);
-		bool drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, bool forSSAO = false);
+		void updateMeshBuffers(MeshComponent& mesh);
+		bool drawMesh(MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, bool renderToTexture, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView = 0);
+		bool drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO = false);
 		void destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets = false);
 
 		// SSAO
@@ -415,7 +432,7 @@ namespace doriax{
 		// G-buffer geometry pass for SSR: MRT packed depth + view-space normal/roughness/metallic
 		bool ensureGBufferFramebuffer(unsigned int width, unsigned int height);
 		void renderGBufferPass(CameraComponent& camera);
-		bool drawMeshGBuffer(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain);
+		bool drawMeshGBuffer(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
 

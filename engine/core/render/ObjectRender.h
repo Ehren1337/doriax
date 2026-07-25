@@ -38,7 +38,9 @@ namespace doriax {
 
         bool beginDraw(PipelineType pipType);
         void applyUniformBlock(int slot, unsigned int count, void* data);
-        void draw(unsigned int vertexCount, unsigned int instanceCount);
+        // baseElement skips that many elements of the bound index (or vertex) range,
+        // used to draw a single sub-range of a submesh, like one tilemap chunk
+        void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
     };

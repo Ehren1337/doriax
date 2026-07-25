@@ -14,16 +14,19 @@ SokolBuffer::SokolBuffer(){
     view.id = SG_INVALID_ID;
 }
 
-SokolBuffer::SokolBuffer(const SokolBuffer& rhs): buffer(rhs.buffer), view(rhs.view) {}
+SokolBuffer::SokolBuffer(const SokolBuffer& rhs): buffer(rhs.buffer), view(rhs.view), createdUsage(rhs.createdUsage) {}
 
 SokolBuffer& SokolBuffer::operator=(const SokolBuffer& rhs){
     buffer = rhs.buffer;
     view = rhs.view;
+    createdUsage = rhs.createdUsage;
     return *this;
 }
 
 bool SokolBuffer::createBuffer(unsigned int size, void* data, BufferType type, BufferUsage usage){
     sg_buffer_desc vbuf_desc = {0};
+
+    createdUsage = usage;
 
     if (usage == BufferUsage::IMMUTABLE){
         vbuf_desc.size = (size_t)size;
@@ -115,6 +118,10 @@ bool SokolBuffer::isCreated(){
     }
 
     return false;
+}
+
+BufferUsage SokolBuffer::getCreatedUsage() const{
+    return createdUsage;
 }
 
 sg_buffer SokolBuffer::get(){

@@ -1094,7 +1094,8 @@ void RenderSystem::renderReflectionProbeCapture(){
         updateMVP(i, transform, captureCamera, captureTransform);
         InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity);
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-        drawMesh(*mesh, transform, captureCamera, captureTransform, true, instanced, terrain, 0);
+        TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+        drawMesh(*mesh, transform, captureCamera, captureTransform, true, instanced, terrain, tilemap, 0);
     }
 
     runtime.capturePass.endRenderPass();
@@ -1803,6 +1804,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
     std::vector<BufferRender*> buffersCreatedThisLoad;
     for (auto const& buf : buffers){
         BufferRender* bufferRender = buf.second->getRender();
+
+        // A GPU buffer keeps for life the usage it was created with, so a generator
+        // that turns its buffer dynamic after the mesh was first loaded from
+        // serialized data (a tilemap rebuilding its indices) needs the buffer
+        // recreated — updating an immutable one is rejected by the backend.
+        if (bufferRender->isCreated() && bufferRender->getCreatedUsage() != buf.second->getUsage()) {
+            bufferRender->destroyBuffer();
+        }
+
         if (!bufferRender->isCreated()) {
             if (!bufferRender->createBuffer(buf.second->getSize(), buf.second->getData(), buf.second->getType(), buf.second->getUsage())) {
                 Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %lu; resource pool may be exhausted",
@@ -2142,10 +2152,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
         }
     
         unsigned int indexCount = 0;
+        // an indexed submesh draws indexCount elements even when that count is zero;
+        // only a submesh without any index data falls back to the whole vertex buffer
+        bool indexed = false;
 
         for (auto const& buf : buffers){
             if (buf.second->isRenderAttributes()) {
                 if (buf.second->getType() == BufferType::INDEX_BUFFER){
+                    indexed = true;
                     indexCount = buf.second->getCount();
                     Attribute indexattr = buf.second->getAttributes()[AttributeType::INDEX];
                     render.setIndex(buf.second->getRender(), indexattr.getDataType(), indexattr.getOffset());
@@ -2160,6 +2174,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
         for (auto const& attr : mesh.submeshes[i].attributes){
             if (bufferNameToRender.count(attr.second.getBufferName())){
                 if (attr.first == AttributeType::INDEX){
+                    indexed = true;
                     indexCount = attr.second.getCount();
                     render.setIndex(bufferNameToRender[attr.second.getBufferName()], attr.second.getDataType(), attr.second.getOffset());
                 }else{
@@ -2176,7 +2191,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
             }
         }
 
-        if (indexCount > 0){
+        if (indexed){
+            // An empty indexed submesh (a tilemap rect with no tile placed on it)
+            // must draw nothing: falling back to the mesh vertex count would read
+            // indices belonging to the other submeshes, and past the index buffer.
             mesh.submeshes[i].vertexCount = indexCount;
         }else{
             mesh.submeshes[i].vertexCount = mesh.vertexCount;
@@ -2432,7 +2450,28 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
     return true;
 }
 
-bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, bool renderToTexture, InstancedMeshComponent* instmesh, TerrainComponent* terrain, int terrainView){
+// Uploads the dirty CPU-side buffers of a mesh, before the first pass of the frame
+// that draws it. Every pass needs this, not only the color one that comes last: a
+// rebuilt tilemap reorders its indices, so a shadow or G-buffer pass drawing chunk
+// ranges would slice the previous upload with the new offsets. Sokol allows a single
+// update per buffer per frame, which the flag already guarantees.
+void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
+    if (!mesh.needUpdateBuffer)
+        return;
+
+    if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
+        mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData());
+    if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
+        mesh.indices.getRender()->updateBuffer(mesh.indices.getSize(), mesh.indices.getData());
+    for (int i = 0; i < mesh.numExternalBuffers; i++){
+        if (mesh.eBuffers[i].getUsage() != BufferUsage::IMMUTABLE)
+            mesh.eBuffers[i].getRender()->updateBuffer(mesh.eBuffers[i].getSize(), mesh.eBuffers[i].getData());
+    }
+
+    mesh.needUpdateBuffer = false;
+}
+
+bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, bool renderToTexture, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView){
     if (mesh.loaded && !mesh.needReload){
 
         if (terrain && terrain->needUpdateTexture){
@@ -2443,18 +2482,8 @@ bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraCom
             return false;
         }
 
-        if (mesh.needUpdateBuffer){
-            if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
-                mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData());
-            if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
-                mesh.indices.getRender()->updateBuffer(mesh.indices.getSize(), mesh.indices.getData());
-            for (int i = 0; i < mesh.numExternalBuffers; i++){
-                if (mesh.eBuffers[i].getUsage() != BufferUsage::IMMUTABLE)
-                    mesh.eBuffers[i].getRender()->updateBuffer(mesh.eBuffers[i].getSize(), mesh.eBuffers[i].getData());
-            }
+        updateMeshBuffers(mesh);
 
-            mesh.needUpdateBuffer = false;
-        }
         unsigned int instanceCount = 1;
         if (instmesh){
             instanceCount = instmesh->numVisible;
@@ -2479,6 +2508,18 @@ bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraCom
         }
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
+            // an indexed submesh without indices has nothing to draw (a tilemap rect
+            // with no tile placed on it). Its texture state is cleared here because
+            // gaining indices always reloads the mesh, which reloads the textures.
+            if (mesh.submeshes[i].vertexCount == 0){
+                mesh.submeshes[i].needUpdateTexture = false;
+                continue;
+            }
+
+            // per-chunk culling: skip the submesh entirely when no chunk is visible
+            if (tilemap && !selectTilemapChunks(*tilemap, i, camera.farClip, camera.frustumPlanes))
+                continue;
+
             ObjectRender& render = mesh.submeshes[i].render;
 
             if (terrain){
@@ -2602,14 +2643,20 @@ bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraCom
             //model, normal and mvp matrix
             render.applyUniformBlock(mesh.submeshes[i].slotVSParams, sizeof(float) * 48, &transform.modelMatrix);
 
-            render.draw(mesh.submeshes[i].vertexCount, instanceCount);
+            if (tilemap && !tilemapDrawRanges.empty()){
+                for (const TilemapDrawRange& range : tilemapDrawRanges){
+                    render.draw(range.offset, range.count, instanceCount);
+                }
+            }else{
+                render.draw(0, mesh.submeshes[i].vertexCount, instanceCount);
+            }
         }
     }
 
     return true;
 }
 
-bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, bool forSSAO){
+bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO){
     // shadow passes only draw casters; the SSAO depth pre-pass draws every opaque mesh
     if (mesh.loaded && !mesh.needReload && (mesh.castShadows || forSSAO)){
 
@@ -2621,7 +2668,17 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, con
             return false;
         }
 
+        updateMeshBuffers(mesh);
+
         for (int i = 0; i < mesh.numSubmeshes; i++){
+            if (mesh.submeshes[i].vertexCount == 0){
+                mesh.submeshes[i].needUpdateDepthTexture = false;
+                continue;
+            }
+
+            if (tilemap && !selectTilemapChunks(*tilemap, i, cameraFar, frustumPlanes))
+                continue;
+
             ObjectRender& depthRender = mesh.submeshes[i].depthRender;
 
             if (mesh.submeshes[i].needUpdateDepthTexture &&
@@ -2674,7 +2731,13 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, con
                 depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthTerrain, sizeof(float) * 8, &(terrain->eyePos));
             }
 
-            depthRender.draw(mesh.submeshes[i].vertexCount, instanceCount);
+            if (tilemap && !tilemapDrawRanges.empty()){
+                for (const TilemapDrawRange& range : tilemapDrawRanges){
+                    depthRender.draw(range.offset, range.count, instanceCount);
+                }
+            }else{
+                depthRender.draw(0, mesh.submeshes[i].vertexCount, instanceCount);
+            }
         }
     }
 
@@ -2857,7 +2920,7 @@ void RenderSystem::renderSSAO(CameraComponent& camera, TextureRender* sharedDept
         ssaoRender.addTexture(sd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, normalTexture);
         ssaoRender.addTexture(sd.getTextureIndex(TextureShaderType::NOISETEXTURE), ShaderStageType::FRAGMENT, &ssaoNoiseTexture);
         ssaoRender.applyUniformBlock(ssaoSlotParams, sizeof(fs_ssao_t), &fs_ssao);
-        ssaoRender.draw(3, 1);
+        ssaoRender.draw(0, 3, 1);
     }
     ssaoPassRender.endRenderPass();
 
@@ -2870,7 +2933,7 @@ void RenderSystem::renderSSAO(CameraComponent& camera, TextureRender* sharedDept
         ShaderData& bd = ssaoBlurShader.get()->shaderData;
         ssaoBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::SSAOTEXTURE), ShaderStageType::FRAGMENT, &ssaoFramebuffer.getRender().getColorTexture());
         ssaoBlurRender.applyUniformBlock(ssaoBlurSlotParams, sizeof(fs_ssao_blur_t), &fs_ssao_blur);
-        ssaoBlurRender.draw(3, 1);
+        ssaoBlurRender.draw(0, 3, 1);
     }
     ssaoPassRender.endRenderPass();
 
@@ -2901,9 +2964,10 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
 
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+        TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
         vs_depth_t params = {transform.modelMatrix, renderVP};
-        drawMeshDepth(mesh, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, true);
+        drawMeshDepth(mesh, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true);
     }
     ssaoPassRender.endRenderPass();
 }
@@ -2933,7 +2997,7 @@ bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int hei
     return gbufferFramebuffer.isCreated();
 }
 
-bool RenderSystem::drawMeshGBuffer(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain){
+bool RenderSystem::drawMeshGBuffer(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap){
     if (!mesh.loaded || mesh.needReload)
         return true;
 
@@ -2945,10 +3009,20 @@ bool RenderSystem::drawMeshGBuffer(MeshComponent& mesh, const float cameraFar, c
         return false;
     }
 
+    updateMeshBuffers(mesh);
+
     for (int i = 0; i < mesh.numSubmeshes; i++){
         // the G-buffer shader/render only exist when SSR was enabled at load time; a
         // mesh loaded before SSR was toggled on is skipped until it reloads
         if (!mesh.submeshes[i].gbufferShader)
+            continue;
+
+        if (mesh.submeshes[i].vertexCount == 0){
+            mesh.submeshes[i].needUpdateGBufferTexture = false;
+            continue;
+        }
+
+        if (tilemap && !selectTilemapChunks(*tilemap, i, cameraFar, frustumPlanes))
             continue;
 
         ObjectRender& gbufferRender = mesh.submeshes[i].gbufferRender;
@@ -3003,7 +3077,13 @@ bool RenderSystem::drawMeshGBuffer(MeshComponent& mesh, const float cameraFar, c
             gbufferRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrain->views[0].nodesbuffer[i].getRender());
         }
 
-        gbufferRender.draw(mesh.submeshes[i].vertexCount, instanceCount);
+        if (tilemap && !tilemapDrawRanges.empty()){
+            for (const TilemapDrawRange& range : tilemapDrawRanges){
+                gbufferRender.draw(range.offset, range.count, instanceCount);
+            }
+        }else{
+            gbufferRender.draw(0, mesh.submeshes[i].vertexCount, instanceCount);
+        }
     }
 
     return true;
@@ -3035,6 +3115,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
 
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+        TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
         fs_reflection_probe_t probeParams;
         TextureRender* probeTexture = nullptr;
@@ -3049,7 +3130,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
         Matrix4 normalMatrix = viewModel.inverse().transpose();
 
         vs_gbuffer_t params = {transform.modelMatrix, renderVP, normalMatrix};
-        drawMeshGBuffer(mesh, camera.farClip, camera.frustumPlanes, params, hasLocalProbe, instmesh, terrain);
+        drawMeshGBuffer(mesh, camera.farClip, camera.frustumPlanes, params, hasLocalProbe, instmesh, terrain, tilemap);
     }
     gbufferPassRender.endRenderPass();
 }
@@ -3196,7 +3277,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
         ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, &sceneColorFramebuffer.getRender().getColorTexture());
         ssrRender.applyUniformBlock(ssrSlotParams, sizeof(fs_ssr_t), &fs_ssr);
-        ssrRender.draw(3, 1);
+        ssrRender.draw(0, 3, 1);
     }
     ssrPassRender.endRenderPass();
 
@@ -3219,7 +3300,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
             ssrBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::SSRTEXTURE), ShaderStageType::FRAGMENT, &ssrFramebuffer.getRender().getColorTexture());
             ssrBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
             ssrBlurRender.applyUniformBlock(ssrBlurSlotParams, sizeof(fs_ssr_blur_t), &fs_ssr_blur);
-            ssrBlurRender.draw(3, 1);
+            ssrBlurRender.draw(0, 3, 1);
         }
         ssrPassRender.endRenderPass();
 
@@ -3269,7 +3350,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::GBUFFERALBEDOTEXTURE), ShaderStageType::FRAGMENT, &gbufferFramebuffer.getRender().getColorAttachmentTexture(2));
         compositeRender.addTexture(cd.getTextureIndex(TextureShaderType::PREFILTEREDMAP), ShaderStageType::FRAGMENT, prefilteredTexture);
         compositeRender.applyUniformBlock(compositeSlotParams, sizeof(fs_composite_t), &fs_composite);
-        compositeRender.draw(3, 1);
+        compositeRender.draw(0, 3, 1);
     }
     ssrPassRender.endRenderPass();
 }
@@ -3364,7 +3445,7 @@ void RenderSystem::renderFixedResolutionBlit(){
         blitRender.addTexture(bd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, &fixedResFramebuffer.getRender().getColorTexture());
         fs_blit.params = Vector4(flipGL, 0.0f, 0.0f, 0.0f);
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
-        blitRender.draw(3, 1);
+        blitRender.draw(0, 3, 1);
     }
     fixedResPassRender.endRenderPass();
 }
@@ -3636,7 +3717,7 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, bool renderToTe
         render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, &transform.modelViewProjectionMatrix);
         //Color
         render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &ui.color);
-        render.draw(ui.vertexCount, 1);
+        render.draw(0, ui.vertexCount, 1);
 
     }
 
@@ -3912,7 +3993,7 @@ bool RenderSystem::drawPoints(PointsComponent& points, Transform& transform, Cam
         vsParams.mvpMatrix = transform.modelViewProjectionMatrix;
         vsParams.pointScale = computePointsScale(camera, getPointsViewportHeight(camera));
         render.applyUniformBlock(points.slotVSParams, sizeof(vs_points_params_t), &vsParams);
-        render.draw(points.numVisible, 1);
+        render.draw(0, points.numVisible, 1);
     }
 
     return true;
@@ -3965,7 +4046,7 @@ bool RenderSystem::drawLines(LinesComponent& lines, Transform& transform, Transf
             return false;
         }
         render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, &transform.modelViewProjectionMatrix);
-        render.draw(lines.lines.size() * 2, 1);
+        render.draw(0, lines.lines.size() * 2, 1);
     }
 
     return true;
@@ -4129,7 +4210,7 @@ bool RenderSystem::drawSky(SkyComponent& sky, bool renderToTexture, bool invertC
         }
         render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, &sky.skyViewProjectionMatrix);
         render.applyUniformBlock(sky.slotFSParams, sizeof(float) * 4, &sky.color);
-        render.draw(36, 1);
+        render.draw(0, 36, 1);
     }
 
     return true;
@@ -4646,6 +4727,36 @@ bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, Transform& tr
         return true;
     }
 
+}
+
+// Fills tilemapDrawRanges with the index runs of a tilemap submesh that survive
+// frustum culling, merging chunks that are adjacent in the index buffer so a visible
+// region costs as few draw calls as it can. Returns false when nothing of the submesh
+// is visible; an empty range list on success means "draw the submesh whole", the
+// fallback for a submesh the chunk data does not cover.
+bool RenderSystem::selectTilemapChunks(TilemapComponent& tilemap, unsigned int submeshIndex, const float cameraFar, const Plane frustumPlanes[6]){
+    tilemapDrawRanges.clear();
+
+    if ((submeshIndex + 1) >= tilemap.chunkStart.size())
+        return true;
+
+    const unsigned int begin = tilemap.chunkStart[submeshIndex];
+    const unsigned int end = tilemap.chunkStart[submeshIndex + 1];
+
+    for (unsigned int c = begin; c < end; c++){
+        const TilemapChunk& chunk = tilemap.chunks[c];
+
+        if (!isInsideCamera(cameraFar, frustumPlanes, chunk.worldAABB))
+            continue;
+
+        if (!tilemapDrawRanges.empty() && (tilemapDrawRanges.back().offset + tilemapDrawRanges.back().count) == chunk.offset){
+            tilemapDrawRanges.back().count += chunk.count;
+        }else{
+            tilemapDrawRanges.push_back({chunk.offset, chunk.count});
+        }
+    }
+
+    return !tilemapDrawRanges.empty();
 }
 
 void RenderSystem::updateCameraSize(Entity entity){
@@ -5658,6 +5769,16 @@ void RenderSystem::update(double dt){
                 mesh.worldAABB = skinnedAABB.isNull() ? (transform.modelMatrix * mesh.aabb) : skinnedAABB;
 
                 mesh.needUpdateAABB = false;
+
+                // Tilemap chunk bounds are refreshed with the mesh AABB: rebuilding a
+                // tilemap recalculates that AABB, and MeshSystem updates before this
+                // system, so new chunks are always current before draw().
+                if (signature.test(scene->getComponentId<TilemapComponent>())){
+                    TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
+                    for (TilemapChunk& chunk : tilemap.chunks){
+                        chunk.worldAABB = transform.modelMatrix * chunk.aabb;
+                    }
+                }
             }
         }else if (signature.test(scene->getComponentId<UIComponent>())){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
@@ -5918,6 +6039,7 @@ void RenderSystem::draw(){
                             if (transform->visible){
                                 InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
                                 TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+                                TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
                                 vs_depth_t vsDepthParams;
 
@@ -5943,7 +6065,7 @@ void RenderSystem::draw(){
                                     vsDepthParams = {transform->modelMatrix, light.cameras[c].lightViewProjectionMatrix};
                                 }
 
-                                drawMeshDepth(mesh, light.cameras[c].nearFar.y, light.cameras[c].frustumPlanes, vsDepthParams, instmesh, terrain);
+                                drawMeshDepth(mesh, light.cameras[c].nearFar.y, light.cameras[c].frustumPlanes, vsDepthParams, instmesh, terrain, tilemap);
                             }
                         }
                     }
@@ -6012,7 +6134,7 @@ void RenderSystem::draw(){
                 for (int k = -1; k <= 1; k++){
                     shadow2dParams.offset = Vector4(2.0f * (float)k, 0.0f, 0.0f, 0.0f);
                     occluder2DRender.applyUniformBlock(shadow2DSlotParams, sizeof(vs_shadow2d_t), &shadow2dParams);
-                    occluder2DRender.draw(occluder2DVertexCount, 1);
+                    occluder2DRender.draw(0, occluder2DVertexCount, 1);
                 }
             }
 
@@ -6231,11 +6353,15 @@ void RenderSystem::draw(){
                         updateTerrain(*terrain, transform, camera, cameraTransform, terrainView);
                     }
 
+                    // chunk bounds are view-independent, so every camera reuses the
+                    // ones refreshed in update()
+                    TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+
                     if (!mesh.transparent || !camera.transparentSort){
                         //Draw opaque meshes if transparency is not necessary
-                        drawMesh(mesh, transform, camera, cameraTransform, offscreenTarget, instmesh, terrain, terrainView);
+                        drawMesh(mesh, transform, camera, cameraTransform, offscreenTarget, instmesh, terrain, tilemap, terrainView);
                     }else{
-                        transparentRenders.push({TransparentRenderType::MESH, &mesh, nullptr, instmesh, terrain, &transform, transform.distanceToCamera});
+                        transparentRenders.push({TransparentRenderType::MESH, &mesh, nullptr, instmesh, terrain, tilemap, &transform, transform.distanceToCamera});
                     }
                 }
 
@@ -6260,7 +6386,7 @@ void RenderSystem::draw(){
                     if (!points.transparent || !camera.transparentSort){
                         drawPoints(points, transform, camera, cameraTransform, offscreenTarget);
                     }else{
-                        transparentRenders.push({TransparentRenderType::POINTS, nullptr, &points, nullptr, nullptr, &transform, transform.distanceToCamera});
+                        transparentRenders.push({TransparentRenderType::POINTS, nullptr, &points, nullptr, nullptr, nullptr, &transform, transform.distanceToCamera});
                     }
                 }
 
@@ -6289,7 +6415,7 @@ void RenderSystem::draw(){
             TransparentRenderData renderData = transparentRenders.top();
 
             if (renderData.type == TransparentRenderType::MESH){
-                drawMesh(*renderData.mesh, *renderData.transform, camera, cameraTransform, offscreenTarget, renderData.instmesh, renderData.terrain, terrainView);
+                drawMesh(*renderData.mesh, *renderData.transform, camera, cameraTransform, offscreenTarget, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView);
             }else if (renderData.type == TransparentRenderType::POINTS){
                 drawPoints(*renderData.points, *renderData.transform, camera, cameraTransform, offscreenTarget);
             }

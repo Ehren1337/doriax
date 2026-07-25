@@ -403,11 +403,11 @@ void SokolObject::applyUniformBlock(int slot, unsigned int count, void* data){
     }
 }
 
-void SokolObject::draw(unsigned int vertexCount, unsigned int instanceCount){
+void SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
     //SokolCmdQueue::add_command_apply_bindings(bind);
     sg_apply_bindings(bind);
     //SokolCmdQueue::add_command_draw(0, vertexCount, 1);
-    sg_draw(0, vertexCount, instanceCount);
+    sg_draw(baseElement, vertexCount, instanceCount);
 }
 
 void SokolObject::destroy(){

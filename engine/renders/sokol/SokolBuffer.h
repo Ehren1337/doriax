@@ -14,6 +14,9 @@ namespace doriax{
     private:
         sg_buffer buffer;
         sg_view view; // only created for storage buffers
+        // usage the live buffer was created with: a sokol buffer keeps it for life,
+        // so a usage change means the buffer has to be recreated
+        BufferUsage createdUsage = BufferUsage::IMMUTABLE;
 
     public:
         SokolBuffer();
@@ -24,6 +27,7 @@ namespace doriax{
         void updateBuffer(unsigned int size, void* data);
         void destroyBuffer();
         bool isCreated();
+        BufferUsage getCreatedUsage() const;
 
         sg_buffer get();
         sg_view getView();
