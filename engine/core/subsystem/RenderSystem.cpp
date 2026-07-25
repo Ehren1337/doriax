@@ -60,10 +60,11 @@ namespace {
         }
 
         if (channels >= 3){
-            const float r = static_cast<float>(pixels[pixelOffset]);
-            const float g = static_cast<float>(pixels[pixelOffset + 1]);
-            const float b = static_cast<float>(pixels[pixelOffset + 2]);
-            return (0.2126f * r + 0.7152f * g + 0.0722f * b) / 255.0f;
+            Vector3 color = Color::sRGBToLinear(
+                static_cast<float>(pixels[pixelOffset]) / 255.0f,
+                static_cast<float>(pixels[pixelOffset + 1]) / 255.0f,
+                static_cast<float>(pixels[pixelOffset + 2]) / 255.0f);
+            return 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
         }
 
         return static_cast<float>(pixels[pixelOffset]) / 255.0f;
