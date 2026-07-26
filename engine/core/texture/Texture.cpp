@@ -385,9 +385,13 @@ TextureLoadResult Texture::load() {
         return result;
     }
 
-    // Refresh from the data pool if we don't have a local reference yet.
+    // Refresh from the data pool if we don't have a local reference yet, skipping
+    // a released entry that other Texture copies keep alive while it is replaced.
     if (!data) {
-        data = TextureDataPool::get(id);
+        std::shared_ptr<std::array<TextureData,6>> pooledData = TextureDataPool::get(id);
+        if (hasTexturePixels(pooledData, numFaces)) {
+            data = pooledData;
+        }
     }
 
     if (data && hasTexturePixels(data, numFaces)) {
@@ -396,12 +400,11 @@ TextureLoadResult Texture::load() {
         return result;
     }
 
-    // Cached data exists but its pixels were already released (after a previous
-    // GPU upload with releaseDataAfterLoad). Drop the stale entry so the next
-    // load path can either reload from disk or fail cleanly.
+    // Pixels were released after a previous GPU upload. Drop only this reference,
+    // loadFromFile replaces the pool entry. Calling TextureDataPool::remove() here
+    // would instead discard the pending reload and restart it every frame.
     if (data) {
         data.reset();
-        TextureDataPool::remove(id);
         if (loadFromPath) {
             needLoad = true;
         }
