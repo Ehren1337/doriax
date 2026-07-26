@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>Doriax Engine</strong> is the continuation of Supernova Engine under a new identity and a broader workflow focused on visual editing, shader authoring, and project export.
+  <strong>Doriax Engine</strong> is a lightweight, ECS-based game engine built around data-oriented design, with an integrated workflow for visual editing, shader authoring, and project export.
 </p>
 
 <p align="center">
