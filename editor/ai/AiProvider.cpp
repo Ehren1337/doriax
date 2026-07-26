@@ -3,6 +3,7 @@
 #include "HttpClient.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <limits>
 
@@ -34,6 +35,53 @@ std::string argumentsToString(const Json& args) {
     if (args.is_string()) return args.get<std::string>();
     if (args.is_null()) return "{}";
     return args.dump();
+}
+
+bool needsChatCompletionsToolReasoningWorkaround(const ProviderRequest& request) {
+    if (request.tools.empty()) {
+        return false;
+    }
+
+    // GPT-5.6 and newer models support function tools with reasoning through
+    // /v1/responses, but not through /v1/chat/completions. Doriax's OpenAI
+    // adapters currently use Chat Completions, so explicitly select the
+    // supported non-reasoning mode. Parse the numeric version so future
+    // families such as 5.7, 5.10 and 6.x are covered without affecting older
+    // GPT models. Provider-qualified ids such as "openai/gpt-5.6-terra" are
+    // accepted by inspecting the final path segment.
+    const std::string& model = request.settings.model;
+    const size_t separator = model.rfind('/');
+    const size_t nameStart = separator == std::string::npos ? 0 : separator + 1;
+    constexpr char prefix[] = "gpt-";
+    constexpr size_t prefixLength = sizeof(prefix) - 1;
+    if (model.size() < nameStart + prefixLength ||
+        model.compare(nameStart, prefixLength, prefix) != 0) {
+        return false;
+    }
+
+    const char* end = model.data() + model.size();
+    const char* version = model.data() + nameStart + prefixLength;
+    int major = 0;
+    auto [majorEnd, majorError] = std::from_chars(version, end, major);
+    if (majorError != std::errc() || majorEnd == version) {
+        return false;
+    }
+
+    int minor = 0;
+    const char* suffix = majorEnd;
+    if (suffix < end && *suffix == '.') {
+        const char* minorStart = ++suffix;
+        auto [minorEnd, minorError] = std::from_chars(minorStart, end, minor);
+        if (minorError != std::errc() || minorEnd == minorStart) {
+            return false;
+        }
+        suffix = minorEnd;
+    }
+    if (suffix < end && *suffix != '-') {
+        return false;
+    }
+
+    return major > 5 || (major == 5 && minor >= 6);
 }
 
 std::string attachmentText(const ChatAttachment& attachment) {
@@ -306,6 +354,9 @@ std::unique_ptr<Provider> createProvider(ProviderId provider) {
 Json buildChatCompletionsPayload(const ProviderRequest& request) {
     Json root;
     root["model"] = request.settings.model;
+    if (needsChatCompletionsToolReasoningWorkaround(request)) {
+        root["reasoning_effort"] = "none";
+    }
     if (request.settings.provider == ProviderId::OpenAI) {
         // OpenAI deprecated max_tokens; GPT-5+ and o-series reject it outright,
         // while max_completion_tokens works on every current OpenAI chat model.
