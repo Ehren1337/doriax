@@ -729,7 +729,8 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
 
     float alpha = highlighted ? 1.0f : 0.35f;
     const Vector4 bodyColor(0.2f, 0.95f, 0.95f, alpha);
-    const Vector3 entityScale = transform.scale;
+    // must match how PhysicsSystem sizes the Jolt shape, parent scale included
+    const Vector3 entityScale = transform.worldScale;
     const Vector3 absScale(std::fabs(entityScale.x), std::fabs(entityScale.y), std::fabs(entityScale.z));
     const Matrix4 bodyMatrix = Matrix4::translateMatrix(transform.worldPosition) * transform.worldRotation.getRotationMatrix();
 
@@ -973,7 +974,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
             }
         }
 
-        Vector3 sourceScale = sourceTransform->scale;
+        Vector3 sourceScale = sourceTransform->worldScale;
 
         for (size_t submeshIndex = 0; submeshIndex < mesh->numSubmeshes; submeshIndex++) {
             Buffer* submeshIndexBuffer = defaultIndexBuffer;
@@ -1103,7 +1104,7 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
                     const void* ibufPtr = sourceMesh->indices.getSize() > 0 ? static_cast<const void*>(&sourceMesh->indices) : nullptr;
                     size_t vertexCount = sourceMesh->buffer.getCount();
                     size_t indexCount = sourceMesh->indices.getCount();
-                    Vector3 sourceScale = sourceTransform->scale;
+                    Vector3 sourceScale = sourceTransform->worldScale;
 
                     bool cacheValid = cache.sourceEntity == meshEntity
                         && cache.vbufPtr == vbufPtr

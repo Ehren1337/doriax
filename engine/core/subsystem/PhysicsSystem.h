@@ -70,9 +70,7 @@ namespace doriax{
 
 		void createGenericJoltBody(Entity entity, Body3DComponent& body, const JPH::ShapeRefC shape);
 
-		static Vector3 getEntityScale(Scene* scene, Entity entity);
 		static Vector3 absScale(const Vector3& scale);
-		static Vector2 getEntityScale2D(Scene* scene, Entity entity);
 		static Vector2 absScale2D(const Vector2& scale);
 		static float maxScaleXY(const Vector2& scale);
 		static float maxScaleXZ(const Vector3& scale);

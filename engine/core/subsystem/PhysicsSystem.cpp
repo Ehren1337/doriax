@@ -16,22 +16,25 @@
 
 using namespace doriax;
 
-Vector3 PhysicsSystem::getEntityScale(Scene* scene, Entity entity){
-    Transform* transform = scene->findComponent<Transform>(entity);
-    if (!transform){
-        return Vector3::UNIT_SCALE;
+namespace {
+
+    // Transform::worldScale is the entity's accumulated scale, resolved by
+    // RenderSystem::updateTransform. Identity when there is no Transform, matching an
+    // unscaled body.
+    Vector3 entityWorldScale(Scene* scene, Entity entity){
+        Transform* transform = scene->findComponent<Transform>(entity);
+        return transform ? transform->worldScale : Vector3::UNIT_SCALE;
     }
 
-    return transform->scale;
+    Vector2 entityWorldScale2D(Scene* scene, Entity entity){
+        const Vector3 scale = entityWorldScale(scene, entity);
+        return Vector2(scale.x, scale.y);
+    }
+
 }
 
 Vector3 PhysicsSystem::absScale(const Vector3& scale){
     return Vector3(std::fabs(scale.x), std::fabs(scale.y), std::fabs(scale.z));
-}
-
-Vector2 PhysicsSystem::getEntityScale2D(Scene* scene, Entity entity){
-    Vector3 scale = getEntityScale(scene, entity);
-    return Vector2(scale.x, scale.y);
 }
 
 Vector2 PhysicsSystem::absScale2D(const Vector2& scale){
@@ -489,7 +492,7 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
         return false;
     }
 
-    const Vector2 entityScale = getEntityScale2D(scene, entity);
+    const Vector2 entityScale = entityWorldScale2D(scene, entity);
     const float radiusScale = maxScaleXY(absScale2D(entityScale));
 
     auto scaledPoint = [&](const Vector2& point){
@@ -653,7 +656,7 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
 bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, size_t index){
     Shape3D& shapeData = body.shapes[index];
     shapeData.shape = NULL;
-    const Vector3 entityScale = getEntityScale(scene, entity);
+    const Vector3 entityScale = entityWorldScale(scene, entity);
     const Vector3 absEntityScale = absScale(entityScale);
 
     if (shapeData.type == Shape3DType::BOX){
@@ -708,6 +711,8 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
                 return false;
             }
 
+            const Vector3 meshScale = entityWorldScale(scene, meshEntity);
+
             std::map<std::string, Buffer*> buffers;
             if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
             for (int i = 0; i < mesh->numExternalBuffers; i++) buffers[mesh->eBuffers[i].getName()] = &mesh->eBuffers[i];
@@ -732,7 +737,7 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
 
                 int verticesize = int(vertexAttr.getCount());
                 for (int i = 0; i < verticesize; i++){
-                    Vector3 vertice = vertexBuffer->getVector3(&vertexAttr, i) * transform->scale;
+                    Vector3 vertice = vertexBuffer->getVector3(&vertexAttr, i) * meshScale;
                     jvertices.push_back(JPH::Vec3(vertice.x, vertice.y, vertice.z));
                 }
             }
@@ -781,6 +786,8 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
                 Log::error("Cannot create mesh shape: mesh or transform not found for entity %u", meshEntity);
                 return false;
             }
+
+            const Vector3 meshScale = entityWorldScale(scene, meshEntity);
 
             std::map<std::string, Buffer*> buffers;
             if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
@@ -832,7 +839,7 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
 
                 int verticesize = int(vertexAttr.getCount());
                 for (int i = 0; i < verticesize; i++){
-                    Vector3 vertice = vertexBuffer->getVector3(&vertexAttr, i) * transform->scale;
+                    Vector3 vertice = vertexBuffer->getVector3(&vertexAttr, i) * meshScale;
                     jvertices.push_back(JPH::Float3(vertice.x, vertice.y, vertice.z));
                 }
             }
@@ -977,7 +984,7 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
     }
 
     if (body.numShapes > 1){
-        const Vector3 entityScale = getEntityScale(scene, entity);
+        const Vector3 entityScale = entityWorldScale(scene, entity);
         JPH::StaticCompoundShapeSettings compound_shape;
         for (size_t i = 0; i < body.numShapes; i++){
             Vector3 scaledPosition = body.shapes[i].position * entityScale;
@@ -996,7 +1003,7 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
     }else{
         Shape3D& shapeData = body.shapes[0];
         if (shapeData.position != Vector3::ZERO || shapeData.rotation != Quaternion::IDENTITY){
-            Vector3 scaledPosition = shapeData.position * getEntityScale(scene, entity);
+            Vector3 scaledPosition = shapeData.position * entityWorldScale(scene, entity);
             JPH::Vec3 jPosition(scaledPosition.x, scaledPosition.y, scaledPosition.z);
             JPH::Quat jQuat = toValidatedJoltRotation(shapeData.rotation, entity, 0);
             JPH::RotatedTranslatedShapeSettings rtShape(jPosition, jQuat, shapeData.shape);
@@ -1015,7 +1022,7 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
     body.needReloadBody = false;
     body.needUpdateShapes = false;
     body.newBody = true;
-    body.loadedScale = getEntityScale(scene, entity);
+    body.loadedScale = entityWorldScale(scene, entity);
 
     return true;
 }
@@ -1154,7 +1161,7 @@ bool PhysicsSystem::loadBody2D(Entity entity){
         return syncBody2DShapes(entity, body);
     }
 
-    Vector2 entityScale = getEntityScale2D(scene, entity);
+    Vector2 entityScale = entityWorldScale2D(scene, entity);
     if (entityScale != body.loadedScale){
         body.needUpdateShapes = true;
     }
@@ -1183,7 +1190,7 @@ void PhysicsSystem::destroyBody2D(Body2DComponent& body){
 
 bool PhysicsSystem::loadBody3D(Entity entity){
     Body3DComponent& body = scene->getComponent<Body3DComponent>(entity);
-    Vector3 entityScale = getEntityScale(scene, entity);
+    Vector3 entityScale = entityWorldScale(scene, entity);
     if (!body.body.IsInvalid() && entityScale != body.loadedScale){
         body.needUpdateShapes = true;
     }
@@ -2390,7 +2397,7 @@ void PhysicsSystem::fixedUpdate(double dt){
 		Entity entity = bodies2d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
-        if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateShapes || getEntityScale2D(scene, entity) != body.loadedScale){
+        if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateShapes || entityWorldScale2D(scene, entity) != body.loadedScale){
             loadBody2D(entity);
         }
 
@@ -2462,7 +2469,7 @@ void PhysicsSystem::fixedUpdate(double dt){
 		Entity entity = bodies3d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
-        if (body.body.IsInvalid() || body.needReloadBody || body.needUpdateShapes || getEntityScale(scene, entity) != body.loadedScale){
+        if (body.body.IsInvalid() || body.needReloadBody || body.needUpdateShapes || entityWorldScale(scene, entity) != body.loadedScale){
             loadBody3D(entity);
         }
 

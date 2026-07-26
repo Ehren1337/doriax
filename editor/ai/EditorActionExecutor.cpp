@@ -16,7 +16,9 @@
 #include "component/Body2DComponent.h"
 #include "component/Body3DComponent.h"
 #include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
 #include "component/ScriptComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -160,7 +162,7 @@ bool parseBody3DMotionQuality(const std::string& value, Body3DMotionQuality& out
     return false;
 }
 
-bool parsePrimitiveShape3DType(const std::string& value, Shape3DType& out) {
+bool parseBodyShape3DType(const std::string& value, Shape3DType& out) {
     const std::string token = lower(value);
     if (token == "box") {
         out = Shape3DType::BOX;
@@ -182,7 +184,103 @@ bool parsePrimitiveShape3DType(const std::string& value, Shape3DType& out) {
         out = Shape3DType::CYLINDER;
         return true;
     }
+    if (token == "convex_hull") {
+        out = Shape3DType::CONVEX_HULL;
+        return true;
+    }
+    if (token == "mesh") {
+        out = Shape3DType::MESH;
+        return true;
+    }
     return false;
+}
+
+// How PhysicsSystem scales a collision shape: boxes per axis, round shapes by one aggregate
+// factor. Mirrored here so a fitted shape lands on the dimensions the body is actually built with.
+Vector3 absScale(const Vector3& scale) {
+    return Vector3(std::fabs(scale.x), std::fabs(scale.y), std::fabs(scale.z));
+}
+
+float maxScaleXZ(const Vector3& scale) {
+    return std::max(scale.x, scale.z);
+}
+
+float maxScaleXYZ(const Vector3& scale) {
+    return std::max(scale.x, std::max(scale.y, scale.z));
+}
+
+// convex_hull and mesh derive their geometry from a mesh instead of from dimensions
+bool isMeshDerivedShape3DType(Shape3DType type) {
+    return type == Shape3DType::CONVEX_HULL || type == Shape3DType::MESH;
+}
+
+// A mesh with no geometry still has an AABB, it just has no size. A plane is legitimately flat on
+// one axis, so only a fully degenerate box counts as nothing to measure.
+bool hasMeasurableBounds(const AABB& aabb) {
+    return !aabb.isNull() && !aabb.isInfinite() && aabb.getSize() != Vector3::ZERO;
+}
+
+// Jolt drops a convex shape whose smallest half extent is below its convex radius (0.05), which
+// would leave flat geometry like a ground plane with no collider. Twice that, after scaling.
+constexpr float kMinFittedScaledSize = 0.2f;
+
+// Size a primitive shape to the mesh's measured local bounds, and centre it on them so
+// off-origin geometry lines up. Sizes stay local because PhysicsSystem applies the scale.
+bool fitShapeToMeshBounds(const AABB& aabb, const Vector3& entityScale, Shape3D& shape) {
+    if (!hasMeasurableBounds(aabb)) {
+        return false;
+    }
+
+    const Vector3 scale = absScale(entityScale);
+
+    // a size measured in world units, expressed back in the local units the shape stores
+    auto toLocal = [](float world, float axisScale) {
+        return axisScale > 0.0f ? world / axisScale : world;
+    };
+
+    const Vector3 measured = aabb.getSize();
+    const Vector3 size(std::max(measured.x, toLocal(kMinFittedScaledSize, scale.x)),
+                       std::max(measured.y, toLocal(kMinFittedScaledSize, scale.y)),
+                       std::max(measured.z, toLocal(kMinFittedScaledSize, scale.z)));
+    const Vector3 half = size * 0.5f;
+
+    // A box is scaled per axis, so its local half extents are already right. Round shapes take a
+    // single aggregate factor instead, so their radius has to be measured in world units and
+    // divided back through that same factor or a non-uniform scale blows it up.
+    const Vector3 worldHalf = half * scale;
+    const float radialWorld = std::max(worldHalf.x, worldHalf.z);
+
+    switch (shape.type) {
+        case Shape3DType::BOX:
+            shape.width = size.x;
+            shape.height = size.y;
+            shape.depth = size.z;
+            break;
+        case Shape3DType::SPHERE:
+            shape.radius = toLocal(std::max(worldHalf.x, std::max(worldHalf.y, worldHalf.z)),
+                                   maxScaleXYZ(scale));
+            break;
+        case Shape3DType::CYLINDER:
+            shape.radius = toLocal(radialWorld, maxScaleXZ(scale));
+            shape.halfHeight = half.y;
+            break;
+        case Shape3DType::CAPSULE:
+            // total height is 2 * (halfHeight + radius), so the caps come out of the measured
+            // height; a mesh no taller than it is wide leaves none and Jolt makes it a sphere
+            shape.radius = toLocal(radialWorld, maxScaleXZ(scale));
+            shape.halfHeight = toLocal(std::max(0.0f, worldHalf.y - radialWorld), scale.y);
+            break;
+        case Shape3DType::TAPERED_CAPSULE:
+            shape.topRadius = toLocal(radialWorld, maxScaleXZ(scale));
+            shape.bottomRadius = shape.topRadius;
+            shape.halfHeight = toLocal(std::max(0.0f, worldHalf.y - radialWorld), scale.y);
+            break;
+        default:
+            return false;
+    }
+
+    shape.position = aabb.getCenter();
+    return true;
 }
 
 bool readPositiveFloat(const Json& arguments, const char* field, float& target, std::string& error) {
@@ -276,6 +374,26 @@ Json vector4Json(const Vector4& value) {
 
 Json quaternionJson(const Quaternion& value) {
     return Json{{"w", value.w}, {"x", value.x}, {"y", value.y}, {"z", value.z}};
+}
+
+// Measured local bounds of an entity's mesh. Colliders are authored in these same local units;
+// world_size is reported too so it is clear the engine applies the scale rather than the caller.
+void addMeshBounds(Json& data, Scene* scene, Entity entity) {
+    MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+    if (!mesh || !hasMeasurableBounds(mesh->aabb)) {
+        return;
+    }
+
+    Transform* transform = scene->findComponent<Transform>(entity);
+    const Vector3 localSize = mesh->aabb.getSize();
+    const Vector3 scale = transform ? transform->worldScale : Vector3::UNIT_SCALE;
+
+    data["mesh_bounds"] = Json{
+        {"local_size", vector3Json(localSize)},
+        {"local_center", vector3Json(mesh->aabb.getCenter())},
+        {"world_scale", vector3Json(scale)},
+        {"world_size", vector3Json(localSize * absScale(scale))}
+    };
 }
 
 uint32_t resolveSceneId(Project* project, const Json& args) {
@@ -1522,6 +1640,8 @@ ActionResult EditorActionExecutor::inspectEntity(const Json& arguments) {
         };
     }
 
+    addMeshBounds(data, sceneProject->scene, entity);
+
     data["components"] = Json::array();
     const bool includeProperties = arguments.value("include_properties", false);
     for (ComponentType type : Catalog::findComponents(sceneProject->scene, entity)) {
@@ -1565,11 +1685,16 @@ ActionResult EditorActionExecutor::inspectComponent(const Json& arguments) {
         props[propName] = {{"type", propertyTypeName(prop.type)}, {"value", propertyValueToJson(prop)}};
     }
 
-    return okResult("Inspected component.",
-                    Json{{"scene_id", sceneId},
-                         {"entity_id", entity},
-                         {"component", Catalog::getComponentName(component)},
-                         {"properties", props}});
+    Json data = {{"scene_id", sceneId},
+                 {"entity_id", entity},
+                 {"component", Catalog::getComponentName(component)},
+                 {"properties", props}};
+
+    if (component == ComponentType::MeshComponent) {
+        addMeshBounds(data, sceneProject->scene, entity);
+    }
+
+    return okResult("Inspected component.", data);
 }
 
 ActionResult EditorActionExecutor::listComponentTypes() {
@@ -1826,8 +1951,34 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
     if (entity == NULL_ENTITY) return failResult("Entity not found.");
 
     Shape3D shape;
-    if (!parsePrimitiveShape3DType(arguments.value("shape_type", ""), shape.type)) {
-        return failResult("Unsupported shape_type. Use box, sphere, capsule, tapered_capsule, or cylinder.");
+    if (!parseBodyShape3DType(arguments.value("shape_type", ""), shape.type)) {
+        return failResult("Unsupported shape_type. Use box, sphere, capsule, tapered_capsule, cylinder, convex_hull, or mesh.");
+    }
+
+    MeshComponent* meshComp = sceneProject->scene->findComponent<MeshComponent>(entity);
+
+    if (isMeshDerivedShape3DType(shape.type)) {
+        if (!meshComp) {
+            return failResult("convex_hull and mesh shapes derive their geometry from the entity's mesh.");
+        }
+        shape.source = Shape3DSource::ENTITY_MESH;
+        shape.sourceEntity = entity;
+    }
+
+    // A caller cannot see the mesh's local dimensions, so fit the shape to the measured bounds
+    // first and let any explicit argument below override a single axis of that.
+    const bool fitExplicit = arguments.contains("fit_to_mesh");
+    if (fitExplicit && !arguments["fit_to_mesh"].is_boolean()) {
+        return failResult("fit_to_mesh must be a boolean.");
+    }
+
+    bool fitted = false;
+    if (arguments.value("fit_to_mesh", true) && !isMeshDerivedShape3DType(shape.type)) {
+        Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
+        fitted = meshComp && transform && fitShapeToMeshBounds(meshComp->aabb, transform->worldScale, shape);
+        if (!fitted && fitExplicit) {
+            return failResult("fit_to_mesh needs an entity mesh with measurable bounds.");
+        }
     }
 
     std::string error;
@@ -1888,10 +2039,12 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
                                      "numShapes", shapeIndex + 1);
     CommandHandle::get(sceneId)->addCommandNoMerge(multiCmd);
 
+    // fitted_to_mesh is the one result the caller cannot infer from its own arguments
     return okResult("Added a Body3D shape through the command history.",
                     Json{{"scene_id", sceneId}, {"entity_id", entity},
                          {"body_added", body == nullptr}, {"shape_index", shapeIndex},
-                         {"shape_type", arguments.value("shape_type", "")}});
+                         {"shape_type", arguments.value("shape_type", "")},
+                         {"fitted_to_mesh", fitted}});
 }
 
 ActionResult EditorActionExecutor::addBody2DShape(const Json& arguments) {
@@ -3685,17 +3838,20 @@ ActionResult EditorActionExecutor::regenerateMeshGeometry(const Json& arguments)
         return failResult("Entity has no Mesh component.");
     }
 
+    // Any mesh may be replaced by a primitive except one whose geometry is regenerated for it:
+    // from a model source on load, or from its own component in the MeshSystem::update sweep,
+    // which would throw the primitive away as soon as that component is next dirtied.
+    if (Stream::isModelBackedMesh(entity, sceneProject->scene, sceneProject->scene->getSignature(entity))) {
+        return failResult("Entity geometry comes from a model file and is rebuilt from that source on load.");
+    }
+    if (sceneProject->scene->findComponent<SpriteComponent>(entity) ||
+        sceneProject->scene->findComponent<TilemapComponent>(entity) ||
+        sceneProject->scene->findComponent<MeshPolygonComponent>(entity) ||
+        sceneProject->scene->findComponent<TerrainComponent>(entity)) {
+        return failResult("Entity geometry is generated from its sprite, tilemap, mesh polygon, or terrain component and is rebuilt on load.");
+    }
+
     MeshComponent meshComp = sceneProject->scene->getComponent<MeshComponent>(entity);
-    bool hasGenerated = false;
-    for (unsigned int i = 0; i < meshComp.numSubmeshes; ++i) {
-        if (meshComp.submeshes[i].generated) {
-            hasGenerated = true;
-            break;
-        }
-    }
-    if (!hasGenerated) {
-        return failResult("Mesh entity has no generated procedural geometry to regenerate.");
-    }
 
     ShapeParameters shapeParams;
     std::string geometryError;
@@ -3708,8 +3864,13 @@ ActionResult EditorActionExecutor::regenerateMeshGeometry(const Json& arguments)
     if (!meshSys) return failResult("Mesh system is unavailable.");
     updateMeshShape(meshComp, meshSys.get(), shapeParams);
     CommandHandle::get(sceneId)->addCommandNoMerge(new MeshChangeCmd(project, sceneId, entity, meshComp));
-    return okResult("Regenerated mesh geometry through the command history.",
-                    Json{{"scene_id", sceneId}, {"entity_id", entity}, {"geometry_type", shapeParams.geometryType}});
+
+    // Geometry is rebuilt from scratch, so omitted parameters fell back to defaults rather than
+    // keeping their previous values. The resulting bounds make that visible.
+    Json data = {{"scene_id", sceneId}, {"entity_id", entity}, {"geometry_type", shapeParams.geometryType}};
+    addMeshBounds(data, sceneProject->scene, entity);
+
+    return okResult("Regenerated mesh geometry through the command history.", data);
 }
 
 ActionResult EditorActionExecutor::deleteScene(const Json& arguments) {

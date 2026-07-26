@@ -160,7 +160,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "inspect_entity",
-            "Read one entity's name, selection state, hierarchy data, components, and optionally all supported property values.",
+            "Read one entity's name, selection state, hierarchy data, components, and optionally all supported property values. For a mesh entity it also returns mesh_bounds: the measured local AABB (local_size/local_center) plus the accumulated world_scale and the resulting world_size. Use local_size to size anything expressed in mesh-local units, such as collision shapes.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Entity id")},
@@ -171,7 +171,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "inspect_component",
-            "Read supported property names, types, and current values for one entity component.",
+            "Read supported property names, types, and current values for one entity component. For the Mesh component it also returns mesh_bounds with the measured local AABB and world size.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Entity id")},
@@ -322,23 +322,24 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "add_body3d_shape",
-            "Add a Body3DComponent to an existing 3D entity when needed, then append one primitive collision shape to that SAME entity's body. Use this for a model/mesh that needs physics; do not create a separate body entity. Existing body shapes are preserved.",
+            "Add a Body3DComponent to an existing 3D entity when needed, then append one collision shape to that SAME entity's body. Use this for a model/mesh that needs physics; do not create a separate body entity. Existing body shapes are preserved. Sizes default to the mesh's measured bounds, which is the reliable way to match the visible geometry; only pass explicit sizes for axes that must deliberately differ from the mesh. The result reports fitted_to_mesh so you can tell a measured shape from one left at its defaults. convex_hull is exact and cheap for boxy level geometry.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Model or mesh entity id that receives the Body3DComponent")},
                 {"entity_name", stringSchema("Model or mesh entity name, used only when entity_id is omitted")},
                 {"body_type", stringSchema("Optional body type: static, kinematic, or dynamic. A new body defaults to static when omitted")},
                 {"motion_quality", stringSchema("Optional motion quality: discrete or linear_cast")},
-                {"shape_type", stringSchema("Collision shape: box, sphere, capsule, tapered_capsule, or cylinder")},
-                {"position", vector3Schema("Optional shape local position in entity-local units")},
+                {"shape_type", stringSchema("Collision shape: box, sphere, capsule, tapered_capsule, cylinder, convex_hull, or mesh. convex_hull and mesh take their geometry from the entity's mesh and ignore all size arguments; convex_hull is exact and cheap for boxy level geometry, mesh suits static concave geometry")},
+                {"fit_to_mesh", boolSchema("Size the shape from the entity mesh's local bounds and centre it on them. Defaults to true; any explicit size argument overrides the fitted value for that axis. Set false to keep the shape defaults")},
+                {"position", vector3Schema("Optional shape local position in entity-local units. Overrides the centre chosen by fit_to_mesh")},
                 {"rotation", quaternionSchema("Optional shape local rotation")},
-                {"width", numberSchema("Box width; defaults to 1")},
-                {"height", numberSchema("Box height; defaults to 1")},
-                {"depth", numberSchema("Box depth; defaults to 1")},
-                {"radius", numberSchema("Sphere, capsule, or cylinder radius; defaults to 1")},
-                {"half_height", numberSchema("Capsule or cylinder half-height; defaults to 0.5")},
-                {"top_radius", numberSchema("Tapered capsule top radius; defaults to 0.5")},
-                {"bottom_radius", numberSchema("Tapered capsule bottom radius; defaults to 0.5")},
+                {"width", numberSchema("Box width in mesh-local units, i.e. before the entity's transform scale, which the engine applies itself; defaults to 1")},
+                {"height", numberSchema("Box height in mesh-local units; defaults to 1")},
+                {"depth", numberSchema("Box depth in mesh-local units; defaults to 1")},
+                {"radius", numberSchema("Sphere, capsule, or cylinder radius in mesh-local units; defaults to 1")},
+                {"half_height", numberSchema("Capsule or cylinder half-height in mesh-local units; defaults to 0.5. A capsule is 2*(half_height+radius) tall")},
+                {"top_radius", numberSchema("Tapered capsule top radius in mesh-local units; defaults to 0.5")},
+                {"bottom_radius", numberSchema("Tapered capsule bottom radius in mesh-local units; defaults to 0.5")},
                 {"density", numberSchema("Shape density for dynamic bodies; defaults to 1000")}
             }, {"shape_type"}),
             false
@@ -851,7 +852,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "regenerate_mesh_geometry",
-            "Regenerate procedural mesh geometry for generated mesh primitives through MeshChangeCmd.",
+            "Replace an entity's mesh with a generated primitive through MeshChangeCmd. Rejected for geometry rebuilt on load: a model file, sprite, tilemap, mesh polygon, or terrain. Every parameter not given falls back to its default rather than keeping the mesh's current value.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Mesh entity id")},

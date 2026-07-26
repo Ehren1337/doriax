@@ -176,12 +176,13 @@ namespace doriax::editor {
         static YAML::Node encodeScriptProperty(const ScriptProperty& prop);
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
+    public:
         // True when a mesh's geometry is regenerated from a model's source file on load
         // (the ModelComponent root or one of a multi-node model's generated child meshes),
-        // so its buffers/embedded textures/bones must not be serialized.
+        // so its buffers/embedded textures/bones must not be serialized, and replacing its
+        // geometry in place would be undone on the next load.
         static bool isModelBackedMesh(const Entity entity, const EntityRegistry* registry, Signature signature);
 
-    public:
         // Scaled single-shape offset above which physics may become unstable;
         // shared by the load-time warning and the Properties inspector warning
         static constexpr float MAX_SINGLE_SHAPE_PHYSICS_OFFSET = 50.0f;

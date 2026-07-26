@@ -19,7 +19,7 @@ namespace doriax{
 
         Vector3 worldPosition;
         Quaternion worldRotation;
-        Vector3 worldScale;
+        Vector3 worldScale = Vector3(1.0, 1.0, 1.0);
 
         Matrix4 localMatrix;
 
