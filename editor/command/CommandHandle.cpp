@@ -7,7 +7,7 @@ std::map<size_t, editor::CommandHistory*>  editor::CommandHandle::historys;
 
 editor::CommandHistory* editor::CommandHandle::get(size_t sceneId){
     if (!historys.count(sceneId)){
-        historys[sceneId] = new CommandHistory();
+        historys[sceneId] = new CommandHistory(sceneId);
     }
     return historys[sceneId];
 }

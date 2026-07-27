@@ -310,6 +310,13 @@ void editor::ResourcesWindow::requestThumbnailGeneration(const fs::path& filePat
     queueThumbnailGeneration(filePath, type, forceRegenerate);
 }
 
+bool editor::ResourcesWindow::hasPendingThumbnailWork() {
+    std::lock_guard<std::mutex> lock(thumbnailMutex);
+    // Any pending thumbnail work needs the shared systemDraw pass to keep running.
+    return thumbnailWorkerBusy || hasPendingModelRender || hasPendingMaterialRender ||
+           !thumbnailQueue.empty();
+}
+
 void editor::ResourcesWindow::processMaterialThumbnails() {
     ThumbnailRequest pending;
     {

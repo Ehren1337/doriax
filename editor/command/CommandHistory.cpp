@@ -3,6 +3,11 @@
 
 using namespace doriax;
 
+std::function<void(size_t)> editor::CommandHistory::onSceneModified = nullptr;
+
+editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
+}
+
 editor::CommandHistory::~CommandHistory(){
     for (int i = 0; i < list.size(); i++){
         delete list[i];
@@ -27,6 +32,10 @@ void editor::CommandHistory::addCommand(editor::Command* cmd){
 
         list.push_back(cmd);
         index = list.size();
+
+        if (onSceneModified){
+            onSceneModified(sceneId);
+        }
     }else{
         delete cmd;
     }
@@ -42,6 +51,10 @@ void editor::CommandHistory::undo(){
         list[index-1]->undo();
         index--;
 
+        if (onSceneModified){
+            onSceneModified(sceneId);
+        }
+
         #ifdef _DEBUG
         printf("DEBUG: undo (%zu from %zu)\n", index, list.size());
         #endif
@@ -52,6 +65,10 @@ void editor::CommandHistory::redo(){
     if (index < list.size()){
         index++;
         list[index-1]->execute();
+
+        if (onSceneModified){
+            onSceneModified(sceneId);
+        }
 
         #ifdef _DEBUG
         printf("DEBUG: redo (%zu from %zu)\n", index, list.size());

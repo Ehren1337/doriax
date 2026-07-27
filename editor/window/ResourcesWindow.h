@@ -221,6 +221,10 @@ namespace doriax::editor {
         void processMaterialThumbnails();
         void processModelThumbnails();
 
+        // True while any thumbnail is still generating; the render loop must keep
+        // drawing while set (thumbnail scenes share systemDraw).
+        bool hasPendingThumbnailWork();
+
         void notifyResourceFileChanged(const fs::path& filePath);
         void requestThumbnailGeneration(const fs::path& filePath, bool forceRegenerate = false);
 

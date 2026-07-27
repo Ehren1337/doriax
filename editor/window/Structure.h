@@ -62,6 +62,16 @@ namespace doriax::editor{
         bool windowOpen;
         bool focusRequested;
 
+        // Cached entity tree — rebuilding costs several ms/frame for large scenes, so it
+        // is only rebuilt when the structure changes (see cache keys) or on a timer.
+        TreeNode cachedRoot;
+        std::unordered_set<Entity> cachedSceneEntitiesSet;
+        uint32_t cacheSceneId = NULL_PROJECT_SCENE;
+        uint64_t cacheStructureVersion = UINT64_MAX;
+        size_t cacheEntityCount = SIZE_MAX;
+        size_t cacheChildSignature = SIZE_MAX;
+        double cacheBuildTime = -1.0;
+
         Entity openParent;
         uint32_t selectionAnchorSceneId = NULL_PROJECT_SCENE;
         Entity selectionAnchorEntity = NULL_ENTITY;

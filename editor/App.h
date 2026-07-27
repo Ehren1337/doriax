@@ -67,6 +67,11 @@ namespace doriax::editor{
         std::queue<std::function<void()>> mainThreadTasks;
         std::thread::id mainThreadId;
 
+        // Whether engineRender() drew a scene this frame, and a wake callback the
+        // backend loop uses to decide when it can idle.
+        bool renderedSceneThisFrame = false;
+        std::function<void()> wakeCallback;
+
         ImGuiID dockspace_id;
         ImGuiID dock_id_middle_top;
 
@@ -192,6 +197,10 @@ namespace doriax::editor{
 
         // Thread-safe: schedules a task to run on the main/GL thread during the next frame.
         void enqueueMainThreadTask(std::function<void()> task) override;
+
+        bool didRenderScene() const { return renderedSceneThisFrame; }
+        bool hasPendingMainThreadTasks();
+        void setWakeCallback(std::function<void()> cb) { wakeCallback = std::move(cb); }
 
         static std::filesystem::path getUserCacheBaseDir();
         static std::filesystem::path getUserShaderCacheDir();

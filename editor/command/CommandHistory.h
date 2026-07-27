@@ -4,6 +4,7 @@
 #include "Command.h"
 #include <vector>
 #include <cstddef>
+#include <functional>
 
 namespace doriax::editor{
 
@@ -12,8 +13,13 @@ namespace doriax::editor{
     private:
         std::vector<Command*> list;
         size_t index = 0; // real index is (index-1)
+        size_t sceneId = 0;
 
     public:
+        // Called with the owning scene id after any command apply/undo/redo.
+        static std::function<void(size_t)> onSceneModified;
+
+        explicit CommandHistory(size_t sceneId = 0);
         virtual ~CommandHistory();
 
         void addCommand(Command* cmd);

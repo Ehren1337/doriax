@@ -776,6 +776,19 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     bool isMouseInWindow = ImGui::IsWindowHovered() && (mousePos.x >= windowPos.x && mousePos.x <= windowPos.x + windowSize.x &&
                             mousePos.y >= windowPos.y && mousePos.y <= windowPos.y + windowSize.y);
 
+    // Keep the viewport redrawing while it is hovered or manipulated (hover highlight,
+    // camera drag/fly, gizmo drag). draggingMouse tracks a drag so it survives the
+    // cursor leaving the window; edits flag the scene through the command system.
+    {
+        bool viewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+        bool anyMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
+                            ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
+                            ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+        if (isMouseInWindow || draggingMouse[sceneProject->id] || (viewportFocused && anyMouseDown)) {
+            sceneProject->needUpdateRender = true;
+        }
+    }
+
     int mods = 0;
     if (io.KeyShift) mods |= D_MODIFIER_SHIFT;
     if (io.KeyCtrl) mods |= D_MODIFIER_CONTROL;

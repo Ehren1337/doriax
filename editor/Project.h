@@ -82,6 +82,10 @@ namespace doriax::editor{
         std::vector<Entity> selectedEntities;
         fs::path filepath;
         bool needUpdateRender = true;
+        // Extra frames to keep drawing after a change so late async uploads still show.
+        int renderSettleFrames = 0;
+        // Bumped on structural changes so the Structure window can cache its tree.
+        uint64_t structureVersion = 0;
         bool isModified = false;
         bool isVisible = false;
         bool opened = true;

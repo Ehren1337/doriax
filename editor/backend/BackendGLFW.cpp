@@ -279,12 +279,29 @@ int editor::Backend::init(int argc, char* argv[]) {
         glfwSwapInterval(initialSwapInterval);
     }
     int currentSwapInterval = initialSwapInterval;
+
+    // When idle, block on events (with a timeout) instead of repainting at the refresh
+    // rate. OS input wakes the wait instantly; cross-thread work via glfwPostEmptyEvent.
+    app.setWakeCallback([](){ glfwPostEmptyEvent(); });
+    double lastActivityTime = glfwGetTime();
+    const double IDLE_ENTER_DELAY = 0.5;   // seconds of no activity before idling
+    const double IDLE_WAIT_TIMEOUT = 0.1;  // max seconds between idle repaints (~10 fps)
+
     while (!glfwWindowShouldClose(window)) {
         const double frameStart = glfwGetTime();
 
-        // Poll and handle events
-        glfwPollEvents();
+        // When idle, wait (up to a timeout) so the loop parks instead of spinning.
+        const bool idleFrame = (frameStart - lastActivityTime) > IDLE_ENTER_DELAY;
+        if (idleFrame) {
+            glfwWaitEventsTimeout(IDLE_WAIT_TIMEOUT);
+        } else {
+            glfwPollEvents();
+        }
         pollGamepads();
+
+        // Set after app.show(). Skips presenting a truly-idle frame: on Wayland every
+        // swap requests a frame callback that would wake the wait, pinning it to refresh.
+        bool activityThisFrame = false;
 
         // Skip presenting while iconified (X11 only — Wayland never reports it):
         // SwapBuffers of a hidden window can block and stall clipboard + AI.
@@ -343,6 +360,22 @@ int editor::Backend::init(int argc, char* argv[]) {
         // continued event processing) even while the OS window is minimized.
         app.show();
 
+        // Activity (input, an active widget, a scene redraw, or queued cross-thread
+        // work) keeps the loop at full rate; its absence lets it idle next frame.
+        {
+            ImGuiIO& io = ImGui::GetIO();
+            const bool activity =
+                io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
+                io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
+                ImGui::IsAnyMouseDown() ||
+                io.WantTextInput || ImGui::IsAnyItemActive() ||
+                app.didRenderScene() || app.hasPendingMainThreadTasks();
+            if (activity) {
+                lastActivityTime = glfwGetTime();
+            }
+            activityThisFrame = activity;
+        }
+
         ImGui::Render();
         if (!iconified) {
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -362,7 +395,8 @@ int editor::Backend::init(int argc, char* argv[]) {
             glfwMakeContextCurrent(backup_current_context);
         }
 
-        if (!iconified) {
+        // Present unless this is an idle frame with nothing new to show (see above).
+        if (!iconified && !(idleFrame && !activityThisFrame)) {
             glfwSwapBuffers(window);
         }
 

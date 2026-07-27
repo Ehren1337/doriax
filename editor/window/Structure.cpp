@@ -1923,9 +1923,45 @@ void editor::Structure::show(){
         return;
     }
 
+    // Rebuild the tree only when it changed. Key = scene + structureVersion + entity
+    // count + child-scene signature; a 0.5s safety rebuild catches anything missed.
+    size_t childSignature = 0;
+    auto hashCombine = [](size_t& h, size_t v){ h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2); };
+    for (const ChildSceneRef& childSceneRef : sceneProject->childScenes) {
+        hashCombine(childSignature, (size_t)childSceneRef.id);
+        const SceneProject* childScene = project->getScene(childSceneRef.id);
+        if (childScene) {
+            hashCombine(childSignature, childScene->expandedInline ? 1u : 0u);
+            if (childScene->expandedInline) {
+                hashCombine(childSignature, childScene->entities.size());
+                hashCombine(childSignature, (size_t)childScene->structureVersion);
+            }
+        }
+    }
+
+    const double nowTime = ImGui::GetTime();
+    const bool rebuildTree =
+        cacheSceneId != sceneProject->id ||
+        cacheStructureVersion != sceneProject->structureVersion ||
+        cacheEntityCount != sceneProject->entities.size() ||
+        cacheChildSignature != childSignature ||
+        cacheBuildTime < 0.0 || (nowTime - cacheBuildTime) > 0.5;
+
+    // root and sceneEntitiesSet are cached members reused across frames.
+    TreeNode& root = cachedRoot;
+    std::unordered_set<Entity>& sceneEntitiesSet = cachedSceneEntitiesSet;
+
+    if (rebuildTree) {
+    cacheSceneId = sceneProject->id;
+    cacheStructureVersion = sceneProject->structureVersion;
+    cacheEntityCount = sceneProject->entities.size();
+    cacheChildSignature = childSignature;
+    cacheBuildTime = nowTime;
+
+    sceneEntitiesSet = std::unordered_set<Entity>(sceneProject->entities.begin(), sceneProject->entities.end());
+
     Entity mainCamera = sceneProject->mainCamera;
     size_t order = 0;
-    std::unordered_set<Entity> sceneEntitiesSet(sceneProject->entities.begin(), sceneProject->entities.end());
     std::unordered_map<Entity, TreeNode*> entityNodeMap;
     std::unordered_map<Entity, std::filesystem::path> bundleEntityPaths;
     std::unordered_map<Entity, std::list<TreeNode>> virtualBundleChildren;
@@ -1938,7 +1974,7 @@ void editor::Structure::show(){
         }
     }
 
-    TreeNode root;
+    root = TreeNode();
 
     root.icon = ICON_FA_TV;
     root.id = sceneProject->id;
@@ -2213,6 +2249,8 @@ void editor::Structure::show(){
             splicedNew = true;
         }
     } while (splicedNew);
+    } // end if (rebuildTree)
+
     showIconMenu();
     ImGui::BeginChild("StructureScrollRegion", ImVec2(0, 0), true, ImGuiWindowFlags_HorizontalScrollbar);
 

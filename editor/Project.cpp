@@ -3853,6 +3853,11 @@ void editor::Project::setSelectedSceneId(uint32_t selectedScene){
         this->selectedScene = selectedScene;
         this->selectedSceneForProperties = selectedScene;
 
+        // A newly selected scene must draw at least once.
+        if (SceneProject* sceneProject = getScene(selectedScene)){
+            sceneProject->needUpdateRender = true;
+        }
+
         //debugSceneHierarchy();
     }
 }
@@ -3955,6 +3960,8 @@ void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Enti
 }
 
 void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity){
+    // The selection outline/gizmo is rendered, so a selection change needs a redraw.
+    getScene(sceneId)->needUpdateRender = true;
     std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
 
     entities.clear();
@@ -3964,6 +3971,7 @@ void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity)
 }
 
 void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity){
+    getScene(sceneId)->needUpdateRender = true;
     std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
     Scene* scene = getScene(sceneId)->scene;
     auto transforms = scene->getComponentArray<Transform>();
@@ -4010,7 +4018,11 @@ bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
 }
 
 void editor::Project::clearSelectedEntities(uint32_t sceneId){
-    getScene(sceneId)->selectedEntities.clear();
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject->selectedEntities.empty()){
+        sceneProject->needUpdateRender = true;
+    }
+    sceneProject->selectedEntities.clear();
 }
 
 void editor::Project::clearAllSelections(uint32_t sceneId){

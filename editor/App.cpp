@@ -1276,6 +1276,15 @@ void editor::App::engineInit(int argc, char** argv) {
 
     Engine::pauseGameEvents(true);
 
+    // Any edit/undo/redo flags its scene for redraw, so the loop can idle otherwise.
+    CommandHistory::onSceneModified = [this](size_t sceneId){
+        if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
+            sceneProject->needUpdateRender = true;
+            // Commands can change the tree; bump so Structure rebuilds its cache.
+            sceneProject->structureVersion++;
+        }
+    };
+
     ShaderPool::setShaderBuilder([this](doriax::ShaderKey shaderKey) -> doriax::ShaderBuildResult {
         static doriax::editor::ShaderBuilder builder;  // Make static to reuse
         return builder.buildShader(shaderKey, &project);
@@ -1291,21 +1300,56 @@ void editor::App::engineViewLoaded(){
 void editor::App::engineRender(){
     processMainThreadTasks();
     project.refreshLinkedMaterials();
+    renderedSceneThisFrame = false;
     const uint32_t selectedSceneId = project.getSelectedSceneId();
+
+    // Redraw the selected scene only when it changed (needUpdateRender) or while a
+    // continuous state (play/load/preview/thumbnail) is active, so the loop can idle.
+    const bool thumbnailsPending = resourcesWindow && resourcesWindow->hasPendingThumbnailWork();
+
+    // Keep drawing a few frames after the last change so late async uploads and
+    // shader builds still get presented.
+    const int RENDER_SETTLE_FRAMES = 30;
+
+    auto sceneNeedsRender = [&](SceneProject& sp, bool isSelected) -> bool {
+        bool active = sp.needUpdateRender;
+        // A running play session must advance and redraw its simulation every frame.
+        if (sp.playState == ScenePlayState::PLAYING) active = true;
+        if (isSelected && sp.scene && sp.sceneRender) {
+            // Still loading a model, previewing a camera, or capturing a thumbnail.
+            auto ms = sp.scene->getSystem<MeshSystem>();
+            if (ms && ms->hasPendingAsyncModelLoads()) active = true;
+            if (sp.sceneRender->isPreviewCameraActive()) active = true;
+            if (thumbnailsPending) active = true;
+        }
+
+        if (active) {
+            sp.renderSettleFrames = RENDER_SETTLE_FRAMES;
+            return true;
+        }
+        if (sp.renderSettleFrames > 0) {
+            sp.renderSettleFrames--;
+            return true;
+        }
+        return false;
+    };
 
     for (auto& sceneProject : project.getScenes()) {
         if (!sceneProject.opened) continue;
         if (!sceneProject.scene || !sceneProject.sceneRender) continue;
         if (sceneProject.playState == ScenePlayState::SAVING || sceneProject.playState == ScenePlayState::LOADING || sceneProject.playState == ScenePlayState::CANCELLING) continue;
 
+        const bool isSelected = (sceneProject.id == selectedSceneId);
+
         auto meshSystem = sceneProject.scene->getSystem<MeshSystem>();
         bool hasPendingModelLoads = meshSystem && meshSystem->hasPendingAsyncModelLoads();
-        if (hasPendingModelLoads && !sceneProject.needUpdateRender && sceneProject.id != selectedSceneId) {
+        if (hasPendingModelLoads && !sceneProject.needUpdateRender && !isSelected) {
             meshSystem->update(0);
             continue;
         }
 
-        if (sceneProject.needUpdateRender || sceneProject.id == selectedSceneId){
+        if (sceneNeedsRender(sceneProject, isSelected)){
+            renderedSceneThisFrame = true;
             int width = sceneWindow->getWidth(sceneProject.id);
             int height = sceneWindow->getHeight(sceneProject.id);
 
@@ -1389,8 +1433,17 @@ void editor::App::engineRender(){
 
 void editor::App::enqueueMainThreadTask(std::function<void()> task) {
     if (!task) return;
+    {
+        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
+        mainThreadTasks.push(std::move(task));
+    }
+    // Wake an idle backend loop so cross-thread work runs promptly.
+    if (wakeCallback) wakeCallback();
+}
+
+bool editor::App::hasPendingMainThreadTasks() {
     std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-    mainThreadTasks.push(std::move(task));
+    return !mainThreadTasks.empty();
 }
 
 void editor::App::engineViewDestroyed(){
@@ -1646,7 +1699,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v16: projected spotlight masks add spotUp_maskAspect[MAX_LIGHTS] to u_fs_lighting
     //      and add the shared u_spotMaskAtlas sampler to punctual mesh variants,
     //      using the engine's native texture Y orientation.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v16";
+    // v17: projective shadows use a depth-only atlas with a comparison sampler.
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v17";
 }
 
 void editor::App::pushTabNotificationStyle(){
