@@ -31,6 +31,31 @@ namespace {
         return Vector2(scale.x, scale.y);
     }
 
+    // Jolt's global allocator/factory/type registration is process-wide; run once
+    // (the old per-constructor path re-created and leaked a Factory per scene).
+    void ensureJoltGlobalInit(){
+        static const bool done = [](){
+            JPH::RegisterDefaultAllocator();
+            JPH::Factory::sInstance = new JPH::Factory();
+            JPH::RegisterTypes();
+            return true;
+        }();
+        (void)done;
+    }
+
+    // One temp allocator + job pool shared by every scene's 3D world. Updates run
+    // sequentially on the main thread, so a single pool avoids a per-scene thread pool
+    // and 10 MiB buffer.
+    JPH::TempAllocatorImpl& sharedPhysicsTempAllocator(){
+        static JPH::TempAllocatorImpl instance(10 * 1024 * 1024);
+        return instance;
+    }
+    JPH::JobSystemThreadPool& sharedPhysicsJobSystem(){
+        static JPH::JobSystemThreadPool instance(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers,
+                                                 JPH::thread::hardware_concurrency() - 1);
+        return instance;
+    }
+
 }
 
 Vector3 PhysicsSystem::absScale(const Vector3& scale){
@@ -138,17 +163,8 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     world2D = b2_nullWorldId;
 
     // https://github.com/jrouwe/JoltPhysics/issues/244
-    JPH::RegisterDefaultAllocator();
-
-    // Install callbacks
-    //JPH::Trace = TraceImpl;
-    //JPH_IF_ENABLE_ASSERTS(AssertFailed = AssertFailedImpl;)
-
-    // Create a factory
-    JPH::Factory::sInstance = new JPH::Factory();
-
-    // Register all Jolt physics types
-    JPH::RegisterTypes();
+    // Jolt globals are initialized once per process (see helper).
+    ensureJoltGlobalInit();
 
     const unsigned int cMaxBodies = 1024;
     const unsigned int cNumBodyMutexes = 0;
@@ -163,8 +179,9 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     world3D.Init(cMaxBodies, cNumBodyMutexes, cMaxBodyPairs, cMaxContactConstraints, *broad_phase_layer_interface, *object_vs_broadphase_layer_filter, *object_vs_object_layer_filter);
     world3D.SetGravity(JPH::Vec3(this->gravity3D.x, this->gravity3D.y, this->gravity3D.z));
 
-    temp_allocator = new JPH::TempAllocatorImpl(10 * 1024 * 1024);
-    job_system = new JPH::JobSystemThreadPool (JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, JPH::thread::hardware_concurrency() - 1);
+    // Shared across all scenes (created once); physics updates are sequential on the main thread.
+    temp_allocator = &sharedPhysicsTempAllocator();
+    job_system = &sharedPhysicsJobSystem();
 
     activationListener3D = new JoltActivationListener(scene, this);
     world3D.SetBodyActivationListener(activationListener3D);
@@ -204,8 +221,7 @@ PhysicsSystem::~PhysicsSystem(){
     delete contactListener3D;
 
     //delete world3D;
-    delete temp_allocator;
-    delete job_system;
+    // temp_allocator and job_system are process-shared singletons (see constructor); not owned here.
     delete broad_phase_layer_interface;
     delete object_vs_broadphase_layer_filter;
     delete object_vs_object_layer_filter;
