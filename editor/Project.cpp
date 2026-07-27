@@ -3956,6 +3956,8 @@ std::vector<Entity> editor::Project::getEntities(uint32_t sceneId) const{
 }
 
 void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
+    // Ctrl-click deselect reaches the selection only through here.
+    getScene(sceneId)->needUpdateRender = true;
     getScene(sceneId)->selectedEntities = selectedEntities;
 }
 

@@ -1277,11 +1277,13 @@ void editor::App::engineInit(int argc, char** argv) {
     Engine::pauseGameEvents(true);
 
     // Any edit/undo/redo flags its scene for redraw, so the loop can idle otherwise.
-    CommandHistory::onSceneModified = [this](size_t sceneId){
+    CommandHistory::onSceneModified = [this](size_t sceneId, bool structural){
         if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
             sceneProject->needUpdateRender = true;
-            // Commands can change the tree; bump so Structure rebuilds its cache.
-            sceneProject->structureVersion++;
+            // Only structural commands, so a gizmo drag doesn't rebuild the tree each frame.
+            if (structural){
+                sceneProject->structureVersion++;
+            }
         }
     };
 
@@ -1349,9 +1351,12 @@ void editor::App::engineRender(){
         }
 
         if (sceneNeedsRender(sceneProject, isSelected)){
-            renderedSceneThisFrame = true;
             int width = sceneWindow->getWidth(sceneProject.id);
             int height = sceneWindow->getHeight(sceneProject.id);
+
+            // Not laid out yet (background tab): nothing to draw, and activating it here
+            // would thrash lastActivatedScene. Stays dirty until SceneWindow gives it a size.
+            if (width == 0 || height == 0) continue;
 
             SceneRender* sceneRender = sceneProject.sceneRender;
 
@@ -1425,6 +1430,8 @@ void editor::App::engineRender(){
                 resourcesWindow->processMaterialThumbnails();
                 resourcesWindow->processModelThumbnails();
 
+                // Only a real draw counts as activity, or the loop never idles.
+                renderedSceneThisFrame = true;
                 sceneProject.needUpdateRender = false;
             }
         }

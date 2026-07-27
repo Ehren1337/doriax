@@ -35,6 +35,9 @@ namespace doriax::editor{
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        // Only position/rotation/scale, and a gizmo drag issues one per frame.
+        bool affectsStructure() const override { return false; }
     };
 
 }

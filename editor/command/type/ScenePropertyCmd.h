@@ -62,6 +62,9 @@ namespace doriax::editor {
             sceneProject->isModified = wasModified;
         }
 
+        // Render/physics settings only; scene names belong to SceneNameCmd.
+        bool affectsStructure() const override { return false; }
+
         bool mergeWith(editor::Command* otherCommand) override {
             ScenePropertyCmd* otherCmd = dynamic_cast<ScenePropertyCmd*>(otherCommand);
             if (otherCmd != nullptr) {

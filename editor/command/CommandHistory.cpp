@@ -3,7 +3,7 @@
 
 using namespace doriax;
 
-std::function<void(size_t)> editor::CommandHistory::onSceneModified = nullptr;
+std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
 
 editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
 }
@@ -34,7 +34,7 @@ void editor::CommandHistory::addCommand(editor::Command* cmd){
         index = list.size();
 
         if (onSceneModified){
-            onSceneModified(sceneId);
+            onSceneModified(sceneId, cmd->affectsStructure());
         }
     }else{
         delete cmd;
@@ -48,11 +48,12 @@ void editor::CommandHistory::addCommandNoMerge(Command* cmd){
 
 void editor::CommandHistory::undo(){
     if (index > 0){
+        const bool structural = list[index-1]->affectsStructure();
         list[index-1]->undo();
         index--;
 
         if (onSceneModified){
-            onSceneModified(sceneId);
+            onSceneModified(sceneId, structural);
         }
 
         #ifdef _DEBUG
@@ -67,7 +68,7 @@ void editor::CommandHistory::redo(){
         list[index-1]->execute();
 
         if (onSceneModified){
-            onSceneModified(sceneId);
+            onSceneModified(sceneId, list[index-1]->affectsStructure());
         }
 
         #ifdef _DEBUG

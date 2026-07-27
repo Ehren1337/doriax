@@ -16,8 +16,8 @@ namespace doriax::editor{
         size_t sceneId = 0;
 
     public:
-        // Called with the owning scene id after any command apply/undo/redo.
-        static std::function<void(size_t)> onSceneModified;
+        // Called after any command apply/undo/redo with the scene id and affectsStructure().
+        static std::function<void(size_t, bool)> onSceneModified;
 
         explicit CommandHistory(size_t sceneId = 0);
         virtual ~CommandHistory();

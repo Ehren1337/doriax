@@ -1033,27 +1033,34 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
                 const std::string modelKey = getModelFilenameKey(filename);
                 const size_t textureCount = result->gltfModel->textures.size();
 
-                // One texture index per distinct image source (faces depend only on the image).
-                std::unordered_map<int, std::shared_ptr<std::array<TextureData,6>>> facesBySource;
-                std::vector<int> sourceReps; // texture index used to build each unique source
+                // One copy per dedup key, not per image source: each key is a separate
+                // TexturePool id needing its own upload, and the pixels are freed after it.
+                std::vector<std::string> texKeys(textureCount);
+                std::unordered_map<std::string, std::shared_ptr<std::array<TextureData,6>>> facesByKey;
+                std::vector<int> keyReps; // texture index building each unique key
                 for (size_t i = 0; i < textureCount; i++) {
-                    int source = result->gltfModel->textures[i].source;
-                    if (source >= 0 && facesBySource.emplace(source, nullptr).second) {
-                        sourceReps.push_back(static_cast<int>(i));
+                    if (result->gltfModel->textures[i].source < 0) continue;
+                    texKeys[i] = gltfTextureDedupKey(modelKey, *result->gltfModel, static_cast<int>(i));
+                    if (facesByKey.emplace(texKeys[i], nullptr).second) {
+                        keyReps.push_back(static_cast<int>(i));
                     }
                 }
-                parallelForIndexed(sourceReps.size(), [&](size_t j) {
-                    int repTexture = sourceReps[j];
-                    int source = result->gltfModel->textures[repTexture].source;
-                    facesBySource[source] = buildGLTFTextureFaces(*result->gltfModel, repTexture);
+
+                // Build into a plain vector: workers touch only their own slot, never the map.
+                std::vector<std::shared_ptr<std::array<TextureData,6>>> builtFaces(keyReps.size());
+                parallelForIndexed(keyReps.size(), [&](size_t j) {
+                    builtFaces[j] = buildGLTFTextureFaces(*result->gltfModel, keyReps[j]);
                 });
+                for (size_t j = 0; j < keyReps.size(); j++) {
+                    facesByKey[texKeys[keyReps[j]]] = std::move(builtFaces[j]);
+                }
 
                 result->prebuiltTextures.resize(textureCount);
                 for (size_t i = 0; i < textureCount; i++) {
-                    int source = result->gltfModel->textures[i].source;
-                    auto it = facesBySource.find(source);
-                    if (it != facesBySource.end() && it->second) {
-                        result->prebuiltTextures[i] = { gltfTextureDedupKey(modelKey, *result->gltfModel, static_cast<int>(i)), it->second };
+                    if (texKeys[i].empty()) continue;
+                    auto it = facesByKey.find(texKeys[i]);
+                    if (it != facesByKey.end() && it->second) {
+                        result->prebuiltTextures[i] = { texKeys[i], it->second };
                     }
                 }
             }

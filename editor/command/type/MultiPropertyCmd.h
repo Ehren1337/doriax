@@ -48,6 +48,14 @@ namespace doriax::editor {
             }
         }
 
+        // Structural if any child is: a batch may mix an AddComponentCmd with properties.
+        bool affectsStructure() const override {
+            for (const auto& cmd : commands) {
+                if (cmd->affectsStructure()) return true;
+            }
+            return false;
+        }
+
         bool mergeWith(Command* otherCommand) override {
             MultiPropertyCmd* otherMultiCmd = dynamic_cast<MultiPropertyCmd*>(otherCommand);
             if (otherMultiCmd) {

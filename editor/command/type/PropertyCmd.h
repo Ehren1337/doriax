@@ -46,6 +46,35 @@ namespace doriax::editor{
         T newValue;
     };
 
+    // Component types the Structure tree reads nothing from: it caches names, signature
+    // icons, hierarchy and bundle/lock state, not component values. Opt-out list, so
+    // anything unlisted stays structural.
+    inline bool isNonStructuralProperty(ComponentType type, const std::string& propertyName){
+        switch (type){
+            // Geometry and sub-selection payloads, dragged continuously in the viewport.
+            case ComponentType::InstancedMeshComponent:
+            case ComponentType::TilemapComponent:
+            case ComponentType::LinesComponent:
+            case ComponentType::PointsComponent:
+            case ComponentType::PolygonComponent:
+            case ComponentType::MeshPolygonComponent:
+            case ComponentType::Occluder2DComponent:
+            case ComponentType::TranslateTracksComponent:
+            case ComponentType::RotateTracksComponent:
+            case ComponentType::ScaleTracksComponent:
+            // Sizes written by the UI resize drag.
+            case ComponentType::UILayoutComponent:
+            case ComponentType::SpriteComponent:
+            case ComponentType::TextComponent:
+                return true;
+            // Transform.parent drives tree order and lock state.
+            case ComponentType::Transform:
+                return propertyName == "position" || propertyName == "rotation" || propertyName == "scale";
+            default:
+                return false;
+        }
+    }
+
     template<typename T>
     class PropertyCmd: public Command{
 
@@ -135,6 +164,10 @@ namespace doriax::editor{
             if (onValueChanged) {
                 onValueChanged();
             }
+        }
+
+        bool affectsStructure() const override{
+            return !isNonStructuralProperty(type, propertyName);
         }
 
         bool mergeWith(editor::Command* otherCommand) override{
