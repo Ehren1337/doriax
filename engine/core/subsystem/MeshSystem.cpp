@@ -144,6 +144,18 @@ std::string MeshSystem::getModelFilenameKey(const std::string& filename){
     return std::filesystem::path(FileData::getSystemPath(filename)).lexically_normal().generic_string();
 }
 
+// Key texture storage by image source and sampler, not glTF texture index: glTF files
+// often point several texture entries at one image, which keying by index duplicated.
+static std::string gltfTextureDedupKey(const std::string& modelKey, const tinygltf::Model& model, int textureIndex){
+    int source = -1;
+    int sampler = -1;
+    if (textureIndex >= 0 && static_cast<size_t>(textureIndex) < model.textures.size()){
+        source = model.textures[textureIndex].source;
+        sampler = model.textures[textureIndex].sampler;
+    }
+    return modelKey + "|gltf-image|" + std::to_string(source) + "|s" + std::to_string(sampler);
+}
+
 MeshSystem::MeshSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<MeshComponent>());
 }
@@ -1015,15 +1027,35 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
             if (result->success) {
                 decodeGLTFImagesParallel(*result->gltfModel, 0); // background loads are full resolution
 
-                // Pre-copy texture pixels here (worker thread) so the main-thread mesh build only
-                // does cheap pool lookups instead of the ~GiB memcpy. Keyed to match loadGLTFTexture.
-                const std::string texKeyPrefix = getModelFilenameKey(filename) + "|gltf-texture|";
-                result->prebuiltTextures.resize(result->gltfModel->textures.size());
-                parallelForIndexed(result->gltfModel->textures.size(), [&](size_t i) {
-                    if (auto faces = buildGLTFTextureFaces(*result->gltfModel, static_cast<int>(i))) {
-                        result->prebuiltTextures[i] = { texKeyPrefix + std::to_string(i), std::move(faces) };
+                // Pre-copy texture pixels on the worker thread so the main-thread build only
+                // does pool lookups. Copy once per unique image source and share it, keyed to
+                // match loadGLTFTexture so duplicate references collapse in the pools.
+                const std::string modelKey = getModelFilenameKey(filename);
+                const size_t textureCount = result->gltfModel->textures.size();
+
+                // One texture index per distinct image source (faces depend only on the image).
+                std::unordered_map<int, std::shared_ptr<std::array<TextureData,6>>> facesBySource;
+                std::vector<int> sourceReps; // texture index used to build each unique source
+                for (size_t i = 0; i < textureCount; i++) {
+                    int source = result->gltfModel->textures[i].source;
+                    if (source >= 0 && facesBySource.emplace(source, nullptr).second) {
+                        sourceReps.push_back(static_cast<int>(i));
                     }
+                }
+                parallelForIndexed(sourceReps.size(), [&](size_t j) {
+                    int repTexture = sourceReps[j];
+                    int source = result->gltfModel->textures[repTexture].source;
+                    facesBySource[source] = buildGLTFTextureFaces(*result->gltfModel, repTexture);
                 });
+
+                result->prebuiltTextures.resize(textureCount);
+                for (size_t i = 0; i < textureCount; i++) {
+                    int source = result->gltfModel->textures[i].source;
+                    auto it = facesBySource.find(source);
+                    if (it != facesBySource.end() && it->second) {
+                        result->prebuiltTextures[i] = { gltfTextureDedupKey(modelKey, *result->gltfModel, static_cast<int>(i)), it->second };
+                    }
+                }
             }
         }
 
@@ -1560,7 +1592,7 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
             return true;
         }
 
-        std::string id = getModelFilenameKey(model.filename) + "|gltf-texture|" + std::to_string(textureIndex);
+        std::string id = gltfTextureDedupKey(getModelFilenameKey(model.filename), *model.gltfModel, textureIndex);
 
         auto existingData = TextureDataPool::get(id);
         const bool canReuse = existingData && existingData->at(0).getData() && existingData->at(0).getSize() >= imageSize;
@@ -1595,9 +1627,9 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
         }else if (tex.sampler >= 0){
             Log::warn("Invalid GLTF sampler index %i for texture %i", tex.sampler, textureIndex);
         }
-        // Prevent GLTF release because GLTF can have multiple textures with the same data
-        // Image data is stored in tinygltf::Image
-        texture.setReleaseDataAfterLoad(false);
+        // Free the pooled CPU copy after upload; the decoded pixels remain in the
+        // ModelPool-retained gltfModel, so loadGLTFTexture re-copies from there on reload.
+        texture.setReleaseDataAfterLoad(true);
     }
 
     return true;
