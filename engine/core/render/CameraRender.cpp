@@ -23,6 +23,10 @@ void CameraRender::setClearColor(Vector4 clearColor){
     backend.setClearColor(clearColor);
 }
 
+void CameraRender::setClearDepth(float clearDepth){
+    backend.setClearDepth(clearDepth);
+}
+
 void CameraRender::setLoadActionLoad(){
     backend.setLoadActionLoad();
 }

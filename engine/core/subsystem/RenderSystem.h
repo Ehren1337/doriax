@@ -228,6 +228,7 @@ namespace doriax{
 		static TextureRender emptyCubeBlack;
 		static TextureRender emptyCubeWhite;
 		static TextureRender emptyNormal;
+		static TextureRender emptyShadowDepth;
 
 		static bool emptyTexturesCreated;
 		
@@ -275,10 +276,14 @@ namespace doriax{
 		bool hasShadows2D;
 		int numLights2D;
 
-		// 3x3 atlas for directional + spot lights
+		// Directional + spot atlas keeps up to 3x3 logical slots, but its physical
+		// grid is compacted to the slots used by the current light set.
 		FramebufferRender shadowAtlasFramebuffer;
 		CameraRender shadowAtlasPassRender;
 		unsigned int shadowAtlasSlotResolution;
+		int shadowAtlasCols;
+		int shadowAtlasRows;
+		int shadowAtlasUsedSlots;
 		bool needUpdateShadowAtlas;
 		bool hasShadowAtlas;
 
@@ -413,7 +418,7 @@ namespace doriax{
 		void initShadowAtlasRects();
 		void initShadowPointAtlasRects();
 		unsigned int clampShadowAtlasSlotResolution(unsigned int requestedResolution, int atlasCols, int atlasRows) const;
-		bool ensureShadowAtlas(unsigned int slotResolution);
+		bool ensureShadowAtlas(unsigned int slotResolution, int usedSlots);
 		bool ensureShadowPointAtlas(unsigned int slotResolution);
 		Rect getShadowAtlasSlotRect(int slotIndex) const;
 		Rect getShadowPointAtlasSlotRect(int slotIndex) const;
@@ -447,7 +452,7 @@ namespace doriax{
 		void updateMeshBuffers(MeshComponent& mesh);
 		void updateTerrainNodesBuffer(TerrainComponent& terrain, int viewIndex);
 		bool drawMesh(MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, bool renderToTexture, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView = 0);
-		bool drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO = false);
+		bool drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO = false, PipelineType pipelineType = PIP_DEPTH);
 		void destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets = false);
 
 		// SSAO

@@ -33,6 +33,13 @@ void SokolCamera::setClearColor(Vector4 clearColor){
     pass.action.colors[0].clear_value = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 }
 
+void SokolCamera::setClearDepth(float clearDepth){
+    pass.action.depth.load_action = SG_LOADACTION_CLEAR;
+    // Depth defaults to DONTCARE in Sokol; the atlas is sampled later, so store it.
+    pass.action.depth.store_action = SG_STOREACTION_STORE;
+    pass.action.depth.clear_value = clearDepth;
+}
+
 void SokolCamera::setLoadActionLoad(){
     pass.action.colors[0].load_action = SG_LOADACTION_LOAD;
 }

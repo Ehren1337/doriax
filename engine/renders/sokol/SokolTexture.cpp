@@ -387,6 +387,9 @@ bool SokolTexture::createFramebufferTexture(
     if (shadowMap){
         // Over sampling - https://learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
         sampler_desc.border_color = SG_BORDERCOLOR_OPAQUE_WHITE;
+        if (depth){
+            sampler_desc.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        }
     }
 
     //if not set Sokol gets default from sg_desc.context.sample_count

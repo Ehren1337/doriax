@@ -110,6 +110,7 @@ TextureRender RenderSystem::emptyBlack;
 TextureRender RenderSystem::emptyCubeBlack;
 TextureRender RenderSystem::emptyCubeWhite;
 TextureRender RenderSystem::emptyNormal;
+TextureRender RenderSystem::emptyShadowDepth;
 
 bool RenderSystem::emptyTexturesCreated = false;
 
@@ -138,6 +139,9 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     blitSlotParams = -1;
 
     shadowAtlasSlotResolution = 0;
+    shadowAtlasCols = 0;
+    shadowAtlasRows = 0;
+    shadowAtlasUsedSlots = 0;
     needUpdateShadowAtlas = true;
     shadowPointAtlasSlotResolution = 0;
     needUpdateShadowPointAtlas = true;
@@ -193,6 +197,9 @@ void RenderSystem::destroy(){
     destroyBlit();
     shadowAtlasFramebuffer.destroyFramebuffer();
     shadowAtlasSlotResolution = 0;
+    shadowAtlasCols = 0;
+    shadowAtlasRows = 0;
+    shadowAtlasUsedSlots = 0;
     hasShadowAtlas = false;
     shadowPointAtlasFramebuffer.destroyFramebuffer();
     shadowPointAtlasSlotResolution = 0;
@@ -328,6 +335,15 @@ void RenderSystem::createEmptyTextures(){
 
         emptyTexturesCreated = true;
     }
+
+    // Point-only scenes still declare the projective sampler, so keep a
+    // type-compatible binding available even if it is never sampled.
+    if (!emptyShadowDepth.isCreated()){
+        emptyShadowDepth.createFramebufferTexture(
+            TextureType::TEXTURE_2D, true, true, 1, 1,
+            TextureFilter::NEAREST, TextureFilter::NEAREST,
+            TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER);
+    }
 }
 
 int RenderSystem::checkLightsAndShadow(){
@@ -376,8 +392,6 @@ bool RenderSystem::loadLights(int numLights){
     int freePointSlot = 0;
     unsigned int maxProjectiveSlotResolution = 0;
     unsigned int maxPointSlotResolution = 0;
-    bool anyProjectiveShadows = false;
-    bool anyPointShadows = false;
 
     auto lights = scene->getComponentArray<LightComponent>();
     
@@ -387,9 +401,12 @@ bool RenderSystem::loadLights(int numLights){
         light.shadowMapIndex = -1;
         
         if (light.shadows){
-            if (light.numShadowCascades > MAX_SHADOWCASCADES){
-                light.numShadowCascades = MAX_SHADOWCASCADES;
-                Log::warn("Shadow cascades number is bigger than max value");
+            if (light.type == LightType::DIRECTIONAL &&
+                (light.numShadowCascades < 1 || light.numShadowCascades > MAX_SHADOWCASCADES)){
+                unsigned int requestedCascades = light.numShadowCascades;
+                light.numShadowCascades = std::clamp(
+                    light.numShadowCascades, 1u, (unsigned int)MAX_SHADOWCASCADES);
+                Log::warn("Shadow cascades clamped from %u to %u", requestedCascades, light.numShadowCascades);
             }
 
             if (light.needUpdateShadowMap){
@@ -406,20 +423,16 @@ bool RenderSystem::loadLights(int numLights){
         if (!light.shadows) continue;
 
         if (light.type == LightType::SPOT){
-            anyProjectiveShadows = true;
-            maxProjectiveSlotResolution = std::max(maxProjectiveSlotResolution, light.mapResolution);
-
             if (freeProjectiveSlot < MAX_SHADOW_ATLAS_SLOTS){
                 light.shadowMapIndex = freeProjectiveSlot;
                 freeProjectiveSlot++;
+                maxProjectiveSlotResolution = std::max(maxProjectiveSlotResolution, light.mapResolution);
             }
         }else if (light.type == LightType::DIRECTIONAL){
-            anyProjectiveShadows = true;
-            maxProjectiveSlotResolution = std::max(maxProjectiveSlotResolution, light.mapResolution);
-
             if ((freeProjectiveSlot + light.numShadowCascades) <= MAX_SHADOW_ATLAS_SLOTS){
                 light.shadowMapIndex = freeProjectiveSlot;
                 freeProjectiveSlot += light.numShadowCascades;
+                maxProjectiveSlotResolution = std::max(maxProjectiveSlotResolution, light.mapResolution);
             }
         }
     }
@@ -428,48 +441,52 @@ bool RenderSystem::loadLights(int numLights){
         LightComponent& light = lights->getComponentFromIndex(i);
         if (!light.shadows || light.type != LightType::POINT) continue;
 
-        anyPointShadows = true;
-        maxPointSlotResolution = std::max(maxPointSlotResolution, light.mapResolution);
-
         if ((freePointSlot + SHADOW_CUBE_FACES) <= MAX_POINT_SHADOW_ATLAS_SLOTS){
             light.shadowMapIndex = freePointSlot;
             freePointSlot += SHADOW_CUBE_FACES;
+            maxPointSlotResolution = std::max(maxPointSlotResolution, light.mapResolution);
         }
     }
 
-    if (anyProjectiveShadows){
-        if (!ensureShadowAtlas(maxProjectiveSlotResolution)){
+    if (freeProjectiveSlot > 0){
+        if (!ensureShadowAtlas(maxProjectiveSlotResolution, freeProjectiveSlot)){
             Log::warn("Failed to create projective shadow atlas");
             for (int i = 0; i < numLights; i++){
                 LightComponent& light = lights->getComponentFromIndex(i);
                 if (light.shadows && light.type != LightType::POINT){
                     light.shadowMapIndex = -1;
-                    light.shadows = false;
                 }
             }
         }
     }else{
-        if (hasShadowAtlas){
+        if (hasShadowAtlas || shadowAtlasFramebuffer.isCreated()){
             needUpdateShadowBindings = true;
         }
+        shadowAtlasFramebuffer.destroyFramebuffer();
+        shadowAtlasSlotResolution = 0;
+        shadowAtlasCols = 0;
+        shadowAtlasRows = 0;
+        shadowAtlasUsedSlots = 0;
+        initShadowAtlasRects();
         hasShadowAtlas = false;
     }
 
-    if (anyPointShadows){
+    if (freePointSlot > 0){
         if (!ensureShadowPointAtlas(maxPointSlotResolution)){
             Log::warn("Failed to create point shadow atlas");
             for (int i = 0; i < numLights; i++){
                 LightComponent& light = lights->getComponentFromIndex(i);
                 if (light.shadows && light.type == LightType::POINT){
                     light.shadowMapIndex = -1;
-                    light.shadows = false;
                 }
             }
         }
     }else{
-        if (hasShadowPointAtlas){
+        if (hasShadowPointAtlas || shadowPointAtlasFramebuffer.isCreated()){
             needUpdateShadowBindings = true;
         }
+        shadowPointAtlasFramebuffer.destroyFramebuffer();
+        shadowPointAtlasSlotResolution = 0;
         hasShadowPointAtlas = false;
     }
 
@@ -1397,13 +1414,18 @@ void RenderSystem::renderReflectionProbeCapture(){
 
 void RenderSystem::initShadowAtlasRects(){
     for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
-        int col = s % SHADOW_ATLAS_COLS;
-        int row = s / SHADOW_ATLAS_COLS;
+        if (s >= shadowAtlasUsedSlots || shadowAtlasCols < 1 || shadowAtlasRows < 1){
+            fs_shadows.atlasRect[s] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            continue;
+        }
+
+        int col = s % shadowAtlasCols;
+        int row = s / shadowAtlasCols;
         fs_shadows.atlasRect[s] = Vector4(
-            (float)col / (float)SHADOW_ATLAS_COLS,
-            (float)row / (float)SHADOW_ATLAS_ROWS,
-            1.0f / (float)SHADOW_ATLAS_COLS,
-            1.0f / (float)SHADOW_ATLAS_ROWS);
+            (float)col / (float)shadowAtlasCols,
+            (float)row / (float)shadowAtlasRows,
+            1.0f / (float)shadowAtlasCols,
+            1.0f / (float)shadowAtlasRows);
     }
 }
 
@@ -1451,16 +1473,42 @@ unsigned int RenderSystem::clampShadowAtlasSlotResolution(unsigned int requested
     return requestedResolution;
 }
 
-bool RenderSystem::ensureShadowAtlas(unsigned int slotResolution){
-    slotResolution = clampShadowAtlasSlotResolution(slotResolution, SHADOW_ATLAS_COLS, SHADOW_ATLAS_ROWS);
+bool RenderSystem::ensureShadowAtlas(unsigned int slotResolution, int usedSlots){
+    usedSlots = std::clamp(usedSlots, 1, MAX_SHADOW_ATLAS_SLOTS);
+
+    // Smallest grid within the 3x3 capacity; equal-area layouts prefer more
+    // columns so three cascades pack into a 3x1 row.
+    int atlasCols = 1;
+    int atlasRows = usedSlots;
+    int bestArea = MAX_SHADOW_ATLAS_SLOTS + 1;
+    for (int cols = 1; cols <= SHADOW_ATLAS_COLS; cols++){
+        int rows = (usedSlots + cols - 1) / cols;
+        if (rows > SHADOW_ATLAS_ROWS){
+            continue;
+        }
+
+        int area = cols * rows;
+        if (area < bestArea || (area == bestArea && cols > atlasCols)){
+            atlasCols = cols;
+            atlasRows = rows;
+            bestArea = area;
+        }
+    }
+
+    slotResolution = clampShadowAtlasSlotResolution(slotResolution, atlasCols, atlasRows);
     if (slotResolution < 1){
         return false;
     }
 
-    int atlasWidth = (int)slotResolution * SHADOW_ATLAS_COLS;
-    int atlasHeight = (int)slotResolution * SHADOW_ATLAS_ROWS;
+    int atlasWidth = (int)slotResolution * atlasCols;
+    int atlasHeight = (int)slotResolution * atlasRows;
 
-    if (shadowAtlasFramebuffer.isCreated() && shadowAtlasSlotResolution == slotResolution && !needUpdateShadowAtlas){
+    if (shadowAtlasFramebuffer.isCreated() &&
+        shadowAtlasSlotResolution == slotResolution &&
+        shadowAtlasCols == atlasCols &&
+        shadowAtlasRows == atlasRows &&
+        shadowAtlasUsedSlots == usedSlots &&
+        !needUpdateShadowAtlas){
         if (!hasShadowAtlas){
             needUpdateShadowBindings = true;
         }
@@ -1469,15 +1517,25 @@ bool RenderSystem::ensureShadowAtlas(unsigned int slotResolution){
     }
 
     shadowAtlasFramebuffer.destroyFramebuffer();
-    if (!shadowAtlasFramebuffer.createFramebuffer(
-            TextureType::TEXTURE_2D, atlasWidth, atlasHeight,
+    if (!shadowAtlasFramebuffer.createDepthOnlyFramebuffer(
+            atlasWidth, atlasHeight,
             TextureFilter::NEAREST, TextureFilter::NEAREST,
             TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
+        shadowAtlasSlotResolution = 0;
+        shadowAtlasCols = 0;
+        shadowAtlasRows = 0;
+        shadowAtlasUsedSlots = 0;
+        initShadowAtlasRects();
         hasShadowAtlas = false;
+        needUpdateShadowBindings = true;
         return false;
     }
 
     shadowAtlasSlotResolution = slotResolution;
+    shadowAtlasCols = atlasCols;
+    shadowAtlasRows = atlasRows;
+    shadowAtlasUsedSlots = usedSlots;
+    initShadowAtlasRects();
     needUpdateShadowAtlas = false;
     hasShadowAtlas = true;
     needUpdateShadowBindings = true;
@@ -1518,8 +1576,12 @@ bool RenderSystem::ensureShadowPointAtlas(unsigned int slotResolution){
 }
 
 Rect RenderSystem::getShadowAtlasSlotRect(int slotIndex) const{
-    int col = slotIndex % SHADOW_ATLAS_COLS;
-    int row = slotIndex / SHADOW_ATLAS_COLS;
+    if (shadowAtlasCols < 1 || slotIndex < 0 || slotIndex >= shadowAtlasUsedSlots){
+        return Rect();
+    }
+
+    int col = slotIndex % shadowAtlasCols;
+    int row = slotIndex / shadowAtlasCols;
     float x = (float)(col * (int)shadowAtlasSlotResolution);
     float y = (float)(row * (int)shadowAtlasSlotResolution);
     return Rect(x, y, (float)shadowAtlasSlotResolution, (float)shadowAtlasSlotResolution);
@@ -1675,11 +1737,10 @@ void RenderSystem::loadShadowTextures(ShaderData& shaderData, ObjectRender& rend
     std::pair<int, int> slotTex(-1, -1);
 
     if (hasLights && receiveLights && hasShadows && receiveShadows){
-        // fall back to white (decoded depth ~1.0 => "nothing occludes") so a missing
-        // atlas leaves geometry fully lit instead of fully shadowed
+        // Bind a depth/comparison fallback when the projective atlas is absent.
         slotTex = shaderData.getTextureIndex(TextureShaderType::SHADOWATLAS);
         render.addTexture(slotTex, ShaderStageType::FRAGMENT,
-                          hasShadowAtlas ? &shadowAtlasFramebuffer.getColorTexture() : &emptyWhite);
+                          hasShadowAtlas ? &shadowAtlasFramebuffer.getDepthTexture() : &emptyShadowDepth);
 
         slotTex = shaderData.getTextureIndex(TextureShaderType::SHADOWPOINTATLAS);
         render.addTexture(slotTex, ShaderStageType::FRAGMENT,
@@ -2596,7 +2657,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
             CullingMode depthCullingMode = mesh.cullingMode;
             bool depthFaceCulling = (mesh.submeshes[i].textureShadow)? false : mesh.submeshes[i].faceCulling;
 
-            if (!depthRender.endLoad(PIP_DEPTH, depthFaceCulling, depthCullingMode, mesh.windingOrder)){
+            if (!depthRender.endLoad(PIP_DEPTH | PIP_SHADOW_DEPTH, depthFaceCulling, depthCullingMode, mesh.windingOrder)){
                 return false;
             }
         }
@@ -2951,7 +3012,7 @@ bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraCom
     return true;
 }
 
-bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO){
+bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType){
     // shadow passes only draw casters; the SSAO depth pre-pass draws every opaque mesh
     if (mesh.loaded && !mesh.needReload && (mesh.castShadows || forSSAO)){
 
@@ -2991,7 +3052,7 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, con
                 mesh.submeshes[i].needUpdateDepthTexture = false;
             }
 
-            if (!depthRender.beginDraw(PIP_DEPTH)){
+            if (!depthRender.beginDraw(pipelineType)){
                 mesh.needReload = true;
                 return false;
             }
@@ -6295,96 +6356,123 @@ void RenderSystem::draw(){
     if (hasShadows){
         auto lights = scene->getComponentArray<LightComponent>();
         auto meshes = scene->getComponentArray<MeshComponent>();
-        auto terrains = scene->getComponentArray<TerrainComponent>();
-        bool projectiveAtlasSlotWritten = false;
-        bool pointAtlasSlotWritten = false;
-        
-        for (int l = 0; l < lights->size(); l++){
+        int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
+
+        auto drawShadowCasters = [&](LightComponent& light, int cameraIndex, PipelineType pipelineType){
+            for (int i = 0; i < meshes->size(); i++){
+                MeshComponent& mesh = meshes->getComponentFromIndex(i);
+                Entity entity = meshes->getEntity(i);
+                Transform* transform = scene->findComponent<Transform>(entity);
+
+                if (!transform || !transform->visible){
+                    continue;
+                }
+
+                InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+                TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+                TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+
+                vs_depth_t vsDepthParams;
+                if (transform->billboard && mesh.shadowsBillboard){
+                    Matrix4 modelViewMatrix = light.cameras[cameraIndex].lightViewMatrix * transform->modelMatrix;
+
+                    modelViewMatrix.set(0, 0, transform->worldScale.x);
+                    modelViewMatrix.set(0, 1, 0.0);
+                    modelViewMatrix.set(0, 2, 0.0);
+
+                    if (!transform->cylindricalBillboard) {
+                        modelViewMatrix.set(1, 0, 0.0);
+                        modelViewMatrix.set(1, 1, transform->worldScale.y);
+                        modelViewMatrix.set(1, 2, 0.0);
+                    }
+
+                    modelViewMatrix.set(2, 0, 0.0);
+                    modelViewMatrix.set(2, 1, 0.0);
+                    modelViewMatrix.set(2, 2, transform->worldScale.z);
+
+                    vsDepthParams = {modelViewMatrix, light.cameras[cameraIndex].lightProjectionMatrix};
+                }else{
+                    vsDepthParams = {transform->modelMatrix, light.cameras[cameraIndex].lightViewProjectionMatrix};
+                }
+
+                drawMeshDepth(
+                    mesh,
+                    light.cameras[cameraIndex].nearFar.y,
+                    light.cameras[cameraIndex].frustumPlanes,
+                    vsDepthParams,
+                    instmesh,
+                    terrain,
+                    tilemap,
+                    false,
+                    pipelineType);
+            }
+        };
+
+        // All projective slots share one pass: clear once, then viewport/scissor per slot.
+        bool projectivePassStarted = false;
+        for (int l = 0; l < shadowLightCount; l++){
             LightComponent& light = lights->getComponentFromIndex(l);
+            if (light.type == LightType::POINT ||
+                light.intensity <= 0 || !light.shadows ||
+                light.shadowMapIndex < 0 || !hasShadowAtlas){
+                continue;
+            }
 
-            if (light.intensity > 0 && light.shadows){
-                size_t cameras = 1;
-                if (light.type == LightType::POINT){
-                    cameras = 6;
-                }else if (light.type == LightType::DIRECTIONAL){
-                    cameras = light.numShadowCascades;
+            int numShadowCameras =
+                (light.type == LightType::DIRECTIONAL) ? (int)light.numShadowCascades : 1;
+            for (int c = 0; c < numShadowCameras; c++){
+                int slotIndex = light.shadowMapIndex +
+                    ((light.type == LightType::DIRECTIONAL) ? c : 0);
+                if (slotIndex < 0 || slotIndex >= shadowAtlasUsedSlots){
+                    continue;
                 }
 
-                for (int c = 0; c < cameras; c++){
-                    bool isPoint = light.type == LightType::POINT;
-                    if (light.shadowMapIndex < 0){
-                        continue;
-                    }
-                    if (isPoint){
-                        if (!hasShadowPointAtlas){
-                            continue;
-                        }
-                    }else if (!hasShadowAtlas){
-                        continue;
-                    }
-
-                    int slotIndex = light.shadowMapIndex;
-                    if (light.type == LightType::DIRECTIONAL || light.type == LightType::POINT){
-                        slotIndex += c;
-                    }
-
-                    CameraRender* passRender = isPoint ? &shadowPointAtlasPassRender : &shadowAtlasPassRender;
-                    FramebufferRender* passFramebuffer = isPoint ? &shadowPointAtlasFramebuffer : &shadowAtlasFramebuffer;
-                    bool& atlasSlotWritten = isPoint ? pointAtlasSlotWritten : projectiveAtlasSlotWritten;
-
-                    if (!atlasSlotWritten){
-                        passRender->setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
-                    }else{
-                        passRender->setLoadActionLoad();
-                    }
-                    Rect slotRect = isPoint ? getShadowPointAtlasSlotRect(slotIndex) : getShadowAtlasSlotRect(slotIndex);
-                    passRender->startRenderPass(passFramebuffer);
-                    passRender->applyViewport(slotRect);
-                    passRender->applyScissor(slotRect);
-                    atlasSlotWritten = true;
-
-                    for (int i = 0; i < meshes->size(); i++){
-                        MeshComponent& mesh = meshes->getComponentFromIndex(i);
-                        Entity entity = meshes->getEntity(i);
-                        Transform* transform = scene->findComponent<Transform>(entity);
-
-                        if (transform){
-                            if (transform->visible){
-                                InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-                                TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-                                TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-
-                                vs_depth_t vsDepthParams;
-
-                                if (transform->billboard && mesh.shadowsBillboard){
-                                    Matrix4 modelViewMatrix = light.cameras[c].lightViewMatrix * transform->modelMatrix;
-
-                                    modelViewMatrix.set(0, 0, transform->worldScale.x);
-                                    modelViewMatrix.set(0, 1, 0.0);
-                                    modelViewMatrix.set(0, 2, 0.0);
-
-                                    if (!transform->cylindricalBillboard) {
-                                        modelViewMatrix.set(1, 0, 0.0);
-                                        modelViewMatrix.set(1, 1, transform->worldScale.y);
-                                        modelViewMatrix.set(1, 2, 0.0);
-                                    }
-
-                                    modelViewMatrix.set(2, 0, 0.0);
-                                    modelViewMatrix.set(2, 1, 0.0);
-                                    modelViewMatrix.set(2, 2, transform->worldScale.z);
-
-                                    vsDepthParams = {modelViewMatrix, light.cameras[c].lightProjectionMatrix};
-                                }else{
-                                    vsDepthParams = {transform->modelMatrix, light.cameras[c].lightViewProjectionMatrix};
-                                }
-
-                                drawMeshDepth(mesh, light.cameras[c].nearFar.y, light.cameras[c].frustumPlanes, vsDepthParams, instmesh, terrain, tilemap);
-                            }
-                        }
-                    }
-
-                    passRender->endRenderPass();
+                if (!projectivePassStarted){
+                    shadowAtlasPassRender.setClearDepth(1.0f);
+                    shadowAtlasPassRender.startRenderPass(&shadowAtlasFramebuffer);
+                    projectivePassStarted = true;
                 }
+
+                Rect slotRect = getShadowAtlasSlotRect(slotIndex);
+                shadowAtlasPassRender.applyViewport(slotRect);
+                shadowAtlasPassRender.applyScissor(slotRect);
+                drawShadowCasters(light, c, PIP_SHADOW_DEPTH);
+            }
+        }
+        if (projectivePassStarted){
+            shadowAtlasPassRender.endRenderPass();
+        }
+
+        // Point shadows keep the packed-color depth per-face pass (PIP_DEPTH).
+        bool pointAtlasSlotWritten = false;
+        for (int l = 0; l < shadowLightCount; l++){
+            LightComponent& light = lights->getComponentFromIndex(l);
+            if (light.type != LightType::POINT ||
+                light.intensity <= 0 || !light.shadows ||
+                light.shadowMapIndex < 0 || !hasShadowPointAtlas){
+                continue;
+            }
+
+            for (int c = 0; c < SHADOW_CUBE_FACES; c++){
+                int slotIndex = light.shadowMapIndex + c;
+                if (slotIndex < 0 || slotIndex >= MAX_POINT_SHADOW_ATLAS_SLOTS){
+                    continue;
+                }
+
+                if (!pointAtlasSlotWritten){
+                    shadowPointAtlasPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
+                }else{
+                    shadowPointAtlasPassRender.setLoadActionLoad();
+                }
+
+                Rect slotRect = getShadowPointAtlasSlotRect(slotIndex);
+                shadowPointAtlasPassRender.startRenderPass(&shadowPointAtlasFramebuffer);
+                shadowPointAtlasPassRender.applyViewport(slotRect);
+                shadowPointAtlasPassRender.applyScissor(slotRect);
+                pointAtlasSlotWritten = true;
+
+                drawShadowCasters(light, c, PIP_DEPTH);
+                shadowPointAtlasPassRender.endRenderPass();
             }
         }
     }

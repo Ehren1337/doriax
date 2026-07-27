@@ -27,6 +27,13 @@ bool FramebufferRender::createFramebuffer(TextureType textureType, int width, in
         return false;
 }
 
+bool FramebufferRender::createDepthOnlyFramebuffer(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap){
+    if (Engine::isViewLoaded() && !isCreated())
+        return backend.createDepthOnlyFramebuffer(width, height, minFilter, magFilter, wrapU, wrapV, shadowMap);
+    else
+        return false;
+}
+
 bool FramebufferRender::createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats){
     if (Engine::isViewLoaded() && !isCreated())
         return backend.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColor, formats);

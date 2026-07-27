@@ -81,7 +81,7 @@ namespace doriax{
         LightCamera cameras[6];
         // base slot in the shadow atlas (projective for directional/spot, point atlas
         // for omni); -1 when the light has no shadow allocation this frame
-        int shadowMapIndex;
+        int shadowMapIndex = -1;
 
         bool needUpdateShadowCamera = false;
         bool needUpdateShadowMap = false; // framebuffers

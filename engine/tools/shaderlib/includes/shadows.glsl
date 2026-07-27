@@ -36,12 +36,6 @@ Shadow getShadowCubeConf(int baseIndex){
     );
 }
 
-vec4 getShadowMap(int index, vec2 coords) {
-    vec4 rect = uShadows.atlasRect[index];
-    vec2 atlasUV = rect.xy + coords * rect.zw;
-    return texture(sampler2D(u_shadowAtlas, u_shadowAtlas_smp), atlasUV);
-}
-
 int directionToCubeFace(vec3 dir) {
     vec3 absDir = abs(dir);
     if (absDir.x > absDir.y && absDir.x > absDir.z){
@@ -86,9 +80,12 @@ vec4 getShadowCubeMap(int baseIndex, vec3 coords) {
 }
 
 float shadowCompare(int shadowMapIndex, float currentDepth, float bias, vec2 texCoords){
-    float closestDepth = decodeDepth(getShadowMap(shadowMapIndex, texCoords));
-
-    return currentDepth - bias > closestDepth  ? 1.0 : 0.0;
+    vec4 rect = uShadows.atlasRect[shadowMapIndex];
+    vec2 atlasUV = rect.xy + texCoords * rect.zw;
+    float visibility = texture(
+        sampler2DShadow(u_shadowAtlas, u_shadowAtlas_smp),
+        vec3(atlasUV, currentDepth - bias));
+    return 1.0 - visibility;
 }
 
 float shadowCalculationAux(int shadowMapIndex, Shadow shadowConf, float NdotL){
@@ -102,7 +99,7 @@ float shadowCalculationAux(int shadowMapIndex, Shadow shadowConf, float NdotL){
 
     float bias = max(shadowConf.maxBias * (1.0 - NdotL), shadowConf.minBias);
 
-    // proj_coords.xy is slot-local [0,1]; getShadowMap() applies the atlasRect scale.
+    // proj_coords.xy is slot-local [0,1]; shadowCompare() applies the atlasRect scale.
     // Clamp every lookup to the slot interior (half-texel inset) so PCF taps near a
     // slot edge can never bleed into a neighbouring atlas tile (another light/cascade).
     vec2 texel_size = 1.0 / shadowConf.mapSize;

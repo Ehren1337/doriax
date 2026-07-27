@@ -16,6 +16,7 @@ using namespace doriax;
 SokolObject::SokolObject(){
     pip.id = SG_INVALID_ID;
     depth_pip.id = SG_INVALID_ID;
+    shadow_depth_pip.id = SG_INVALID_ID;
     rtt_pip.id = SG_INVALID_ID;
     rtt_invert_pip.id = SG_INVALID_ID;
     gbuffer_pip.id = SG_INVALID_ID;
@@ -28,6 +29,7 @@ SokolObject::SokolObject(const SokolObject& rhs) {
     bind = rhs.bind;
     pip = rhs.pip;
     depth_pip = rhs.depth_pip;
+    shadow_depth_pip = rhs.shadow_depth_pip;
     rtt_pip = rhs.rtt_pip;
     rtt_invert_pip = rhs.rtt_invert_pip;
     gbuffer_pip = rhs.gbuffer_pip;
@@ -40,6 +42,7 @@ SokolObject& SokolObject::operator=(const SokolObject& rhs) {
     bind = rhs.bind;
     pip = rhs.pip;
     depth_pip = rhs.depth_pip;
+    shadow_depth_pip = rhs.shadow_depth_pip;
     rtt_pip = rhs.rtt_pip;
     rtt_invert_pip = rhs.rtt_invert_pip;
     gbuffer_pip = rhs.gbuffer_pip;
@@ -121,6 +124,7 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     bind = {0};
     pip = {0};
     depth_pip = {0};
+    shadow_depth_pip = {0};
     rtt_pip = {0};
     rtt_invert_pip = {0};
     gbuffer_pip = {0};
@@ -253,6 +257,34 @@ bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, CullingMode
         }
     }
 
+    if (pipelines & (int)PipelineType::PIP_SHADOW_DEPTH) {
+        // Depth-only pipeline (no color target); keeps the fragment stage for
+        // alpha-mask discard. SG_PIXELFORMAT_NONE marks it depth-only in Sokol.
+        sg_pipeline_desc pip_shadow_depth_desc = pipeline_desc;
+
+        if (enableFaceCulling){
+            pip_shadow_depth_desc.cull_mode = getCullMode(cullingMode);
+            pip_shadow_depth_desc.face_winding = getFaceWinding(windingOrder);
+        }
+
+        pip_shadow_depth_desc.sample_count = 1;
+        pip_shadow_depth_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        pip_shadow_depth_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        pip_shadow_depth_desc.depth.write_enabled = true;
+        pip_shadow_depth_desc.color_count = 0;
+        pip_shadow_depth_desc.colors[0].pixel_format = SG_PIXELFORMAT_NONE;
+
+        if (Engine::isAsyncThread()){
+            shadow_depth_pip = SokolCmdQueue::add_command_make_pipeline(pip_shadow_depth_desc);
+        }else{
+            shadow_depth_pip = sg_make_pipeline(pip_shadow_depth_desc);
+        }
+
+        if (shadow_depth_pip.id == SG_INVALID_ID){
+            return false;
+        }
+    }
+
     if (pipelines & (int)PipelineType::PIP_GBUFFER) {
         // Mesh geometry pass with three color attachments (MRT):
         //   color[0] = packed depth (same as PIP_DEPTH, so SSAO/SSR depth is unchanged)
@@ -377,6 +409,8 @@ bool SokolObject::beginDraw(PipelineType pipType){
     sg_pipeline selectedPipeline = pip;
     if (pipType == PipelineType::PIP_DEPTH){
         selectedPipeline = depth_pip;
+    }else if (pipType == PipelineType::PIP_SHADOW_DEPTH){
+        selectedPipeline = shadow_depth_pip;
     }else if (pipType == PipelineType::PIP_GBUFFER){
         selectedPipeline = gbuffer_pip;
     }else if (pipType == PipelineType::PIP_RTT){
@@ -426,6 +460,13 @@ void SokolObject::destroy(){
                 sg_destroy_pipeline(depth_pip);
             }
         }
+        if (shadow_depth_pip.id != SG_INVALID_ID){
+            if (Engine::isAsyncThread()){
+                SokolCmdQueue::add_command_destroy_pipeline(shadow_depth_pip);
+            }else{
+                sg_destroy_pipeline(shadow_depth_pip);
+            }
+        }
         if (rtt_pip.id != SG_INVALID_ID){
             if (Engine::isAsyncThread()){
                 SokolCmdQueue::add_command_destroy_pipeline(rtt_pip);
@@ -451,9 +492,9 @@ void SokolObject::destroy(){
 
     pip.id = SG_INVALID_ID;
     depth_pip.id = SG_INVALID_ID;
+    shadow_depth_pip.id = SG_INVALID_ID;
     rtt_pip.id = SG_INVALID_ID;
     rtt_invert_pip.id = SG_INVALID_ID;
-    gbuffer_pip.id = SG_INVALID_ID;
     gbuffer_pip.id = SG_INVALID_ID;
     bind = {};
     pipeline_desc = {};

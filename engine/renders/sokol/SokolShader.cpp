@@ -88,6 +88,8 @@ sg_image_sample_type SokolShader::textureSamplerToSokolType(TextureSamplerType t
         return SG_IMAGESAMPLETYPE_UINT;
     }else if (type == TextureSamplerType::SINT){
         return SG_IMAGESAMPLETYPE_SINT;
+    }else if (type == TextureSamplerType::DEPTH){
+        return SG_IMAGESAMPLETYPE_DEPTH;
     }
 
     return _SG_IMAGESAMPLETYPE_DEFAULT;

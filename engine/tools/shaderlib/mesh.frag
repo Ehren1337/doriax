@@ -144,7 +144,7 @@ uniform u_fs_pbrParams {
     in vec4 v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS];
 
     uniform texture2D u_shadowAtlas;
-    uniform sampler u_shadowAtlas_smp;
+    uniform samplerShadow u_shadowAtlas_smp;
     uniform texture2D u_shadowPointAtlas;
     uniform sampler u_shadowPointAtlas_smp;
 #endif

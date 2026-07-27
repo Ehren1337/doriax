@@ -96,6 +96,37 @@ bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int
     return created;
 }
 
+bool SokolFramebuffer::createDepthOnlyFramebuffer(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap){
+    destroyFramebuffer();
+
+    numColorAttachments = 0;
+
+    bool depthCreated = depthTexture.createFramebufferTexture(
+        TextureType::TEXTURE_2D, true, shadowMap, width, height,
+        minFilter, magFilter, wrapU, wrapV);
+    if (!depthCreated){
+        destroyFramebuffer();
+        return false;
+    }
+
+    sg_view_desc depth_view_desc = {0};
+    depth_view_desc.depth_stencil_attachment.image = depthTexture.backend.get();
+    depth_view_desc.label = "framebuffer-depth-only-attachment-view";
+
+    if (Engine::isAsyncThread()){
+        depthAttachmentView = SokolCmdQueue::add_command_make_view(depth_view_desc);
+    }else{
+        depthAttachmentView = sg_make_view(depth_view_desc);
+    }
+
+    bool created = isCreated();
+    if (!created){
+        destroyFramebuffer();
+    }
+
+    return created;
+}
+
 bool SokolFramebuffer::createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats){
     if (numColor < 1 || numColor > MAX_COLOR_ATTACHMENTS){
         Log::error("Framebuffer MRT color attachment count must be 1..%d", MAX_COLOR_ATTACHMENTS);
@@ -209,6 +240,7 @@ bool SokolFramebuffer::isCreated(){
     }
 
     if (depthAttachmentView.id != SG_INVALID_ID) {
+        hasAttachment = true;
         if (sg_query_view_state(depthAttachmentView) != SG_RESOURCESTATE_VALID) {
             return false;
         }
@@ -264,7 +296,7 @@ sg_attachments SokolFramebuffer::get(size_t face){
         for (int a = 0; a < numColorAttachments; a++){
             attachments.colors[a] = colorAttachmentViews[a][0];
         }
-    }else{
+    }else if (numColorAttachments == 1){
         attachments.colors[0] = colorAttachmentViews[0][face];
     }
     attachments.depth_stencil = depthAttachmentView;

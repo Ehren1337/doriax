@@ -24,6 +24,7 @@ namespace doriax{
         virtual ~SokolCamera();
 
         void setClearColor(Vector4 clearColor);
+        void setClearDepth(float clearDepth = 1.0f);
         void setLoadActionLoad();
 
         void startRenderPass(FramebufferRender* framebuffer, size_t face);
