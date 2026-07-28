@@ -5274,7 +5274,7 @@ bool RenderSystem::isAllLoaded() const{
     auto uis = scene->getComponentArray<UIComponent>();
     for (int i = 0; i < uis->size(); i++) {
         const UIComponent& ui = uis->getComponentFromIndex(i);
-        // loadUI() bails when there is nothing to buffer, so it can never report loaded.
+        // An empty UI never loads: loadUI() retries each frame and nothing sets needReload.
         const size_t uiBufferSize = std::max(ui.buffer.getSize(),
                                              (size_t)ui.minBufferCount * ui.buffer.getStride());
         if (!ui.loaded && uiBufferSize > 0)
@@ -5293,7 +5293,7 @@ bool RenderSystem::isAllLoaded() const{
     auto linesArray = scene->getComponentArray<LinesComponent>();
     for (int i = 0; i < linesArray->size(); i++) {
         const LinesComponent& lines = linesArray->getComponentFromIndex(i);
-        // loadLines() bails on an empty component, so it can never report loaded.
+        // An empty Lines never loads: addLine() only sets needReload when maxLines grows.
         if (!lines.loaded && !lines.lines.empty())
             return false;
     }
