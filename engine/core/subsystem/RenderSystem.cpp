@@ -1517,9 +1517,11 @@ bool RenderSystem::ensureShadowAtlas(unsigned int slotResolution, int usedSlots)
     }
 
     shadowAtlasFramebuffer.destroyFramebuffer();
+    // LINEAR on a comparison sampler is hardware PCF: each tap is bilinearly filtered
+    // over 2x2 comparison results, so every quality level gets softer edges for free.
     if (!shadowAtlasFramebuffer.createDepthOnlyFramebuffer(
             atlasWidth, atlasHeight,
-            TextureFilter::NEAREST, TextureFilter::NEAREST,
+            TextureFilter::LINEAR, TextureFilter::LINEAR,
             TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
         shadowAtlasSlotResolution = 0;
         shadowAtlasCols = 0;
