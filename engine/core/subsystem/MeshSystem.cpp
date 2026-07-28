@@ -1028,8 +1028,7 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
                 decodeGLTFImagesParallel(*result->gltfModel, 0); // background loads are full resolution
 
                 // Pre-copy texture pixels on the worker thread so the main-thread build only
-                // does pool lookups. Copy once per unique image source and share it, keyed to
-                // match loadGLTFTexture so duplicate references collapse in the pools.
+                // does pool lookups, keyed to match loadGLTFTexture.
                 const std::string modelKey = getModelFilenameKey(filename);
                 const size_t textureCount = result->gltfModel->textures.size();
 

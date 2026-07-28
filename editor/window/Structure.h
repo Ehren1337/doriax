@@ -90,6 +90,7 @@ namespace doriax::editor{
         void moveCameraToEditorView(Entity cameraEntity);
 
         void showNewEntityMenu(bool isScene, Entity parent, bool addToBundle);
+        void rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet);
         void showIconMenu();
         void showTreeNode(TreeNode& node);
         void syncSceneWindowSelectionHierarchy(const TreeNode& node, uint32_t collapsedSceneId = NULL_PROJECT_SCENE, Entity collapsedAncestor = NULL_ENTITY);

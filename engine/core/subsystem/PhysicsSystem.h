@@ -45,6 +45,7 @@ namespace doriax{
 		JoltActivationListener* activationListener3D;
 		JoltContactListener* contactListener3D;
 
+        // Process-wide singletons shared by every scene; not owned here.
         JPH::TempAllocatorImpl* temp_allocator;
         JPH::JobSystemThreadPool* job_system;
 
