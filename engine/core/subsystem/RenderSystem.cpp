@@ -5290,7 +5290,8 @@ bool RenderSystem::isAllLoaded() const{
     auto linesArray = scene->getComponentArray<LinesComponent>();
     for (int i = 0; i < linesArray->size(); i++) {
         const LinesComponent& lines = linesArray->getComponentFromIndex(i);
-        if (!lines.loaded)
+        // loadLines() bails on an empty component, so it can never report loaded.
+        if (!lines.loaded && !lines.lines.empty())
             return false;
     }
 
