@@ -365,6 +365,8 @@
 		710EE49E2A2E1E9200EB04EC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 710EE49C2A2E1E9200EB04EC /* Assets.xcassets */; };
 		71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
 		71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
+		71C0FFEF2E41845E006D11A1 /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C0FFEE2E41845E006D11A1 /* ComponentManager.cpp */; };
+		71C0FFF02E41845E006D11A1 /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C0FFEE2E41845E006D11A1 /* ComponentManager.cpp */; };
 		71125F1C2E41845E006D11A1 /* EntityRegistry.h in Headers */ = {isa = PBXBuildFile; fileRef = 71125F172E41845E006D11A1 /* EntityRegistry.h */; };
 		711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */ = {isa = PBXBuildFile; fileRef = 711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */; };
 		7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */; };
@@ -2329,6 +2331,7 @@
 		71E36B8325D5996400EFEED4 /* Signature.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Signature.h; sourceTree = "<group>"; };
 		71E36B8425D5996400EFEED4 /* EntityManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EntityManager.h; sourceTree = "<group>"; };
 		71E36B8525D5996400EFEED4 /* ComponentManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ComponentManager.h; sourceTree = "<group>"; };
+		71C0FFEE2E41845E006D11A1 /* ComponentManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ComponentManager.cpp; sourceTree = "<group>"; };
 		71E36B8625D5996400EFEED4 /* SubSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SubSystem.h; sourceTree = "<group>"; };
 		71E36B8725D5996400EFEED4 /* Entity.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Entity.h; sourceTree = "<group>"; };
 		71E36B8C25D5999C00EFEED4 /* libtinyobjloader-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libtinyobjloader-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -4144,6 +4147,7 @@
 				71E36B8325D5996400EFEED4 /* Signature.h */,
 				71E36B8425D5996400EFEED4 /* EntityManager.h */,
 				71E36B8525D5996400EFEED4 /* ComponentManager.h */,
+				71C0FFEE2E41845E006D11A1 /* ComponentManager.cpp */,
 				71E36B8625D5996400EFEED4 /* SubSystem.h */,
 				71E36B8725D5996400EFEED4 /* Entity.h */,
 			);
@@ -5695,6 +5699,7 @@
 				71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
 				71ABBD25277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
+				71C0FFEF2E41845E006D11A1 /* ComponentManager.cpp in Sources */,
 				713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */,
 				71E54500284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F2254A2C587388006ED3CA /* Particles.cpp in Sources */,
@@ -5877,6 +5882,7 @@
 				71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
 				71ABBD24277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
+				71C0FFF02E41845E006D11A1 /* ComponentManager.cpp in Sources */,
 				7162FD4525963AE00075B97D /* Object.cpp in Sources */,
 				71E544FF284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F225492C587388006ED3CA /* Particles.cpp in Sources */,
