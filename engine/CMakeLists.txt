@@ -642,6 +642,7 @@ set(DORIAX_SRCS
     core/buffer/ExternalBuffer.cpp
     core/buffer/IndexBuffer.cpp
     core/buffer/InterleavedBuffer.cpp
+    core/ecs/ComponentManager.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp

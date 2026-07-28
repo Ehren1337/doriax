@@ -319,7 +319,7 @@ size_t EntityRegistry::findBranchLastIndex(Entity entity){
 
     bool found = true;
     while (found){
-        if (currentIndex < transforms.get()->size()){
+        if (currentIndex < transforms->size()){
             Transform& transform = componentManager.getComponentFromIndex<Transform>(currentIndex);
             //if not in list
             if (std::find(entityList.begin(), entityList.end(),transform.parent)==entityList.end()) {

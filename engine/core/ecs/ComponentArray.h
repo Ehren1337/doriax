@@ -162,7 +162,7 @@ namespace doriax {
         }
 
         template<typename C>
-        void sortByComponent(std::shared_ptr<ComponentArray<C>> otherComponent) {
+        void sortByComponent(ComponentArray<C>* otherComponent) {
             // Create a vector of indices [0, 1, ..., N-1]
             std::vector<size_t> indices(componentArray.size());
             std::iota(indices.begin(), indices.end(), 0);

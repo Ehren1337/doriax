@@ -207,7 +207,7 @@ namespace doriax {
         }
 
         template<typename T>
-        std::shared_ptr<ComponentArray<T>> getComponentArray() const{
+        ComponentArray<T>* getComponentArray() const{
             return componentManager.getComponentArray<T>();
         }
     };
