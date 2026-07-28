@@ -2262,14 +2262,20 @@ void editor::Project::removeScene(uint32_t sceneId) {
 }
 
 void editor::Project::markParentScenesNeedUpdate(uint32_t childSceneId) {
+    bool foundParent = false;
+
     for (auto& s : scenes) {
         auto& cs = s.childScenes;
         if (findChildScene(cs, childSceneId) != cs.end()) {
             s.needUpdateRender = true;
+            foundParent = true;
         }
     }
-    // The inline child layers feed SceneRender::activate(), so force a re-activation.
-    editor::getEditorHost().resetLastActivatedScene();
+
+    if (foundParent) {
+        // The inline child layers feed SceneRender::activate(), so force a re-activation.
+        editor::getEditorHost().resetLastActivatedScene();
+    }
 }
 
 void editor::Project::loadSceneProjectData(SceneProject* sceneProject, const YAML::Node& sceneNode) {

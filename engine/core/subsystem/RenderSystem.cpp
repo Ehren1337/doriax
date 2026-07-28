@@ -5274,7 +5274,10 @@ bool RenderSystem::isAllLoaded() const{
     auto uis = scene->getComponentArray<UIComponent>();
     for (int i = 0; i < uis->size(); i++) {
         const UIComponent& ui = uis->getComponentFromIndex(i);
-        if (!ui.loaded)
+        // loadUI() bails when there is nothing to buffer, so it can never report loaded.
+        const size_t uiBufferSize = std::max(ui.buffer.getSize(),
+                                             (size_t)ui.minBufferCount * ui.buffer.getStride());
+        if (!ui.loaded && uiBufferSize > 0)
             return false;
     }
 

@@ -51,8 +51,11 @@ namespace {
         return instance;
     }
     JPH::JobSystemThreadPool& sharedPhysicsJobSystem(){
-        static JPH::JobSystemThreadPool instance(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers,
-                                                 JPH::thread::hardware_concurrency() - 1);
+        // hardware_concurrency() is unsigned and reports 0 when unknown, so clamp
+        // instead of subtracting into a huge worker count on a single-core machine.
+        const unsigned int cores = JPH::thread::hardware_concurrency();
+        const int workers = (cores > 1) ? (int)(cores - 1) : 1;
+        static JPH::JobSystemThreadPool instance(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workers);
         return instance;
     }
 
