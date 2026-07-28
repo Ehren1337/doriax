@@ -1321,6 +1321,9 @@ void editor::App::engineRender(){
             // Still loading a model, previewing a camera, or capturing a thumbnail.
             auto ms = sp.scene->getSystem<MeshSystem>();
             if (ms && ms->hasPendingAsyncModelLoads()) active = true;
+            // A parsed model still has per-mesh work that only runs while drawing.
+            auto rs = sp.scene->getSystem<RenderSystem>();
+            if (rs && !rs->isAllLoaded()) active = true;
             if (sp.sceneRender->isPreviewCameraActive()) active = true;
             if (thumbnailsPending) active = true;
         }
