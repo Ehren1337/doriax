@@ -1381,9 +1381,12 @@ void editor::App::engineRender(){
             // activate() reloads this scene and every layer, so it runs only on a scene
             // change. Anything else needing it calls resetLastActivatedScene().
             if (lastActivatedScene != sceneProject.id){
+                // Collected before activate(): it drops every engine layer, and a dropped
+                // layer no longer counts as running, so this would come back empty.
+                std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
                 sceneProject.sceneRender->activate();
 
-                for (Scene* runtimeLayer : project.getRunningRuntimeLayers(sceneProject.id)) {
+                for (Scene* runtimeLayer : runtimeLayers) {
                     Engine::addSceneLayer(runtimeLayer);
                 }
 
