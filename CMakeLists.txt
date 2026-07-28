@@ -20,6 +20,8 @@ if(POLICY CMP0072)
 endif()
 
 if(WIN32)
+    enable_language(RC)
+
     set(PLATFORM_EXEC_FLAGS WIN32)
  
     if(MSVC)
@@ -41,6 +43,17 @@ endif()
 
 set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
+
+set(DORIAX_EDITOR_ICON_RC)
+if(WIN32)
+    set(DORIAX_EDITOR_ICON_RC
+        "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.rc"
+    )
+    set_property(SOURCE "${DORIAX_EDITOR_ICON_RC}" APPEND PROPERTY
+        OBJECT_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.ico"
+    )
+endif()
 
 # Find OpenGL
 find_package(OpenGL REQUIRED)
@@ -389,6 +402,7 @@ add_executable(
     ${PLATFORM_EXEC_FLAGS}
 
     ${DORIAX_EDITOR_SOURCES}
+    ${DORIAX_EDITOR_ICON_RC}
 )
 
 configure_doriax_editor_target(doriax-editor)
