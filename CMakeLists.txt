@@ -44,7 +44,7 @@ endif()
 set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
 
-set(DORIAX_EDITOR_ICON_RC)
+set(DORIAX_EDITOR_ICON_OBJECTS)
 if(WIN32)
     set(DORIAX_EDITOR_ICON_RC
         "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.rc"
@@ -52,6 +52,10 @@ if(WIN32)
     set_property(SOURCE "${DORIAX_EDITOR_ICON_RC}" APPEND PROPERTY
         OBJECT_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.ico"
+    )
+    add_library(doriax-editor-icon-resource OBJECT "${DORIAX_EDITOR_ICON_RC}")
+    set(DORIAX_EDITOR_ICON_OBJECTS
+        $<TARGET_OBJECTS:doriax-editor-icon-resource>
     )
 endif()
 
@@ -396,13 +400,19 @@ function(configure_doriax_editor_target target_name)
     endif()
 endfunction()
 
+if(TARGET doriax-editor-icon-resource)
+    set_property(TARGET doriax-editor-icon-resource
+        PROPERTY INCLUDE_DIRECTORIES ""
+    )
+endif()
+
 add_executable(
     doriax-editor
 
     ${PLATFORM_EXEC_FLAGS}
 
     ${DORIAX_EDITOR_SOURCES}
-    ${DORIAX_EDITOR_ICON_RC}
+    ${DORIAX_EDITOR_ICON_OBJECTS}
 )
 
 configure_doriax_editor_target(doriax-editor)
