@@ -300,7 +300,6 @@ namespace doriax::editor{
 
         uint32_t createNewSceneInternal(std::string sceneName, SceneType type, uint32_t previousSceneId);
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
-        void markParentScenesNeedUpdate(uint32_t childSceneId);
 
     public:
         Project();
@@ -437,6 +436,8 @@ namespace doriax::editor{
 
         void addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive = true);
         void removeChildScene(uint32_t sceneId, uint32_t childSceneId);
+        // Dirties parents of a child scene and forces the Engine layers to rebuild.
+        void markParentScenesNeedUpdate(uint32_t childSceneId);
         bool hasChildScene(uint32_t sceneId, uint32_t childSceneId) const;
         bool isChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId) const;
         void setChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId, bool startActive);

@@ -398,6 +398,11 @@ bool editor::Project::detachChildSceneFromParents(uint32_t childSceneId, const s
         changed = true;
     }
 
+    if (changed) {
+        // Dropped an inline child, so the Engine layers need rebuilding.
+        editor::getEditorHost().resetLastActivatedScene();
+    }
+
     return changed;
 }
 
@@ -2263,6 +2268,8 @@ void editor::Project::markParentScenesNeedUpdate(uint32_t childSceneId) {
             s.needUpdateRender = true;
         }
     }
+    // The inline child layers feed SceneRender::activate(), so force a re-activation.
+    editor::getEditorHost().resetLastActivatedScene();
 }
 
 void editor::Project::loadSceneProjectData(SceneProject* sceneProject, const YAML::Node& sceneNode) {
@@ -2400,7 +2407,10 @@ void editor::Project::removeChildScene(uint32_t sceneId, uint32_t childSceneId) 
     if (it != childScenes.end()) {
         childScenes.erase(it);
         sceneProject->isModified = true;
- 
+        sceneProject->needUpdateRender = true;
+        // Dropped an inline child, so the Engine layers need rebuilding.
+        editor::getEditorHost().resetLastActivatedScene();
+
         const SceneProject* childScene = getScene(childSceneId);
         if (childScene) {
             Out::info("Removed child scene '%s' from scene '%s'", childScene->name.c_str(), sceneProject->name.c_str());

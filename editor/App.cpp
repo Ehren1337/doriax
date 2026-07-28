@@ -1378,21 +1378,21 @@ void editor::App::engineRender(){
             }
             sceneProject.sceneRender->setChildSceneLayers(childLayers);
 
-            if (lastActivatedScene != sceneProject.id || sceneProject.needUpdateRender){
-                std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
+            // activate() reloads this scene and every layer, so it runs only on a scene
+            // change. Anything else needing it calls resetLastActivatedScene().
+            if (lastActivatedScene != sceneProject.id){
                 sceneProject.sceneRender->activate();
 
-                for (Scene* runtimeLayer : runtimeLayers) {
+                for (Scene* runtimeLayer : project.getRunningRuntimeLayers(sceneProject.id)) {
                     Engine::addSceneLayer(runtimeLayer);
                 }
-                if (lastActivatedScene != sceneProject.id) {
-                    lastActivatedScene = sceneProject.id;
-                    pendingResizeScene = sceneProject.id;
-                    sceneChanged = true;
-                    #ifdef _DEBUG
-                    printf("DEBUG: Activated scene %u\n", lastActivatedScene);
-                    #endif
-                }
+
+                lastActivatedScene = sceneProject.id;
+                pendingResizeScene = sceneProject.id;
+                sceneChanged = true;
+                #ifdef _DEBUG
+                printf("DEBUG: Activated scene %u\n", lastActivatedScene);
+                #endif
             }
 
             if (pendingResizeScene == sceneProject.id && width != 0 && height != 0) {

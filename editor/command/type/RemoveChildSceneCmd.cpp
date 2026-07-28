@@ -38,6 +38,8 @@ void editor::RemoveChildSceneCmd::undo() {
         if (index <= childScenes.size()){
             childScenes.insert(childScenes.begin() + index, childSceneRef);
             sceneProject->isModified = wasModified;
+            // Restores an inline child, so the Engine layers need rebuilding.
+            project->markParentScenesNeedUpdate(childSceneId);
         }
     }
 }
