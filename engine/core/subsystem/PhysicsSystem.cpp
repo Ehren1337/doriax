@@ -46,17 +46,21 @@ namespace {
     // One temp allocator + job pool shared by every scene's 3D world. Updates run
     // sequentially on the main thread, so a single pool avoids a per-scene thread pool
     // and 10 MiB buffer.
+    // Intentionally leaked, like Jolt's Factory: the editor keeps its App (and every
+    // Scene) in a static, so ~PhysicsSystem runs during static destruction and must not
+    // find these already gone.
     JPH::TempAllocatorImpl& sharedPhysicsTempAllocator(){
-        static JPH::TempAllocatorImpl instance(10 * 1024 * 1024);
-        return instance;
+        static JPH::TempAllocatorImpl* instance = new JPH::TempAllocatorImpl(10 * 1024 * 1024);
+        return *instance;
     }
     JPH::JobSystemThreadPool& sharedPhysicsJobSystem(){
         // hardware_concurrency() is unsigned and reports 0 when unknown, so clamp
         // instead of subtracting into a huge worker count on a single-core machine.
         const unsigned int cores = JPH::thread::hardware_concurrency();
         const int workers = (cores > 1) ? (int)(cores - 1) : 1;
-        static JPH::JobSystemThreadPool instance(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workers);
-        return instance;
+        static JPH::JobSystemThreadPool* instance =
+            new JPH::JobSystemThreadPool(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workers);
+        return *instance;
     }
 
 }
