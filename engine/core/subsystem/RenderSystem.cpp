@@ -2813,6 +2813,26 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     mesh.needUpdateBuffer = false;
 }
 
+// Once per frame, before any pass: the depth passes take their instance count from here.
+void RenderSystem::updateInstanceBuffers(){
+    auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
+
+    for (int i = 0; i < instmeshes->size(); i++){
+        InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
+
+        if (!instmesh.needUpdateBuffer)
+            continue;
+
+        // setData here because component can change order and lose reference
+        if (instmesh.numVisible > 0 && !instmesh.renderInstances.empty()){
+            instmesh.buffer.setData((unsigned char*)(&instmesh.renderInstances[0]), sizeof(InstanceRenderData)*instmesh.numVisible);
+            instmesh.buffer.getRender()->updateBuffer(instmesh.buffer.getSize(), instmesh.buffer.getData());
+        }
+
+        instmesh.needUpdateBuffer = false;
+    }
+}
+
 // Uploads a terrain view's CDLOD node selection, before the first pass of the frame
 // that draws it — the same rule as updateMeshBuffers. The depth and G-buffer passes
 // draw the main camera's selection and take their instance count from the CPU-side
@@ -2842,19 +2862,10 @@ bool RenderSystem::drawMesh(MeshComponent& mesh, Transform& transform, CameraCom
 
         updateMeshBuffers(mesh);
 
+        // Buffer already uploaded this frame by updateInstanceBuffers().
         unsigned int instanceCount = 1;
         if (instmesh){
             instanceCount = instmesh->numVisible;
-
-            if (instmesh->needUpdateBuffer){
-                // setData here because component can change order and lose reference
-                if (instmesh->numVisible > 0 && !instmesh->renderInstances.empty()){
-                    instmesh->buffer.setData((unsigned char*)(&instmesh->renderInstances[0]), sizeof(InstanceRenderData)*instmesh->numVisible);
-                    instmesh->buffer.getRender()->updateBuffer(instmesh->buffer.getSize(), instmesh->buffer.getData());
-                }
-
-                instmesh->needUpdateBuffer = false;
-            }
         }
 
         if (terrain){
@@ -6343,6 +6354,7 @@ void RenderSystem::draw(){
 
     updateShadowBindings();
     updateAllTerrainRenderTextures();
+    updateInstanceBuffers();
 
     // free the fixed-resolution target when the setting is turned off (the blit
     // pipeline itself is kept; it is cheap and may be re-enabled)

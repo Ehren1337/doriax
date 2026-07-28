@@ -435,6 +435,7 @@ namespace doriax{
 		bool loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		bool updateTerrainRenderTextures(TerrainComponent& terrain, MeshComponent& mesh);
 		void updateAllTerrainRenderTextures();
+		void updateInstanceBuffers();
 		Rect getScissorRect(UILayoutComponent& layout, ImageComponent& img, Transform& transform, CameraComponent& camera);
 
 		// terrain
