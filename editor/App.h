@@ -72,6 +72,11 @@ namespace doriax::editor{
         bool renderedSceneThisFrame = false;
         std::function<void()> wakeCallback;
 
+        // Footer stats, sampled only from consecutive drawn frames (see engineRender).
+        bool renderedScenePrevFrame = false;
+        float footerFramerate = 0.0f;
+        float footerDeltaMs = 0.0f;
+
         ImGuiID dockspace_id;
         ImGuiID dock_id_middle_top;
 

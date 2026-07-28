@@ -465,8 +465,8 @@ void editor::App::showFooter(){
     if (ImGui::Begin("##Footer", nullptr, flags)) {
         ImGui::SetWindowFontScale(fontScale);
 
-        const float fps = Engine::getFramerate();
-        const float deltaMs = Engine::getDeltatime() * 1000.0f;
+        const float fps = footerFramerate;
+        const float deltaMs = footerDeltaMs;
         const size_t queuedResources = Engine::getQueuedResourceCount();
         SceneProject* selectedScene = project.getSelectedScene();
         const bool hasSelectedScene = selectedScene != nullptr;
@@ -1436,6 +1436,16 @@ void editor::App::engineRender(){
             }
         }
     }
+
+    // A frame resuming after an idle gap measures the gap, not a frame time.
+    if (renderedSceneThisFrame && renderedScenePrevFrame){
+        footerFramerate = Engine::getFramerate();
+        footerDeltaMs = (float)(Engine::getDeltatime() * 1000.0);
+    }else{
+        footerFramerate = 0.0f;
+        footerDeltaMs = 0.0f;
+    }
+    renderedScenePrevFrame = renderedSceneThisFrame;
 }
 
 void editor::App::enqueueMainThreadTask(std::function<void()> task) {
