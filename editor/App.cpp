@@ -1309,6 +1309,10 @@ void editor::App::engineRender(){
     // continuous state (play/load/preview/thumbnail) is active, so the loop can idle.
     const bool thumbnailsPending = resourcesWindow && resourcesWindow->hasPendingThumbnailWork();
 
+    // Drop targets preview a dragged resource directly, with no command to flag the scene.
+    const ImGuiPayload* dragPayload = ImGui::GetDragDropPayload();
+    const bool draggingResourceFile = dragPayload && dragPayload->IsDataType("resource_files");
+
     // Keep drawing a few frames after the last change so late async uploads and
     // shader builds still get presented.
     const int RENDER_SETTLE_FRAMES = 30;
@@ -1317,6 +1321,8 @@ void editor::App::engineRender(){
         bool active = sp.needUpdateRender;
         // A running play session must advance and redraw its simulation every frame.
         if (sp.playState == ScenePlayState::PLAYING) active = true;
+        // A drag preview redraws until the settle frames cover its restore.
+        if (draggingResourceFile) active = true;
         if (isSelected && sp.scene && sp.sceneRender) {
             // Still loading a model, previewing a camera, or capturing a thumbnail.
             auto ms = sp.scene->getSystem<MeshSystem>();
