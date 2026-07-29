@@ -140,6 +140,9 @@ struct ProviderResponse {
     std::string errorCode;
     std::string errorType;
     std::string errorStatus;
+    // google.rpc.RetryInfo.retryDelay returned in error.details, usually a
+    // protobuf JSON duration such as "21s" or "1.045846877s".
+    std::string retryDelay;
     // Provider stop reason such as finish_reason "length", stop_reason "max_tokens",
     // or Gemini finishReason "MAX_TOKENS".
     std::string stopReason;

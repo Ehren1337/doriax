@@ -198,6 +198,34 @@ ProviderResponse parseErrorOrBody(const std::string& body, Json& root) {
             if (error.contains("status") && error["status"].is_string()) {
                 result.errorStatus = error["status"].get<std::string>();
             }
+            if (error.contains("details") && error["details"].is_array()) {
+                for (const Json& detail : error["details"]) {
+                    if (!detail.is_object()) {
+                        continue;
+                    }
+                    const auto typeIt = detail.find("@type");
+                    if (typeIt == detail.end() || !typeIt->is_string()) {
+                        continue;
+                    }
+                    const std::string detailType =
+                        typeIt->get<std::string>();
+                    if (detailType.find("google.rpc.RetryInfo") ==
+                        std::string::npos) {
+                        continue;
+                    }
+                    const Json* retryDelay = nullptr;
+                    if (detail.contains("retryDelay")) {
+                        retryDelay = &detail["retryDelay"];
+                    } else if (detail.contains("retry_delay")) {
+                        retryDelay = &detail["retry_delay"];
+                    }
+                    if (retryDelay && retryDelay->is_string()) {
+                        result.retryDelay =
+                            retryDelay->get<std::string>();
+                        break;
+                    }
+                }
+            }
         }
     }
     return result;

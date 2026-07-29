@@ -166,29 +166,39 @@ bool isRetryableRateLimit(long status, const ProviderResponse& error) {
 }
 
 std::chrono::milliseconds rateLimitRetryDelay(
-    const HttpResponse& response, const std::string& detail) {
+    const HttpResponse& response, const std::string& detail,
+    const std::string& structuredRetryDelay) {
+    std::chrono::milliseconds retryDelay(0);
+
     const std::string retryAfter = headerValue(response, "retry-after");
     if (!retryAfter.empty()) {
-        const std::chrono::milliseconds parsed = parseDuration(retryAfter, true);
-        if (parsed.count() > 0) {
-            return parsed;
-        }
+        retryDelay = std::max(
+            retryDelay, parseDuration(retryAfter, true));
+    }
+
+    if (!structuredRetryDelay.empty()) {
+        retryDelay = std::max(
+            retryDelay, parseDuration(structuredRetryDelay, false));
     }
 
     const std::string lowerDetail = lowercase(detail);
     constexpr std::string_view marker = "try again in ";
     const size_t markerPos = lowerDetail.find(marker);
     if (markerPos != std::string::npos) {
-        const std::chrono::milliseconds parsed = parseDuration(
-            std::string_view(lowerDetail).substr(markerPos + marker.size()), false);
-        if (parsed.count() > 0) {
-            return parsed;
-        }
+        retryDelay = std::max(
+            retryDelay,
+            parseDuration(
+                std::string_view(lowerDetail).substr(
+                    markerPos + marker.size()),
+                false));
     }
 
-    // If the provider supplied no direct retry instruction, conservatively
-    // wait for the slowest applicable request/token bucket reset.
-    std::chrono::milliseconds resetDelay(0);
+    if (retryDelay.count() > 0) {
+        return retryDelay;
+    }
+
+    // With no precise instruction, conservatively wait for the slowest
+    // applicable request/token bucket reset.
     for (const char* name : {
              "x-ratelimit-reset-tokens",
              "x-ratelimit-reset-project-tokens",
@@ -196,10 +206,11 @@ std::chrono::milliseconds rateLimitRetryDelay(
          }) {
         const std::string value = headerValue(response, name);
         if (!value.empty()) {
-            resetDelay = std::max(resetDelay, parseDuration(value, false));
+            retryDelay = std::max(
+                retryDelay, parseDuration(value, false));
         }
     }
-    return resetDelay;
+    return retryDelay;
 }
 
 } // namespace doriax::editor::ai

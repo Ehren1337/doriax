@@ -142,9 +142,10 @@ void compactCompletedToolHistory(std::vector<ChatMessage>& messages) {
 }
 
 std::chrono::milliseconds retryDelay(const HttpResponse& response,
-                                     const std::string& detail,
+                                     const ProviderResponse& error,
                                      int nextAttempt) {
-    std::chrono::milliseconds delay = rateLimitRetryDelay(response, detail);
+    std::chrono::milliseconds delay = rateLimitRetryDelay(
+        response, error.error, error.retryDelay);
     if (delay.count() > 0) {
         return std::min(delay + kRetryTimingMargin,
                         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -839,7 +840,7 @@ void AiService::runProviderRequest(ProviderRequest request, int retryAttempt) {
                 retryAttempt < kMaxRateLimitRetries) {
                 const int nextAttempt = retryAttempt + 1;
                 const std::chrono::milliseconds delay =
-                    retryDelay(httpResponse, errorBody.error, nextAttempt);
+                    retryDelay(httpResponse, errorBody, nextAttempt);
                 bool scheduled = false;
                 bool cancelled = false;
                 {

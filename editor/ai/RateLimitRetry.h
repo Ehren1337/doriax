@@ -11,9 +11,12 @@ namespace doriax::editor::ai {
 // the same status but must be shown immediately instead of retried.
 bool isRetryableRateLimit(long status, const ProviderResponse& error);
 
-// Reads Retry-After, x-ratelimit-reset-tokens, or the provider's
-// "try again in ..." detail. Returns zero when no usable hint is present.
+// Uses the longest precise hint from Retry-After, structured
+// google.rpc.RetryInfo, and the provider's "try again in ..." detail.
+// Rate-limit reset headers are a fallback because they commonly describe
+// time until a bucket is full, not the earliest successful retry.
 std::chrono::milliseconds rateLimitRetryDelay(
-    const HttpResponse& response, const std::string& detail);
+    const HttpResponse& response, const std::string& detail,
+    const std::string& structuredRetryDelay = {});
 
 } // namespace doriax::editor::ai
