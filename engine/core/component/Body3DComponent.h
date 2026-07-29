@@ -54,6 +54,8 @@ namespace doriax{
         float halfHeight = 0.5f;
         float topRadius = 0.5f;
         float bottomRadius = 0.5f;
+        // kg/m3: mass = scaled volume * density (radius-1 sphere is ~4189 kg).
+        // Shape2D::density is area-based and defaults to 1.
         float density = 1000.0f;
 
         Shape3DSource source = Shape3DSource::NONE;

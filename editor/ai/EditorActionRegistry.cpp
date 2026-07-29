@@ -340,7 +340,7 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"half_height", numberSchema("Capsule or cylinder half-height in mesh-local units; defaults to 0.5. A capsule is 2*(half_height+radius) tall")},
                 {"top_radius", numberSchema("Tapered capsule top radius in mesh-local units; defaults to 0.5")},
                 {"bottom_radius", numberSchema("Tapered capsule bottom radius in mesh-local units; defaults to 0.5")},
-                {"density", numberSchema("Shape density for dynamic bodies; defaults to 1000")}
+                {"density", numberSchema("Shape density in kg/m3 for dynamic bodies; defaults to 1000 (water). Mass is volume * density, so the default makes a radius-1 sphere weigh about 4189 kg and a 1x1x1 box 1000 kg. Pick a density that yields the mass the behaviour needs, so scripted forces stay plausible")}
             }, {"shape_type"}),
             false
         },
@@ -365,7 +365,7 @@ const std::vector<ToolDefinition>& cachedTools() {
                     {"items", vector2Schema("Point")}
                 }},
                 {"loop", boolSchema("Whether a chain closes back to its first point; defaults false")},
-                {"density", numberSchema("Shape density; defaults to 1")},
+                {"density", numberSchema("Shape density; defaults to 1, NOT the 1000 that 3D bodies default to. 2D mass is area * density, with sizes given in points and scaled to metres by pointsToMeterScale2D (64 by default), so a 100x100 box at the default density weighs about 2.4 kg")},
                 {"friction", numberSchema("Shape friction; defaults to 0.6")},
                 {"restitution", numberSchema("Shape restitution/bounce, 0-1; defaults to 0")}
             }, {"shape_type"}),
@@ -662,7 +662,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "update_script_file",
-            "Replace an existing project script file with complete content and refresh attached ScriptComponent properties. Lua content must use Doriax table modules, not Dori.Script or editor property paths. For Mesh/Shape color use Shape(self.scene, self.entity) and setColor(1,0,0,1) or setColor(Vector4(1,0,0,1)). C++ content must use flat quoted headers (\"Mesh.h\", not <core/Mesh.h>), cpp_subclass + setColor for mesh entities, onUpdate with REGISTER_ENGINE_EVENT, and destructor cleanup with UNREGISTER_ENGINE_EVENT.",
+            "Replace an existing project script file with complete content and refresh attached ScriptComponent properties. Lua content must use Doriax table modules, not Dori.Script or editor property paths. For Mesh/Shape color use Shape(self.scene, self.entity) and setColor(1,0,0,1) or setColor(Vector4(1,0,0,1)). Choose update timing correctly in both Lua and C++: onUpdate is for variable-frame non-physics logic, while continuous forces and torques must use onFixedUpdate and must not be multiplied by delta time. Size forces from the body's real mass, not from a guessed magnitude: 3D mass is shape volume * density (default density 1000 kg/m3), while 2D mass is shape area * density (default density 1), so never carry the 3D default over to a 2D body. C++ content must use flat quoted headers (\"Mesh.h\", not <core/Mesh.h>), cpp_subclass + setColor for mesh entities, REGISTER_ENGINE_EVENT with the appropriate update event, and matching destructor cleanup with UNREGISTER_ENGINE_EVENT.",
             objectSchema({
                 {"path", stringSchema("Existing safe project-relative script path. Allowed extensions: .lua, .cpp, .h, .hpp")},
                 {"content", stringSchema("Complete replacement file contents")},

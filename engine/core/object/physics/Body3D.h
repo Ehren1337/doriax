@@ -92,6 +92,7 @@ namespace doriax{
         void setAllowedDOFs(bool translationX, bool translationY, bool translationZ, bool rotationX, bool rotationY, bool rotationZ);
 
         float getMass() const;
+        // Live body only, lost on reload; persist mass via Shape3D::density.
         void setMass(float mass);
 
         void setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensity);
@@ -135,6 +136,8 @@ namespace doriax{
         Vector3 getAccumulatedTorque() const;
         Matrix4 getInverseInertia() const;
 
+        // Cleared by each fixed step: apply from onFixedUpdate, unscaled by dt.
+        // Single-vector overload is the center force (no applyForceToCenter).
         void applyForce(const Vector3& force);
         void applyForce(const Vector3& force, const Vector3& point);
         void applyTorque(const Vector3& torque);

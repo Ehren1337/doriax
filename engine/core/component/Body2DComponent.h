@@ -34,6 +34,8 @@ namespace doriax{
         uint8_t numVertices = 0;
         bool loop = false;
 
+        // mass = area * density, in metres after pointsToMeterScale2D.
+        // Shape3D::density is volume-based and defaults to 1000.
         float density = 1.0f;
         float friction = 0.6f;
         float restitution = 0.0f;

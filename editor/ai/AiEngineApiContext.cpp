@@ -107,7 +107,8 @@ const std::vector<doriax::editor::EngineAPISymbol>& getScriptMacroSymbols() {
          "must declare a method named exactly like the event, e.g. void onUpdate(). Engine events: onUpdate, "
          "onFixedUpdate, onDraw, onMouseDown, onMouseUp, onMouseMove, onKeyDown, onKeyUp, onTouchStart, onTouchMove, "
          "onTouchEnd, onGamepadConnect, onGamepadDisconnect, onGamepadButtonDown, onGamepadButtonUp, onGamepadAxisMove. "
-         "Available via \"Engine.h\".",
+         "onUpdate is variable-frame (UI, camera, animation); onFixedUpdate runs on the physics step, so continuous "
+         "forces and torques belong there, undivided by delta time. Available via \"Engine.h\".",
          ""},
         {"UNREGISTER_ENGINE_EVENT", "Macro",
          "UNREGISTER_ENGINE_EVENT(onUpdate); in the destructor; pair one with every REGISTER_ENGINE_EVENT.",
@@ -162,6 +163,8 @@ const std::vector<doriax::editor::EngineAPISymbol>& getLuaGlobalSymbols() {
          "global Engine event, and define a matching function Name:onUpdate(...) end. Engine events: onUpdate, "
          "onFixedUpdate, onDraw, onMouseDown, onMouseUp, onMouseMove, onKeyDown, onKeyUp, onTouchStart, onTouchMove, "
          "onTouchEnd, onGamepadConnect, onGamepadDisconnect, onGamepadButtonDown, onGamepadButtonUp, onGamepadAxisMove. "
+         "onUpdate is variable-frame (UI, camera, animation); onFixedUpdate runs on the physics step, so continuous "
+         "forces and torques belong there, unscaled by Engine.deltatime. "
          "No manual unregister is needed; the engine cleans up when the script is destroyed.",
          ""},
         {"RegisterEvent", "LuaGlobal",

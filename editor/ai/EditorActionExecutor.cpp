@@ -90,6 +90,296 @@ std::string lower(std::string value) {
     return value;
 }
 
+bool isScriptIdentifierStart(unsigned char c) {
+    return std::isalpha(c) || c == '_';
+}
+
+bool isScriptIdentifierContinuation(unsigned char c) {
+    return std::isalnum(c) || c == '_';
+}
+
+int luaLongBracketEquals(const std::string& content, size_t position) {
+    if (position >= content.size() || content[position] != '[') {
+        return -1;
+    }
+
+    size_t cursor = position + 1;
+    while (cursor < content.size() && content[cursor] == '=') {
+        ++cursor;
+    }
+    return cursor < content.size() && content[cursor] == '['
+        ? static_cast<int>(cursor - position - 1)
+        : -1;
+}
+
+size_t skipLuaLongBracket(const std::string& content, size_t position, int equals) {
+    const std::string closing = "]" + std::string(static_cast<size_t>(equals), '=') + "]";
+    const size_t contentStart = position + static_cast<size_t>(equals) + 2;
+    const size_t closingPosition = content.find(closing, contentStart);
+    return closingPosition == std::string::npos
+        ? content.size()
+        : closingPosition + closing.size();
+}
+
+std::vector<std::string> tokenizeLuaForValidation(const std::string& content) {
+    // Validation only cares about executable tokens. Skip all Lua string and
+    // comment forms so examples or explanations cannot look like real calls.
+    std::vector<std::string> tokens;
+    size_t cursor = 0;
+    while (cursor < content.size()) {
+        const unsigned char current = static_cast<unsigned char>(content[cursor]);
+        if (std::isspace(current)) {
+            ++cursor;
+            continue;
+        }
+
+        if (content[cursor] == '-' && cursor + 1 < content.size() &&
+            content[cursor + 1] == '-') {
+            const size_t commentBody = cursor + 2;
+            const int longCommentEquals = luaLongBracketEquals(content, commentBody);
+            if (longCommentEquals >= 0) {
+                cursor = skipLuaLongBracket(content, commentBody, longCommentEquals);
+            } else {
+                const size_t newline = content.find('\n', commentBody);
+                cursor = newline == std::string::npos ? content.size() : newline + 1;
+            }
+            continue;
+        }
+
+        if (content[cursor] == '\'' || content[cursor] == '"') {
+            const char quote = content[cursor++];
+            while (cursor < content.size()) {
+                if (content[cursor] == '\\' && cursor + 1 < content.size()) {
+                    cursor += 2;
+                } else if (content[cursor++] == quote) {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        const int longStringEquals = luaLongBracketEquals(content, cursor);
+        if (longStringEquals >= 0) {
+            cursor = skipLuaLongBracket(content, cursor, longStringEquals);
+            continue;
+        }
+
+        if (isScriptIdentifierStart(current)) {
+            const size_t start = cursor++;
+            while (cursor < content.size() &&
+                   isScriptIdentifierContinuation(
+                       static_cast<unsigned char>(content[cursor]))) {
+                ++cursor;
+            }
+            tokens.push_back(lower(content.substr(start, cursor - start)));
+            continue;
+        }
+
+        tokens.emplace_back(1, content[cursor++]);
+    }
+    return tokens;
+}
+
+std::string sanitizeCppForValidation(const std::string& content) {
+    std::string sanitized;
+    sanitized.reserve(content.size());
+    size_t cursor = 0;
+    while (cursor < content.size()) {
+        if (content[cursor] == '/' && cursor + 1 < content.size() &&
+            content[cursor + 1] == '/') {
+            const size_t newline = content.find('\n', cursor + 2);
+            if (newline == std::string::npos) {
+                break;
+            }
+            sanitized.push_back('\n');
+            cursor = newline + 1;
+            continue;
+        }
+
+        if (content[cursor] == '/' && cursor + 1 < content.size() &&
+            content[cursor + 1] == '*') {
+            const size_t closing = content.find("*/", cursor + 2);
+            cursor = closing == std::string::npos ? content.size() : closing + 2;
+            sanitized.push_back(' ');
+            continue;
+        }
+
+        if (content[cursor] == '\'' || content[cursor] == '"') {
+            const char quote = content[cursor++];
+            sanitized.push_back(' ');
+            while (cursor < content.size()) {
+                if (content[cursor] == '\\' && cursor + 1 < content.size()) {
+                    cursor += 2;
+                } else if (content[cursor++] == quote) {
+                    break;
+                }
+            }
+            sanitized.push_back(' ');
+            continue;
+        }
+
+        sanitized.push_back(content[cursor++]);
+    }
+    return sanitized;
+}
+
+std::string compactCppForValidation(const std::string& content) {
+    std::string compact = lower(sanitizeCppForValidation(content));
+    compact.erase(std::remove_if(compact.begin(), compact.end(), [](unsigned char c) {
+        return std::isspace(c);
+    }), compact.end());
+    return compact;
+}
+
+bool isContinuousPhysicsMutationName(const std::string& token) {
+    return token == "applyforce" ||
+           token == "applyforcetocenter" ||
+           token == "applytorque";
+}
+
+bool luaCallbackContainsContinuousPhysicsMutation(const std::string& content,
+                                                  const std::string& callback) {
+    const std::vector<std::string> tokens = tokenizeLuaForValidation(content);
+    for (size_t functionIndex = 0; functionIndex < tokens.size(); ++functionIndex) {
+        if (tokens[functionIndex] != "function") {
+            continue;
+        }
+
+        // Assignment form: Klass.onUpdate = function(self) ... end, where the
+        // name sits before the "function" keyword instead of after it.
+        bool isTargetCallback = functionIndex >= 3 &&
+            tokens[functionIndex - 1] == "=" &&
+            tokens[functionIndex - 2] == callback &&
+            (tokens[functionIndex - 3] == "." || tokens[functionIndex - 3] == ":");
+
+        size_t bodyStart = functionIndex + 1;
+        for (; bodyStart + 2 < tokens.size() && tokens[bodyStart] != "(";
+             ++bodyStart) {
+            if ((tokens[bodyStart] == ":" || tokens[bodyStart] == ".") &&
+                tokens[bodyStart + 1] == callback &&
+                tokens[bodyStart + 2] == "(") {
+                isTargetCallback = true;
+            }
+        }
+        if (!isTargetCallback || bodyStart >= tokens.size()) {
+            continue;
+        }
+
+        // Follow the callback to its matching end instead of stopping at the
+        // next function token; local functions may legitimately be nested.
+        std::vector<std::string> blockStack = {"function"};
+        int pendingLoopDo = 0;
+        for (size_t i = bodyStart + 1; i < tokens.size() && !blockStack.empty(); ++i) {
+            if (isContinuousPhysicsMutationName(tokens[i]) &&
+                i > 0 && i + 1 < tokens.size() &&
+                (tokens[i - 1] == ":" || tokens[i - 1] == ".") &&
+                tokens[i + 1] == "(") {
+                return true;
+            }
+
+            if (tokens[i] == "function" || tokens[i] == "if") {
+                blockStack.push_back(tokens[i]);
+            } else if (tokens[i] == "for" || tokens[i] == "while") {
+                blockStack.push_back(tokens[i]);
+                ++pendingLoopDo;
+            } else if (tokens[i] == "repeat") {
+                blockStack.push_back(tokens[i]);
+            } else if (tokens[i] == "do") {
+                if (pendingLoopDo > 0) {
+                    --pendingLoopDo;
+                } else {
+                    blockStack.push_back(tokens[i]);
+                }
+            } else if (tokens[i] == "until") {
+                if (!blockStack.empty() && blockStack.back() == "repeat") {
+                    blockStack.pop_back();
+                }
+            } else if (tokens[i] == "end") {
+                blockStack.pop_back();
+            }
+        }
+    }
+    return false;
+}
+
+bool containsContinuousPhysicsMutation(const std::string& content) {
+    static const char* calls[] = {
+        "applyforce(",
+        "applyforcetocenter(",
+        "applytorque("
+    };
+    for (const char* call : calls) {
+        if (content.find(call) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool cppCallbackContainsContinuousPhysicsMutation(const std::string& compactContent,
+                                                  const std::string& callback) {
+    // Whitespace is already stripped, so the leading "void" is what separates a
+    // definition from a call site. Both spellings must be covered: the split
+    // .h/.cpp skeleton writes void Klass::onUpdate(){...}, but the same body is
+    // just as valid written inline in the header as void onUpdate(){...}.
+    const std::string markers[] = {"::" + callback + "(", "void" + callback + "("};
+    for (const std::string& marker : markers) {
+        size_t searchFrom = 0;
+        while (true) {
+            const size_t markerPos = compactContent.find(marker, searchFrom);
+            if (markerPos == std::string::npos) {
+                break;
+            }
+
+            size_t cursor = markerPos + marker.size();
+            searchFrom = cursor;
+
+            int parenDepth = 1;
+            while (cursor < compactContent.size() && parenDepth > 0) {
+                if (compactContent[cursor] == '(') {
+                    ++parenDepth;
+                } else if (compactContent[cursor] == ')') {
+                    --parenDepth;
+                }
+                ++cursor;
+            }
+
+            // Step over trailing specifiers such as const/override/noexcept.
+            while (cursor < compactContent.size() &&
+                   isScriptIdentifierContinuation(
+                       static_cast<unsigned char>(compactContent[cursor]))) {
+                ++cursor;
+            }
+
+            // A declaration (void onUpdate();) has no body to inspect, and its
+            // next brace belongs to some unrelated function.
+            if (cursor >= compactContent.size() || compactContent[cursor] != '{') {
+                continue;
+            }
+
+            const size_t bodyStart = cursor;
+            int braceDepth = 0;
+            for (; cursor < compactContent.size(); ++cursor) {
+                if (compactContent[cursor] == '{') {
+                    ++braceDepth;
+                } else if (compactContent[cursor] == '}') {
+                    --braceDepth;
+                    if (braceDepth == 0) {
+                        break;
+                    }
+                }
+            }
+
+            if (containsContinuousPhysicsMutation(
+                    compactContent.substr(bodyStart, cursor - bodyStart + 1))) {
+                return true;
+            }
+            searchFrom = cursor;
+        }
+    }
+    return false;
+}
+
 std::string sceneTypeName(SceneType type) {
     switch (type) {
         case SceneType::SCENE_3D: return "3D";
@@ -701,9 +991,11 @@ std::string doriaxLuaScriptGuide(const std::string& className) {
            "use local shape = Shape(self.scene, self.entity); shape:setColor(1.0, 0.0, 0.0, 1.0). "
            "There is no Transform (or other component) global in Lua: to read or move an entity, wrap it with local obj = Object(self.scene, self.entity) "
            "then use obj.position / obj:setPosition(...) and similar (check the Object binding via read_engine_source for exact members). "
-           "For keyboard/mouse input use the Input class (Input.isKeyPressed(Input.KEY_LEFT), etc.), scaling motion by Engine.deltatime; "
+           "For keyboard/mouse input use the Input class (Input.isKeyPressed(Input.KEY_LEFT), etc.). Scale continuous direct non-physics movement by Engine.deltatime, but never multiply physics forces or torques by delta time; "
            "gamepads use Input.isGamepadButtonPressed(gamepad, Input.GAMEPAD_BUTTON_A) and Input.getGamepadAxis(gamepad, Input.GAMEPAD_AXIS_LEFT_X); gamepad ids are sparse, so iterate connected pads by dense index with local id = Input.getGamepadId(i) for i in 0..Input.numGamepads()-1 rather than assuming ids are 0..n-1. "
-           "Per-frame and input logic must be registered in :init() with the global RegisterEngineEvent(self, \"onUpdate\") and a matching function " + className + ":onUpdate() ... end; "
+           "Choose the update callback by timing domain. Variable-frame UI, camera, animation, and direct non-physics movement use RegisterEngineEvent(self, \"onUpdate\") and " + className + ":onUpdate(). Continuously applied body forces or torques MUST use RegisterEngineEvent(self, \"onFixedUpdate\") and " + className + ":onFixedUpdate(), because each physics world accumulates force calls until its next fixed step, so putting them in onUpdate makes effective force depend on render FPS; velocity control and physics-driving input polling belong there too. "
+           "The force calls differ by body type and are not interchangeable: Body3D uses body:applyForce(force) for a centre force, body:applyForce(force, point), and body:applyTorque(torque), and has NO applyForceToCenter; Body2D uses body:applyForceToCenter(force, wake), body:applyForce(force, point, wake) with no single-argument form, and body:applyTorque(torque, wake). "
+           "A dynamic body's mass comes from its shape and density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration instead of guessing a magnitude, reading the mass as the Lua PROPERTY body.mass on Body3D (Body2D uses the method body:getMass() instead), and if the motion needs an implausible force, lower the shape density or shrink the shape rather than inflating the force. "
            "valid event names: onUpdate, onFixedUpdate, onDraw, onMouseDown, onMouseUp, onMouseMove, onKeyDown, onKeyUp, onTouchStart, onTouchMove, onTouchEnd, "
            "onGamepadConnect, onGamepadDisconnect, onGamepadButtonDown, onGamepadButtonUp, onGamepadAxisMove. "
            "For component/UI events use the global RegisterEvent(self, eventObject, \"method\"), getting the event object from a wrapper, e.g. local b = Button(self.scene, self.entity); RegisterEvent(self, b:getButtonComponent().onPress, \"onPress\"). "
@@ -724,16 +1016,19 @@ std::string doriaxCppScriptGuide(ScriptType type, const std::string& parentClass
           << "A Doriax script class needs no class-declaration or reflection macro (no D_OBJECT/GDCLASS/GENERATED_BODY/Q_OBJECT): just inherit the base class and declare a (doriax::Scene*, doriax::Entity) constructor. Prefer editing the class skeleton create_script already generated rather than rewriting it from scratch. ";
     if (type == ScriptType::SCRIPT_CLASS) {
         guide << "cpp_script_class inherits doriax::ScriptBase for general entity logic. "
-              << "Register frame callbacks with REGISTER_ENGINE_EVENT(onUpdate) in the constructor, "
-              << "unregister with UNREGISTER_ENGINE_EVENT(onUpdate) in the destructor, and implement void onUpdate(). "
+              << "Use REGISTER_ENGINE_EVENT(onUpdate) and void onUpdate() for variable-frame logic, or "
+              << "REGISTER_ENGINE_EVENT(onFixedUpdate) and void onFixedUpdate() for physics-step logic; "
+              << "pair the chosen event with the matching UNREGISTER_ENGINE_EVENT in the destructor. "
               << "ScriptBase exposes getScene()/getEntity(); construct a runtime wrapper such as Object(getScene(), getEntity()) to control the entity.";
     } else {
         guide << "cpp_subclass inherits doriax::" << parentClass
               << " and calls engine methods (e.g. setColor) directly on this. "
-              << "Register frame callbacks with REGISTER_ENGINE_EVENT(onUpdate) in the constructor and unregister them in the destructor when using onUpdate(). "
+              << "Register variable-frame callbacks with REGISTER_ENGINE_EVENT(onUpdate), or physics-step callbacks with REGISTER_ENGINE_EVENT(onFixedUpdate), and unregister the matching event in the destructor. "
               << "For mesh/cube color on a Mesh entity, prefer cpp_subclass extending Mesh (or Shape), not ScriptBase.";
     }
-    guide << " Use ONLY C++ symbols (types, methods, macros, enums, overloads) that exist in the Doriax engine source; if it is not in the source it does not exist, so never invent it or borrow it from another engine. For exact signatures, overloads, enum values, and macros, grep the real headers with search_engine_source and read them with read_engine_source (e.g. core/Input.h, core/math/Quaternion.h) instead of guessing from search_engine_api, which uses Lua-style names and omits C++ overloads. Watch the common trap: keyboard key codes in C++ are D_KEY_* macros from \"Input.h\" (Input::KEY_* is Lua-only), so look up the exact macro and any constructor overloads (e.g. Quaternion) in source before using them. "
+    guide << " Continuous Body2D/Body3D forces or torques MUST run in onFixedUpdate, since each physics world accumulates force calls until its next fixed step and applying them in onUpdate is render-frame-rate-dependent; velocity control and physics-driving input polling belong there too. Do not multiply forces or torques by Engine::getDeltatime(); the physics engine integrates them over the fixed step. "
+          << "A dynamic body's mass comes from its shape and density, not from an authored number, and 3D and 2D differ: 3D mass is volume * density with default density 1000 (kg/m3), so a radius-1 sphere is about 4189 kg and needs roughly 4189 N per 1 m/s2, while 2D mass is area * density with default density 1 (2D sizes are points scaled by pointsToMeterScale2D, 64 by default). Compute forces as mass * desired acceleration using getMass() instead of guessing a magnitude, and if the motion needs an implausible force, lower the shape density or shrink the shape rather than inflating the force (Body3D::setMass writes only the live body and is lost on reload). "
+          << "Use ONLY C++ symbols (types, methods, macros, enums, overloads) that exist in the Doriax engine source; if it is not in the source it does not exist, so never invent it or borrow it from another engine. For exact signatures, overloads, enum values, and macros, grep the real headers with search_engine_source and read them with read_engine_source (e.g. core/Input.h, core/math/Quaternion.h) instead of guessing from search_engine_api, which uses Lua-style names and omits C++ overloads. Watch the common trap: keyboard key codes in C++ are D_KEY_* macros from \"Input.h\" (Input::KEY_* is Lua-only), so look up the exact macro and any constructor overloads (e.g. Quaternion) in source before using them. "
           << "Verified entity-control recipe: on an Object wrapper (Object obj(getScene(), getEntity()), or directly on this in a cpp_subclass) read obj.getPosition()/obj.getRotation() and write obj.setPosition(x, y, z)/obj.setRotation(q). Object has NO getForward()/getDirection(); get a facing vector by rotating a basis vector with the rotation, e.g. Vector3 forward = obj.getRotation() * Vector3(0, 0, -1) (Quaternion also has xAxis()/yAxis()/zAxis()). Build an axis-angle rotation with the ANGLE FIRST: Quaternion(float angle, const Vector3& axis), e.g. Quaternion(speed * Engine::getDeltatime(), Vector3(0, 1, 0)) -- never Quaternion(axis, angle). "
           << "Angle arguments are in the engine's default unit, DEGREES unless Engine::setUseDegrees(false) was called: Quaternion(angle, axis), Quaternion::fromEulerAngles, Camera::rotateView and friends all run their angle through Angle::defaultToRad, so do not pass radians to them. Include \"Angle.h\" and convert with Angle::degToDefault/Angle::radToDefault; std::sin/std::cos always need radians, so feed them Angle::defaultToRad(angle). "
           << "Camera orientation comes from its target, not its rotation: CameraComponent.useTarget defaults to true and Camera::setTarget re-enables it, so while it is on the view matrix is lookAt(position, target, up) and calling setRotation() on the camera entity has no effect on the view (call cam.disableTarget() first to drive the view from the rotation, where forward = rotation * Vector3(0, 0, -1)). For a third-person/orbit camera, place the camera with spherical coordinates around the target: float p = Angle::defaultToRad(pitch), y = Angle::defaultToRad(yaw); Vector3 offset(cosf(p)*sinf(y), sinf(p), cosf(p)*cosf(y)); cam.setPosition(target + offset*distance); cam.setTarget(target); -- a positive pitch then places the camera ABOVE the target, and the horizontal movement basis is forward = Vector3(-sinf(y), 0, -cosf(y)), right = Vector3(cosf(y), 0, -sinf(y)). Never derive the camera position as target - forward*distance from a rotated forward vector: rotations are right-handed, so a positive pitch tilts the VIEW up and that formula puts the camera below the target, forcing a bogus negative pitch to compensate. "
@@ -781,11 +1076,19 @@ std::string validateDoriaxLuaScriptContent(const std::string& content) {
         return "Doriax Lua modules must return their script table.";
     }
 
+    if (luaCallbackContainsContinuousPhysicsMutation(content, "onupdate")) {
+        return "Continuous Body2D/Body3D forces and torques must run in onFixedUpdate, not onUpdate. "
+               "Each physics world accumulates force calls until its next fixed step, so onUpdate makes the effective "
+               "force depend on render FPS. RegisterEngineEvent(self, \"onFixedUpdate\"), move the physics code "
+               "to the matching :onFixedUpdate() callback, and do not multiply force or torque by Engine.deltatime.";
+    }
+
     return {};
 }
 
 std::string validateDoriaxCppScriptContent(const std::string& content) {
     const std::string contentLower = lower(content);
+    const std::string compactContent = compactCppForValidation(content);
 
     struct ForbiddenCppPattern {
         const char* token;
@@ -810,6 +1113,13 @@ std::string validateDoriaxCppScriptContent(const std::string& content) {
         if (contentLower.find(pattern.token) != std::string::npos) {
             return std::string(pattern.message) + " Call search_engine_api and rewrite using the Doriax C++ script pattern.";
         }
+    }
+
+    if (cppCallbackContainsContinuousPhysicsMutation(compactContent, "onupdate")) {
+        return "Continuous Body2D/Body3D forces and torques must run in onFixedUpdate, not onUpdate. "
+               "Each physics world accumulates force calls until its next fixed step, so onUpdate makes the effective "
+               "force depend on render FPS. Register and implement onFixedUpdate, unregister the matching event "
+               "in the destructor, and do not multiply force or torque by Engine::getDeltatime().";
     }
 
     return {};
@@ -2871,7 +3181,9 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
             "If the user asked for behavior, call search_engine_api for required runtime wrappers/methods, then update_script_file with complete Lua contents.";
     } else {
         data["cpp_script_guide"] = doriaxCppScriptGuide(type, parentClass);
-        data["cpp_startup_method"] = "onUpdate with REGISTER_ENGINE_EVENT in constructor and UNREGISTER_ENGINE_EVENT in destructor";
+        data["cpp_startup_method"] =
+            "Use onUpdate for variable-frame non-physics logic or onFixedUpdate for physics-step logic, "
+            "with matching REGISTER_ENGINE_EVENT/UNREGISTER_ENGINE_EVENT calls";
         if (parentClass == "Mesh") {
             data["recommended_type"] = "cpp_subclass";
             data["cpp_cube_color_example"] =

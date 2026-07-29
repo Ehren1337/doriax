@@ -138,6 +138,8 @@ namespace doriax{
 
         void applyMassFromShapes();
 
+        // Cleared by each fixed step: apply from onFixedUpdate, unscaled by dt.
+        // Center force needs applyForceToCenter (Body3D is the reverse).
         void applyForce(const Vector2& force, const Vector2& point, bool wake);
         void applyForceToCenter(const Vector2& force, bool wake);
         void applyTorque(float torque, bool wake);
