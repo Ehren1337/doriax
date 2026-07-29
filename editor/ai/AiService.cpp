@@ -23,6 +23,123 @@ namespace {
 constexpr int kMaxRateLimitRetries = 5;
 constexpr auto kRetryTimingMargin = std::chrono::milliseconds(250);
 constexpr auto kMaxProviderRetryDelay = std::chrono::minutes(5);
+constexpr size_t kFullHistoricalToolRounds = 1;
+constexpr size_t kHistoricalToolResultBytes = 2048;
+constexpr size_t kHistoricalArgumentStringBytes = 512;
+
+struct ToolRoundRange {
+    size_t assistant = 0;
+    size_t toolBegin = 0;
+    size_t toolEnd = 0;
+};
+
+size_t utf8PrefixLength(const std::string& value, size_t maxBytes) {
+    size_t end = std::min(value.size(), maxBytes);
+    if (end == value.size()) {
+        return end;
+    }
+    while (end > 0 &&
+           (static_cast<unsigned char>(value[end]) & 0xc0u) == 0x80u) {
+        --end;
+    }
+    return end;
+}
+
+std::string compactHistoricalToolContent(const std::string& content) {
+    if (content.size() <= kHistoricalToolResultBytes) {
+        return content;
+    }
+
+    const size_t prefixBytes = utf8PrefixLength(
+        content, kHistoricalToolResultBytes);
+    return content.substr(0, prefixBytes) +
+           "\n... [older tool result compacted; " +
+           std::to_string(content.size() - prefixBytes) + " bytes omitted]";
+}
+
+void compactHistoricalArgument(Json& value) {
+    if (value.is_string()) {
+        const std::string text = value.get<std::string>();
+        if (text.size() > kHistoricalArgumentStringBytes) {
+            const size_t prefixBytes = utf8PrefixLength(
+                text, kHistoricalArgumentStringBytes);
+            value = text.substr(0, prefixBytes) +
+                    "\n... [older tool argument compacted]";
+        }
+        return;
+    }
+
+    if (value.is_array()) {
+        for (Json& item : value) {
+            compactHistoricalArgument(item);
+        }
+        return;
+    }
+
+    if (value.is_object()) {
+        for (auto& item : value.items()) {
+            compactHistoricalArgument(item.value());
+        }
+    }
+}
+
+// Provider requests are stateless, so their history must retain valid
+// assistant/tool pairings. Once a later model response has consumed a tool
+// round, however, its large source dumps and write arguments can be shortened.
+// The stored conversation is never changed, and the newest completed round
+// plus the currently unanswered round remain verbatim as working context.
+void compactCompletedToolHistory(std::vector<ChatMessage>& messages) {
+    std::vector<ToolRoundRange> completedRounds;
+    for (size_t i = 0; i < messages.size(); ++i) {
+        if (messages[i].role != ChatRole::Assistant ||
+            messages[i].toolCalls.empty()) {
+            continue;
+        }
+
+        const size_t toolBegin = i + 1;
+        size_t toolEnd = toolBegin;
+        while (toolEnd < messages.size() &&
+               messages[toolEnd].role == ChatRole::Tool) {
+            ++toolEnd;
+        }
+
+        // A later non-tool message means the provider already consumed this
+        // result run. A trailing tool run is the continuation being built now.
+        if (toolEnd > toolBegin && toolEnd < messages.size()) {
+            completedRounds.push_back({i, toolBegin, toolEnd});
+        }
+        if (toolEnd > toolBegin) {
+            i = toolEnd - 1;
+        }
+    }
+
+    if (completedRounds.size() <= kFullHistoricalToolRounds) {
+        return;
+    }
+
+    const size_t compactCount =
+        completedRounds.size() - kFullHistoricalToolRounds;
+    for (size_t roundIndex = 0; roundIndex < compactCount; ++roundIndex) {
+        const ToolRoundRange& round = completedRounds[roundIndex];
+        ChatMessage& assistant = messages[round.assistant];
+        const bool hasSignedReasoning =
+            !assistant.thinkingBlocks.empty() ||
+            std::any_of(
+                assistant.toolCalls.begin(), assistant.toolCalls.end(),
+                [](const ToolCall& call) {
+                    return !call.thoughtSignature.empty();
+                });
+        if (!hasSignedReasoning) {
+            for (ToolCall& call : assistant.toolCalls) {
+                compactHistoricalArgument(call.arguments);
+            }
+        }
+        for (size_t i = round.toolBegin; i < round.toolEnd; ++i) {
+            messages[i].content =
+                compactHistoricalToolContent(messages[i].content);
+        }
+    }
+}
 
 std::chrono::milliseconds retryDelay(const HttpResponse& response,
                                      const std::string& detail,
@@ -448,12 +565,17 @@ ActionResult AiService::executeProposal(uint64_t proposalId, EditorActionExecuto
         ++revision;
     }
 
-    // Read-only tools are exploratory: a missing entity/resource/component is
-    // useful feedback to the model, not an editor failure. Keep the failed
-    // tool result in chat, but reserve the output error log for actions that
-    // attempted to mutate the project and did not complete.
-    if (!result.success && !proposal.readOnly) {
-        Out::error("AI action failed: %s", result.message.c_str());
+    if (!result.success) {
+        switch (result.failureSeverity) {
+            case ActionFailureSeverity::ExpectedMiss:
+                break;
+            case ActionFailureSeverity::Warning:
+                Out::warning("AI action warning: %s", result.message.c_str());
+                break;
+            case ActionFailureSeverity::Error:
+                Out::error("AI action failed: %s", result.message.c_str());
+                break;
+        }
     }
 
     return result;
@@ -630,6 +752,7 @@ ProviderRequest AiService::buildRequestSnapshotLocked() const {
     request.settings = settings;
     request.apiKey = SecretStore::getApiKey(settings.provider);
     request.messages = messages;
+    compactCompletedToolHistory(request.messages);
     request.tools = EditorActionRegistry::tools();
     request.systemPrompt = buildSystemPrompt();
     return request;

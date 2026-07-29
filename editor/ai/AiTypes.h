@@ -168,10 +168,22 @@ struct HttpResponse {
     std::vector<std::pair<std::string, std::string>> headers;
 };
 
+enum class ActionFailureSeverity {
+    // An exploratory lookup did not find the requested scene/entity/component.
+    // The model should see the miss, but it is not an editor diagnostic.
+    ExpectedMiss,
+    // The request was invalid or unsupported, without indicating an editor or
+    // project failure.
+    Warning,
+    // The editor, project, filesystem, or external dependency failed.
+    Error
+};
+
 struct ActionResult {
     bool success = false;
     std::string message;
     Json data = Json::object();
+    ActionFailureSeverity failureSeverity = ActionFailureSeverity::Error;
 };
 
 struct ActionProposal {

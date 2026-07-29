@@ -737,6 +737,27 @@ std::string compactTitleText(const std::string& text) {
     return out;
 }
 
+std::string toolFailureDetail(const std::string& content) {
+    const size_t lineEnd = content.find_first_of("\r\n");
+    std::string detail = content.substr(0, lineEnd);
+    constexpr const char* kErrorPrefix = "Error: ";
+    if (detail.rfind(kErrorPrefix, 0) == 0) {
+        detail.erase(0, std::strlen(kErrorPrefix));
+    }
+    detail = compactTitleText(detail);
+
+    constexpr size_t kMaxDetailBytes = 240;
+    if (detail.size() > kMaxDetailBytes) {
+        size_t end = kMaxDetailBytes;
+        while (end > 0 && isUtf8Continuation(detail[end])) {
+            --end;
+        }
+        detail.resize(end);
+        detail += "...";
+    }
+    return detail;
+}
+
 std::string conversationTitleFromMessages(const std::vector<ai::ChatMessage>& messages) {
     for (const auto& message : messages) {
         if (message.role != ai::ChatRole::User) {
@@ -1265,6 +1286,12 @@ void AiChatWindow::drawTranscript(float height) {
                                                                       : ICON_FA_CIRCLE_XMARK)
                                    + "  " + label;
                 paragraphs.push_back({header, message.toolSuccess ? okCol : errCol});
+                if (!message.toolSuccess) {
+                    const std::string detail = toolFailureDetail(message.content);
+                    if (!detail.empty()) {
+                        paragraphs.push_back({detail, errCol});
+                    }
+                }
                 break;
             }
         }

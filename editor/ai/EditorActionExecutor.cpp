@@ -823,6 +823,14 @@ ActionResult failResult(const std::string& message) {
     return {false, message, Json::object()};
 }
 
+ActionResult expectedMissResult(const std::string& message) {
+    return {false, message, Json::object(), ActionFailureSeverity::ExpectedMiss};
+}
+
+ActionResult warningResult(const std::string& message) {
+    return {false, message, Json::object(), ActionFailureSeverity::Warning};
+}
+
 std::string fileTypeFromPath(const fs::path& path) {
     const std::string value = path.string();
     if (Util::isModelFile(value)) return "model";
@@ -1434,6 +1442,10 @@ ActionResult EditorActionExecutor::execute(const std::string& name,
                                            const std::atomic<bool>* cancel) {
     ValidationResult validation = EditorActionRegistry::validate(name, arguments);
     if (!validation.ok) {
+        if (EditorActionRegistry::hasTool(name) &&
+            EditorActionRegistry::isReadOnly(name)) {
+            return warningResult(validation.error);
+        }
         return failResult(validation.error);
     }
 
@@ -1593,7 +1605,7 @@ ActionResult EditorActionExecutor::listSceneEntities(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) {
-        return failResult("Scene not found.");
+        return expectedMissResult("Scene not found.");
     }
 
     Json entities = Json::array();
@@ -1616,10 +1628,14 @@ ActionResult EditorActionExecutor::listSceneEntities(const Json& arguments) {
 ActionResult EditorActionExecutor::inspectEntity(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
-    if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
+    if (!sceneProject || !sceneProject->scene) {
+        return expectedMissResult("Scene not found.");
+    }
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) {
+        return expectedMissResult("Entity not found.");
+    }
 
     Json data = {
         {"scene_id", sceneId},
@@ -1665,19 +1681,24 @@ ActionResult EditorActionExecutor::inspectEntity(const Json& arguments) {
 ActionResult EditorActionExecutor::inspectComponent(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
-    if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
+    if (!sceneProject || !sceneProject->scene) {
+        return expectedMissResult("Scene not found.");
+    }
 
     Entity entity = resolveEntity(sceneProject, arguments);
-    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+    if (entity == NULL_ENTITY) {
+        return expectedMissResult("Entity not found.");
+    }
 
     ComponentType component;
     if (!parseComponentType(arguments.value("component", ""), component)) {
-        return failResult("Unknown component type.");
+        return warningResult("Unknown component type.");
     }
 
     auto properties = Catalog::findEntityProperties(sceneProject->scene, entity, component);
     if (properties.empty()) {
-        return failResult("Component not found on entity or has no inspectable properties.");
+        return expectedMissResult(
+            "Component not found on entity or has no inspectable properties.");
     }
 
     Json props = Json::object();
@@ -3531,7 +3552,7 @@ ActionResult EditorActionExecutor::searchCuratedAssets(const Json& arguments, co
         return okResult("Searched Sketchfab metadata. Downloads require Sketchfab user OAuth.", Json{{"results", results}});
     }
 
-    return failResult("Unsupported curated provider: " + provider);
+    return warningResult("Unsupported curated provider: " + provider);
 }
 
 ActionResult EditorActionExecutor::downloadCuratedAsset(const Json& arguments, const std::atomic<bool>* cancel) {
@@ -3624,24 +3645,36 @@ ActionResult EditorActionExecutor::downloadCuratedAsset(const Json& arguments, c
 ActionResult EditorActionExecutor::readResourceFile(const Json& arguments) {
     std::string error;
     fs::path rel;
-    if (!safeRelativePath(project, arguments, "path", rel, error, true)) {
-        return failResult(error);
+    if (!safeRelativePath(project, arguments, "path", rel, error, false)) {
+        return warningResult(error);
     }
 
     const std::string ext = lower(rel.extension().string());
     if (!isReadableTextResource(ext)) {
-        return failResult("path extension is not supported for read_resource_file.");
+        return warningResult(
+            "path extension is not supported for read_resource_file.");
     }
 
-    const fs::path fullPath = project->getProjectPath() / rel;
+    const fs::path projectRoot = project->getProjectPath();
+    if (projectRoot.empty() || !fs::exists(projectRoot)) {
+        return failResult("Project path does not exist.");
+    }
+    const fs::path fullPath = projectRoot / rel;
+    if (!fs::exists(fullPath)) {
+        return expectedMissResult(
+            "Resource file not found: " + rel.generic_string());
+    }
     std::ifstream in(fullPath, std::ios::binary);
-    if (!in) return failResult("Failed to open resource file.");
+    if (!in) {
+        return failResult(
+            "Failed to open resource file: " + rel.generic_string());
+    }
 
     constexpr size_t kMaxBytes = 512 * 1024;
     std::string content;
     content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     if (content.size() > kMaxBytes) {
-        return failResult("Resource file is too large to read (max 512 KB).");
+        return warningResult("Resource file is too large to read (max 512 KB).");
     }
 
     return okResult("Read resource file.",
@@ -3720,16 +3753,26 @@ ActionResult EditorActionExecutor::readEngineSource(const Json& arguments) {
     }
     fs::path rel = fs::path(arguments["path"].get<std::string>()).lexically_normal();
     if (!PathUtils::isSafeRelativePath(rel)) {
-        return failResult("path must be a safe engine-source-relative path, e.g. core/math/Quaternion.h.");
+        return warningResult(
+            "path must be a safe engine-source-relative path, "
+            "e.g. core/math/Quaternion.h.");
     }
     if (!isEngineSourceExt(lower(rel.extension().string()))) {
-        return failResult("read_engine_source only reads engine source files (.h, .hpp, .inl, .cpp, .lua).");
+        return warningResult(
+            "read_engine_source only reads engine source files "
+            "(.h, .hpp, .inl, .cpp, .lua).");
     }
 
     const fs::path engineRoot = FileUtils::getExecutableDir() / "engine";
+    if (!fs::exists(engineRoot)) {
+        return failResult(
+            "Engine source not found next to the editor "
+            "(expected <editor>/engine).");
+    }
     const fs::path fullPath = engineRoot / rel;
     if (!fs::exists(fullPath)) {
-        return failResult("Engine source file not found: " + rel.generic_string());
+        return expectedMissResult(
+            "Engine source file not found: " + rel.generic_string());
     }
 
     std::string content;
@@ -4023,7 +4066,9 @@ ActionResult EditorActionExecutor::setComponentProperties(const Json& arguments)
 ActionResult EditorActionExecutor::inspectScene(const Json& arguments) {
     uint32_t sceneId = resolveSceneId(project, arguments);
     SceneProject* sceneProject = project->getScene(sceneId);
-    if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
+    if (!sceneProject || !sceneProject->scene) {
+        return expectedMissResult("Scene not found.");
+    }
 
     Json childScenes = Json::array();
     for (uint32_t childId : project->getChildScenes(sceneId)) {
