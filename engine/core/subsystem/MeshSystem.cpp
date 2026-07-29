@@ -4824,6 +4824,13 @@ void MeshSystem::update(double dt){
         if (mesh.aabb == AABB::ZERO){
             calculateMeshAABB(mesh);
         }
+
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            if (!mesh.submeshes[s].hasTextureRect && mesh.submeshes[s].textureRect != Rect(0.0f, 0.0f, 1.0f, 1.0f)){
+                mesh.submeshes[s].hasTextureRect = true;
+                mesh.needReload = true;
+            }
+        }
     }
 
 }
