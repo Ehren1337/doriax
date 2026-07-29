@@ -247,6 +247,10 @@ bool Engine::isSceneRunning(Scene* scene){
     return it != scenes.end();
 }
 
+bool Engine::hasScenesToExecuteOnce(){
+    return !oneTimeScenes.empty();
+}
+
 Scene* Engine::getMainScene(){
     return mainScene;
 }

@@ -268,6 +268,7 @@ namespace doriax {
         static void removeAllScenes();
 
         static bool isSceneRunning(Scene* scene);
+        static bool hasScenesToExecuteOnce();
         static Scene* getMainScene();
         static Scene* getLastScene();
 

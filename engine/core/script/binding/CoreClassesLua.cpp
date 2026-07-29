@@ -215,6 +215,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("removeAllSceneLayers", &Engine::removeAllSceneLayers)
         .addStaticFunction("removeAllScenes", &Engine::removeAllScenes)
         .addStaticFunction("isSceneRunning", &Engine::isSceneRunning)
+        .addStaticFunction("hasScenesToExecuteOnce", &Engine::hasScenesToExecuteOnce)
         .addStaticFunction("getMainScene", &Engine::getMainScene)
         .addStaticFunction("getLastScene", &Engine::getLastScene)
         .addStaticFunction("pauseGameEvents", &Engine::pauseGameEvents)

@@ -1332,6 +1332,8 @@ void editor::App::engineRender(){
             if (rs && !rs->isAllLoaded()) active = true;
             if (sp.sceneRender->isPreviewCameraActive()) active = true;
             if (thumbnailsPending) active = true;
+            // Preview scenes (shape, material, direction) only draw inside systemDraw().
+            if (Engine::hasScenesToExecuteOnce()) active = true;
         }
 
         if (active) {
