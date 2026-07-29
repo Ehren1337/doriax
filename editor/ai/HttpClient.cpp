@@ -5,6 +5,7 @@
 #include <functional>
 #include <iomanip>
 #include <sstream>
+#include <string_view>
 
 #ifdef _WIN32
     #define WIN32_LEAN_AND_MEAN
@@ -42,6 +43,17 @@ std::wstring toWide(const std::string& utf8) {
     return wide;
 }
 
+std::string toUtf8(const std::wstring& wide) {
+    if (wide.empty()) return {};
+    const int len = WideCharToMultiByte(CP_UTF8, 0, wide.data(),
+                                        static_cast<int>(wide.size()), nullptr, 0,
+                                        nullptr, nullptr);
+    std::string utf8(static_cast<size_t>(len), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()),
+                        utf8.data(), len, nullptr, nullptr);
+    return utf8;
+}
+
 std::string winHttpError(const char* context) {
     return std::string(context) + " (WinHTTP error " + std::to_string(GetLastError()) + ")";
 }
@@ -57,6 +69,27 @@ struct Handle {
     operator HINTERNET() const { return h; }
     explicit operator bool() const { return h != nullptr; }
 };
+
+void appendResponseHeader(HINTERNET request, const wchar_t* queryName,
+                          const char* storedName, HttpResponse& response) {
+    DWORD size = 0;
+    WinHttpQueryHeaders(request, WINHTTP_QUERY_CUSTOM, queryName, nullptr, &size,
+                        WINHTTP_NO_HEADER_INDEX);
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || size < sizeof(wchar_t)) {
+        return;
+    }
+
+    std::wstring value(size / sizeof(wchar_t), L'\0');
+    if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_CUSTOM, queryName,
+                             value.data(), &size, WINHTTP_NO_HEADER_INDEX)) {
+        return;
+    }
+    value.resize(size / sizeof(wchar_t));
+    while (!value.empty() && value.back() == L'\0') {
+        value.pop_back();
+    }
+    response.headers.emplace_back(storedName, toUtf8(value));
+}
 
 HttpResponse performRequest(const HttpRequest& request,
                             const BodySink& sink,
@@ -145,6 +178,13 @@ HttpResponse performRequest(const HttpRequest& request,
                         WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize,
                         WINHTTP_NO_HEADER_INDEX);
     response.status = statusCode;
+    appendResponseHeader(req, L"Retry-After", "retry-after", response);
+    appendResponseHeader(req, L"x-ratelimit-reset-tokens",
+                         "x-ratelimit-reset-tokens", response);
+    appendResponseHeader(req, L"x-ratelimit-reset-project-tokens",
+                         "x-ratelimit-reset-project-tokens", response);
+    appendResponseHeader(req, L"x-ratelimit-reset-requests",
+                         "x-ratelimit-reset-requests", response);
 
     while (true) {
         if (cancel && cancel->load()) {
@@ -186,6 +226,31 @@ size_t writeCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
     return (*sink)(ptr, total) ? total : 0;
 }
 
+size_t headerCallback(char* ptr, size_t size, size_t nmemb, void* userdata) {
+    auto* response = static_cast<HttpResponse*>(userdata);
+    const size_t total = size * nmemb;
+    std::string_view line(ptr, total);
+    const size_t colon = line.find(':');
+    if (colon == std::string_view::npos) {
+        return total;
+    }
+
+    size_t valueStart = colon + 1;
+    while (valueStart < line.size() &&
+           std::isspace(static_cast<unsigned char>(line[valueStart]))) {
+        ++valueStart;
+    }
+    size_t valueEnd = line.size();
+    while (valueEnd > valueStart &&
+           std::isspace(static_cast<unsigned char>(line[valueEnd - 1]))) {
+        --valueEnd;
+    }
+    response->headers.emplace_back(
+        std::string(line.substr(0, colon)),
+        std::string(line.substr(valueStart, valueEnd - valueStart)));
+    return total;
+}
+
 int progressCallback(void* clientp, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
     const auto* cancel = static_cast<const std::atomic<bool>*>(clientp);
     return (cancel && cancel->load()) ? 1 : 0;
@@ -218,6 +283,8 @@ HttpResponse performRequest(const HttpRequest& request,
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "DoriaxEditorAI/1.0");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sink);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, headerCallback);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &response);
     curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressCallback);
     curl_easy_setopt(curl, CURLOPT_XFERINFODATA, cancel);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);

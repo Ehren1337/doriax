@@ -4,18 +4,45 @@
 #include "EditorActionExecutor.h"
 #include "EditorActionRegistry.h"
 #include "Out.h"
+#include "RateLimitRetry.h"
 #include "SecretStore.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <deque>
 #include <memory>
+#include <random>
 #include <sstream>
 #include <unordered_map>
 
 namespace doriax::editor::ai {
 
 namespace {
+
+constexpr int kMaxRateLimitRetries = 5;
+constexpr auto kRetryTimingMargin = std::chrono::milliseconds(250);
+constexpr auto kMaxProviderRetryDelay = std::chrono::minutes(5);
+
+std::chrono::milliseconds retryDelay(const HttpResponse& response,
+                                     const std::string& detail,
+                                     int nextAttempt) {
+    std::chrono::milliseconds delay = rateLimitRetryDelay(response, detail);
+    if (delay.count() > 0) {
+        return std::min(delay + kRetryTimingMargin,
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            kMaxProviderRetryDelay));
+    }
+
+    // No provider hint: use bounded exponential backoff with a small jitter so
+    // multiple editor instances do not retry in lockstep.
+    const int exponent = std::clamp(nextAttempt - 1, 0, 5);
+    const auto base = std::chrono::seconds(1 << exponent);
+    thread_local std::mt19937 rng(std::random_device{}());
+    const auto jitter = std::chrono::milliseconds(
+        std::uniform_int_distribution<int>(0, 500)(rng));
+    return base + jitter;
+}
 
 // Turns a provider HTTP failure into a short, readable line. The detail is the
 // provider's own error.message (already extracted by the response parsers),
@@ -199,6 +226,8 @@ AiService::~AiService() {
 void AiService::setSettings(const Settings& newSettings) {
     std::lock_guard<std::mutex> lock(mutex);
     settings = newSettings;
+    settings.maxOutputTokens = std::clamp(settings.maxOutputTokens, 256, 16000);
+    settings.maxToolRounds = std::clamp(settings.maxToolRounds, 1, 100);
     if (settings.model.empty()) {
         settings.model = defaultModelForProvider(settings.provider);
     }
@@ -213,7 +242,7 @@ bool AiService::sendUserMessage(const std::string& text,
                                 std::vector<ChatAttachment>&& attachments) {
     // No move has happened yet: refusing here leaves the caller's vector
     // intact, so pending attachments survive a rejected send.
-    if ((text.empty() && attachments.empty()) || busy.load()) {
+    if ((text.empty() && attachments.empty()) || isBusy()) {
         return false;
     }
 
@@ -252,10 +281,38 @@ bool AiService::sendUserMessage(const std::string& text,
 
 void AiService::cancel() {
     cancelRequested.store(true);
+
+    std::lock_guard<std::mutex> lock(mutex);
+    if (pendingRetry) {
+        pendingRetry.reset();
+        retryScheduled.store(false);
+        appendAssistantMessageLocked("Request cancelled.");
+        turnFailed = true;
+    }
 }
 
 bool AiService::isBusy() const {
-    return busy.load();
+    return busy.load() || retryScheduled.load();
+}
+
+std::string AiService::getActivityText() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!pendingRetry) {
+        return "Thinking...";
+    }
+
+    const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+        pendingRetry->readyAt - std::chrono::steady_clock::now());
+    const int64_t remainingMilliseconds = std::max<int64_t>(0, remaining.count());
+    const int64_t remainingSeconds = (remainingMilliseconds + 999) / 1000;
+    if (remainingSeconds == 0) {
+        return "Rate limited - retrying now (" +
+               std::to_string(pendingRetry->attempt) + "/" +
+               std::to_string(kMaxRateLimitRetries) + ")";
+    }
+    return "Rate limited - retrying in " + std::to_string(remainingSeconds) +
+           "s (" + std::to_string(pendingRetry->attempt) + "/" +
+           std::to_string(kMaxRateLimitRetries) + ")";
 }
 
 void AiService::update() {
@@ -268,27 +325,39 @@ void AiService::update() {
     }
 
     ProviderRequest request;
+    int retryAttempt = 0;
     bool dispatch = false;
     {
         std::lock_guard<std::mutex> lock(mutex);
-        const int maxRounds = std::max(1, settings.maxToolRounds);
-        if (!needsContinuationLocked() || toolRounds >= maxRounds) {
-            if (needsContinuationLocked() && toolRounds >= maxRounds) {
-                appendAssistantMessageLocked(
-                    "Reached the tool-step limit for this request. Send another message to continue.");
-                finishTurnLocked(false);
-            } else if (turnActive && !hasPendingProposalsLocked()) {
-                // Agent turn settled (final reply, or waiting is over with no more work).
-                finishTurnLocked(!turnFailed);
+        if (pendingRetry) {
+            if (std::chrono::steady_clock::now() < pendingRetry->readyAt) {
+                return;
             }
-            return;
+            request = std::move(pendingRetry->request);
+            retryAttempt = pendingRetry->attempt;
+            pendingRetry.reset();
+            retryScheduled.store(false);
+            dispatch = true;
+        } else {
+            const int maxRounds = std::max(1, settings.maxToolRounds);
+            if (!needsContinuationLocked() || toolRounds >= maxRounds) {
+                if (needsContinuationLocked() && toolRounds >= maxRounds) {
+                    appendAssistantMessageLocked(
+                        "Reached the tool-step limit for this request. Send another message to continue.");
+                    finishTurnLocked(false);
+                } else if (turnActive && !hasPendingProposalsLocked()) {
+                    // Agent turn settled (final reply, or waiting is over with no more work).
+                    finishTurnLocked(!turnFailed);
+                }
+                return;
+            }
+            ++toolRounds;
+            request = buildRequestSnapshotLocked();
+            dispatch = true;
         }
-        ++toolRounds;
-        request = buildRequestSnapshotLocked();
-        dispatch = true;
     }
     if (dispatch) {
-        dispatchRequest(std::move(request));
+        dispatchRequest(std::move(request), retryAttempt);
     }
 }
 
@@ -307,7 +376,7 @@ std::vector<ActionProposal> AiService::getProposals() const {
 }
 
 void AiService::clearConversation() {
-    if (busy.load()) {
+    if (isBusy()) {
         return;
     }
     std::lock_guard<std::mutex> lock(mutex);
@@ -320,7 +389,7 @@ void AiService::clearConversation() {
 }
 
 void AiService::loadConversation(std::vector<ChatMessage> newMessages) {
-    if (busy.load()) {
+    if (isBusy()) {
         return;
     }
     std::lock_guard<std::mutex> lock(mutex);
@@ -379,7 +448,11 @@ ActionResult AiService::executeProposal(uint64_t proposalId, EditorActionExecuto
         ++revision;
     }
 
-    if (!result.success) {
+    // Read-only tools are exploratory: a missing entity/resource/component is
+    // useful feedback to the model, not an editor failure. Keep the failed
+    // tool result in chat, but reserve the output error log for actions that
+    // attempted to mutate the project and did not complete.
+    if (!result.success && !proposal.readOnly) {
         Out::error("AI action failed: %s", result.message.c_str());
     }
 
@@ -562,7 +635,7 @@ ProviderRequest AiService::buildRequestSnapshotLocked() const {
     return request;
 }
 
-void AiService::dispatchRequest(ProviderRequest request) {
+void AiService::dispatchRequest(ProviderRequest request, int retryAttempt) {
     // dispatchRequest only runs when no request is in flight, but the previous
     // worker may have finished without being reaped yet (update() usually joins
     // it). Join it here before reassigning, otherwise the std::thread move-assign
@@ -572,7 +645,8 @@ void AiService::dispatchRequest(ProviderRequest request) {
     }
     cancelRequested.store(false);
     busy.store(true);
-    worker = std::thread(&AiService::runProviderRequest, this, std::move(request));
+    worker = std::thread(&AiService::runProviderRequest, this,
+                         std::move(request), retryAttempt);
 }
 
 bool AiService::needsContinuationLocked() const {
@@ -609,7 +683,7 @@ void AiService::finishTurnLocked(bool success) {
     }
 }
 
-void AiService::runProviderRequest(ProviderRequest request) {
+void AiService::runProviderRequest(ProviderRequest request, int retryAttempt) {
     if (request.apiKey.empty()) {
         std::lock_guard<std::mutex> lock(mutex);
         appendAssistantMessageLocked("No API key set for " + toString(request.settings.provider) +
@@ -638,6 +712,44 @@ void AiService::runProviderRequest(ProviderRequest request) {
         } else if (httpResponse.status < 200 || httpResponse.status >= 300) {
             // Reuse the provider parser to pull error.message out of the body.
             ProviderResponse errorBody = provider->parseResponse(httpResponse.body);
+            if (isRetryableRateLimit(httpResponse.status, errorBody) &&
+                retryAttempt < kMaxRateLimitRetries) {
+                const int nextAttempt = retryAttempt + 1;
+                const std::chrono::milliseconds delay =
+                    retryDelay(httpResponse, errorBody.error, nextAttempt);
+                bool scheduled = false;
+                bool cancelled = false;
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    if (cancelRequested.load()) {
+                        appendAssistantMessageLocked("Request cancelled.");
+                        turnFailed = true;
+                        cancelled = true;
+                    } else {
+                        pendingRetry = PendingRetry{
+                            std::move(request),
+                            std::chrono::steady_clock::now() + delay,
+                            nextAttempt
+                        };
+                        retryScheduled.store(true);
+                        scheduled = true;
+                    }
+                }
+                if (cancelled) {
+                    busy.store(false);
+                    return;
+                }
+                if (scheduled) {
+                    Out::warning(
+                        "AI provider rate limit reached; retrying in %.2f seconds "
+                        "(attempt %d/%d)",
+                        static_cast<double>(delay.count()) / 1000.0,
+                        nextAttempt, kMaxRateLimitRetries);
+                    busy.store(false);
+                    return;
+                }
+            }
+
             parsed.error = humanizeProviderError(httpResponse.status, errorBody.error);
             Out::error("AI provider request failed (HTTP %ld): %s",
                 httpResponse.status,

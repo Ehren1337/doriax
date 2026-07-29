@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace doriax::editor::ai {
@@ -38,7 +39,8 @@ struct Settings {
     ApprovalMode approvalMode = ApprovalMode::PreviewThenApprove;
     // Large enough to write a whole file (scripts, forked shaders) in one tool call; a low
     // cap truncates the call mid-JSON and the partial call is dropped (looks like an empty
-    // reply). Output tokens are only billed when generated, so a high cap is safe.
+    // reply). Providers bill generated output, but may reserve this value for TPM rate-limit
+    // accounting, so keep it close to the largest response the editor actually needs.
     int maxOutputTokens = 8192;
     // One "round" is a model turn that requests tools (results are fed back on the next).
     // Script tasks that ground in engine source (inspect + several searches + write + verify)
@@ -132,6 +134,12 @@ struct ProviderResponse {
     // Anthropic thinking / redacted_thinking blocks from the model turn.
     std::vector<Json> thinkingBlocks;
     std::string error;
+    // Provider error metadata (for example OpenAI's "insufficient_quota" or
+    // Gemini's numeric code plus "RESOURCE_EXHAUSTED" status). Keeping these
+    // separate from the message lets the service classify HTTP 429 responses.
+    std::string errorCode;
+    std::string errorType;
+    std::string errorStatus;
     // Provider stop reason such as finish_reason "length", stop_reason "max_tokens",
     // or Gemini finishReason "MAX_TOKENS".
     std::string stopReason;
@@ -155,6 +163,9 @@ struct HttpResponse {
     long status = 0;
     std::string body;
     std::string error;
+    // Response headers are retained so callers can honor Retry-After and
+    // provider-specific rate-limit reset hints without parsing body text.
+    std::vector<std::pair<std::string, std::string>> headers;
 };
 
 struct ActionResult {

@@ -180,8 +180,24 @@ ProviderResponse parseErrorOrBody(const std::string& body, Json& root) {
         const Json& error = root["error"];
         if (error.is_string()) {
             result.error = error.get<std::string>();
-        } else if (error.contains("message") && error["message"].is_string()) {
-            result.error = error["message"].get<std::string>();
+        } else if (error.is_object()) {
+            if (error.contains("message") && error["message"].is_string()) {
+                result.error = error["message"].get<std::string>();
+            }
+            if (error.contains("code")) {
+                if (error["code"].is_string()) {
+                    result.errorCode = error["code"].get<std::string>();
+                } else if (error["code"].is_number_integer() ||
+                           error["code"].is_number_unsigned()) {
+                    result.errorCode = error["code"].dump();
+                }
+            }
+            if (error.contains("type") && error["type"].is_string()) {
+                result.errorType = error["type"].get<std::string>();
+            }
+            if (error.contains("status") && error["status"].is_string()) {
+                result.errorStatus = error["status"].get<std::string>();
+            }
         }
     }
     return result;

@@ -4,7 +4,9 @@
 #include "HttpClient.h"
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 namespace doriax::editor::ai {
@@ -25,6 +27,9 @@ public:
                          std::vector<ChatAttachment>&& attachments = {});
     void cancel();
     bool isBusy() const;
+    // Human-readable live state for the transcript. During rate-limit
+    // backoff this includes the remaining delay and retry attempt.
+    std::string getActivityText() const;
 
     // Drives the agent loop: reaps a finished worker and, when the conversation
     // ends on unanswered tool results, automatically sends a follow-up request
@@ -56,6 +61,7 @@ private:
     std::thread worker;
     std::atomic<uint64_t> revision{1};
     std::atomic<bool> busy{false};
+    std::atomic<bool> retryScheduled{false};
     std::atomic<bool> cancelRequested{false};
     uint64_t nextProposalId = 1;
     int toolRounds = 0;
@@ -64,10 +70,17 @@ private:
     bool turnFailed = false;
     HttpClient httpClient;
 
+    struct PendingRetry {
+        ProviderRequest request;
+        std::chrono::steady_clock::time_point readyAt;
+        int attempt = 0;
+    };
+    std::optional<PendingRetry> pendingRetry;
+
     std::string buildSystemPrompt() const;
     ProviderRequest buildRequestSnapshotLocked() const;
-    void dispatchRequest(ProviderRequest request);
-    void runProviderRequest(ProviderRequest request);
+    void dispatchRequest(ProviderRequest request, int retryAttempt = 0);
+    void runProviderRequest(ProviderRequest request, int retryAttempt);
     bool needsContinuationLocked() const;
     bool hasPendingProposalsLocked() const;
     void finishTurnLocked(bool success);

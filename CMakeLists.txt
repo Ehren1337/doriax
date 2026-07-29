@@ -241,6 +241,7 @@ set(DORIAX_EDITOR_SOURCES
     ${EDITOR_DIR}/ai/EditorActionRegistry.cpp
     ${EDITOR_DIR}/ai/HttpClient.cpp
     ${EDITOR_DIR}/ai/ModelCatalog.cpp
+    ${EDITOR_DIR}/ai/RateLimitRetry.cpp
     ${EDITOR_DIR}/ai/SecretStore.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp

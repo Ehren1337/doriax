@@ -933,11 +933,13 @@ void AiChatWindow::update() {
     loadLatestConversationForCurrentProject();
 
     // Drive the agent loop even when the panel is closed/collapsed or the OS
-    // window is minimized: auto-run eligible proposals, then continue any
-    // follow-up request triggered by completed tool results.
+    // window is minimized: auto-run eligible proposals, continue completed
+    // tool results, and wake rate-limit retries when their delay expires.
     if (!service.isBusy()) {
         autoRunProposals();
-        service.update();
+    }
+    service.update();
+    if (!service.isBusy()) {
         persistConversation();
     }
     updateMessageNotification();
@@ -1270,7 +1272,10 @@ void AiChatWindow::drawTranscript(float height) {
 
     if (busy) {
         spacer();
-        paragraphs.push_back({std::string(ICON_FA_SPINNER) + "  Thinking...", dimCol});
+        paragraphs.push_back({
+            std::string(ICON_FA_SPINNER) + "  " + service.getActivityText(),
+            dimCol
+        });
     }
 
     // Tighten transcript line spacing only; keep default ItemSpacing for the
