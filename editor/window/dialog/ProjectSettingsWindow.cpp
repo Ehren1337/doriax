@@ -724,6 +724,8 @@ void ProjectSettingsWindow::applySettings() {
         AppSettings::setLastCMakeKit("", "", "");
     }
     m_project->setCMakeBuildJobs(static_cast<unsigned int>(m_cmakeBuildJobs));
+
+    m_project->saveProjectFile();
 }
 
 } // namespace doriax::editor
