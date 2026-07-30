@@ -10,7 +10,7 @@
 namespace doriax{
     class DORIAX_API STBText;
 
-    class Text: public UILayout{
+    class DORIAX_API Text: public UILayout{
 
     public:
         Text(Scene* scene);
