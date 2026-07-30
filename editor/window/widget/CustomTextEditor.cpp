@@ -1905,6 +1905,8 @@ std::string CustomTextEditor::inferTypeOfVariable(const std::string& varName, in
     for (int i = currentLine; i >= 0; --i) {
         if (i >= static_cast<int>(lines.size())) continue;
         const std::string& line = lines[i];
+        // Every pattern needs varName, so lines without it can't match any of them
+        if (line.find(varName) == std::string::npos) continue;
         std::smatch match;
 
         if (language == SyntaxLanguage::Cpp) {
@@ -3667,6 +3669,9 @@ void CustomTextEditor::renderSuggestions(const ImVec2& origin) {
                                                      ImGuiHoveredFlags_ChildWindows |
                                                      ImGuiHoveredFlags_RootAndChildWindows);
 
+        // Applying clears currentSuggestions, so it waits until the list is done being read
+        int clickedIndex = -1;
+
         for (int i = 0; i < static_cast<int>(currentSuggestions.size()); ++i) {
             const auto& item = currentSuggestions[i];
 
@@ -3685,8 +3690,7 @@ void CustomTextEditor::renderSuggestions(const ImVec2& origin) {
 
             // Render selectable with exact item height
             if (ImGui::Selectable("##item", selected, ImGuiSelectableFlags_None, ImVec2(availWidth, itemHeight))) {
-                suggestionIndex = i;
-                applySuggestion();
+                clickedIndex = i;
             }
 
             ImGui::PopStyleColor(3);
@@ -3736,6 +3740,11 @@ void CustomTextEditor::renderSuggestions(const ImVec2& origin) {
             if (ImGui::IsItemHovered() && !item.documentation.empty()) {
                 ImGui::SetTooltip("%s", item.documentation.c_str());
             }
+        }
+
+        if (clickedIndex >= 0) {
+            suggestionIndex = clickedIndex;
+            applySuggestion();
         }
 
         // Reset scroll flag after rendering

@@ -106,7 +106,17 @@ void editor::CodeEditor::updateAllProjectSymbols() {
             std::error_code ec;
             std::unordered_set<std::string> openSet(openFiles.begin(), openFiles.end());
 
-            for (auto& entry : fs::recursive_directory_iterator(projectPath, fs::directory_options::skip_permission_denied, ec)) {
+            for (fs::recursive_directory_iterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
+                 it != end && !ec; it.increment(ec)) {
+                const fs::directory_entry& entry = *it;
+
+                // '.doriax' holds the engine copy and the generated resources, 'build' the artifacts
+                const std::string filename = entry.path().filename().string();
+                if (filename.rfind('.', 0) == 0 || filename == "build") {
+                    if (entry.is_directory(ec)) it.disable_recursion_pending();
+                    continue;
+                }
+
                 if (!entry.is_regular_file()) continue;
                 std::string ext = entry.path().extension().string();
                 std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
