@@ -4,6 +4,7 @@
 
 #include <GLFW/glfw3.h>
 
+#include "imgui_internal.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
@@ -364,10 +365,18 @@ int editor::Backend::init(int argc, char* argv[]) {
         // work) keeps the loop at full rate; its absence lets it idle next frame.
         {
             ImGuiIO& io = ImGui::GetIO();
+
+            // The code editor reads keys itself, with no io.WantTextInput or active item
+            // to check. Keyboard range only: a resting stick would never let it idle.
+            bool typing = io.InputQueueCharacters.Size > 0;
+            for (int key = ImGuiKey_Keyboard_BEGIN; !typing && key < ImGuiKey_Keyboard_END; key++) {
+                typing = ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
+            }
+
             const bool activity =
                 io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
                 io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
-                ImGui::IsAnyMouseDown() ||
+                ImGui::IsAnyMouseDown() || typing ||
                 io.WantTextInput || ImGui::IsAnyItemActive() ||
                 app.didRenderScene() || app.hasPendingMainThreadTasks();
             if (activity) {
