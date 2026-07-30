@@ -22,7 +22,7 @@ extern unsigned int bulb_icon_png_len;
 
 using namespace doriax;
 
-editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enableViewGizmo, float gizmoScale, float selectionOffset): toolslayer(use2DGizmos), uilayer(enableViewGizmo){
+editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOverlays, float gizmoScale, float selectionOffset): toolslayer(use2DGizmos), uilayer(enable3DOverlays){
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);
 
     this->mouseClicked = false;
@@ -473,6 +473,7 @@ void editor::SceneRender::hideAllGizmos(){
     toolslayer.setGizmoVisible(false);
     uilayer.setViewGizmoImageVisible(false);
     uilayer.setSelectionBoxVisible(false);
+    uilayer.setCameraGaugeVisible(false);
 }
 
 void editor::SceneRender::setPlayMode(bool isPlaying){

@@ -1319,6 +1319,7 @@ void editor::App::engineRender(){
 
     auto sceneNeedsRender = [&](SceneProject& sp, bool isSelected) -> bool {
         bool active = sp.needUpdateRender;
+        bool gaugeAnimating = false;
         // A running play session must advance and redraw its simulation every frame.
         if (sp.playState == ScenePlayState::PLAYING) active = true;
         // A drag preview redraws until the settle frames cover its restore.
@@ -1331,6 +1332,7 @@ void editor::App::engineRender(){
             auto rs = sp.scene->getSystem<RenderSystem>();
             if (rs && !rs->isAllLoaded()) active = true;
             if (sp.sceneRender->isPreviewCameraActive()) active = true;
+            gaugeAnimating = sp.sceneRender->getUILayer()->isCameraGaugeAnimating();
             if (thumbnailsPending) active = true;
             // Preview scenes (shape, material, direction) only draw inside systemDraw().
             if (Engine::hasScenesToExecuteOnce()) active = true;
@@ -1338,6 +1340,10 @@ void editor::App::engineRender(){
 
         if (active) {
             sp.renderSettleFrames = RENDER_SETTLE_FRAMES;
+            return true;
+        }
+        if (gaugeAnimating) {
+            if (sp.renderSettleFrames > 0) sp.renderSettleFrames--;
             return true;
         }
         if (sp.renderSettleFrames > 0) {

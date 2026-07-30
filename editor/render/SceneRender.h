@@ -11,6 +11,12 @@ namespace doriax::editor{
 
     constexpr float DEFAULT_EDITOR_CAMERA_NEAR = 0.3f;
     constexpr float DEFAULT_EDITOR_CAMERA_FAR = 4000.0f;
+    constexpr float MIN_EDITOR_CAMERA_DISTANCE = 0.2f;
+    constexpr float MAX_EDITOR_CAMERA_DISTANCE = 2000.0f;
+
+    constexpr float DEFAULT_EDITOR_WALK_SPEED = 10.0f;
+    constexpr float MIN_EDITOR_WALK_SPEED = 0.5f;
+    constexpr float MAX_EDITOR_WALK_SPEED = 1010.0f;
 
     struct SceneDisplaySettings {
         bool showAllJoints       = false;
@@ -170,7 +176,7 @@ namespace doriax::editor{
 
     public:
 
-        SceneRender(Scene* scene, bool use2DGizmos, bool enableViewGizmo, float gizmoScale, float selectionOffset);
+        SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOverlays, float gizmoScale, float selectionOffset);
         virtual ~SceneRender();
 
         virtual void hideAllGizmos();

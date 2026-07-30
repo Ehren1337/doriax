@@ -38,7 +38,6 @@ namespace doriax::editor {
         std::map<uint32_t, bool> resyncLookDelta;
         std::map<uint32_t, bool> lookActive;
         std::map<uint32_t, ImVec2> lookReturnPos;
-        std::map<uint32_t, float> walkSpeed;
         std::map<uint32_t, bool> focusCanvasOnNextFrame;
 
         // Engine keys sent down during play but not yet released, and the

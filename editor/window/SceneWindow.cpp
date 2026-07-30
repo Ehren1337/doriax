@@ -81,7 +81,6 @@ void editor::SceneWindow::resetProjectState() {
     resyncLookDelta.clear();
     lookActive.clear();
     lookReturnPos.clear();
-    walkSpeed.clear();
     focusCanvasOnNextFrame.clear();
     width.clear();
     height.clear();
@@ -100,7 +99,6 @@ void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
     resyncLookDelta.erase(sceneId);
     lookActive.erase(sceneId);
     lookReturnPos.erase(sceneId);
-    walkSpeed.erase(sceneId);
     focusCanvasOnNextFrame.erase(sceneId);
     width.erase(sceneId);
     height.erase(sceneId);
@@ -1278,6 +1276,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     if (sceneProject->sceneType == SceneType::SCENE_3D){
 
+        SceneRender3D* sceneRender3D = static_cast<SceneRender3D*>(sceneProject->sceneRender);
+
         float distanceFromTarget = camera->getDistanceFromTarget();
 
         // Scale factor: movements should be proportional to distance
@@ -1311,20 +1311,18 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     camera->setUp(0, 1, 0);
                 }
 
-                float minSpeed = 0.5;
-                float maxSpeed = 1000;
-                float speedOffset = 10.0;
+                if (mouseWheel != 0.0f) {
+                    sceneRender3D->setWalkSpeedOffset(sceneRender3D->getWalkSpeedOffset() + mouseWheel);
+                }
+                float walkSpeed = DEFAULT_EDITOR_WALK_SPEED + sceneRender3D->getWalkSpeedOffset();
 
-                walkSpeed[sceneId] += mouseWheel;
-                if (walkSpeed[sceneId] <= -speedOffset) {
-                    walkSpeed[sceneId] = -speedOffset + minSpeed;
-                }
-                if (walkSpeed[sceneId] > maxSpeed) {
-                    walkSpeed[sceneId] = maxSpeed;
-                }
+                sceneRender3D->getUILayer()->showSpeedGauge(
+                    walkSpeed / DEFAULT_EDITOR_WALK_SPEED,
+                    MIN_EDITOR_WALK_SPEED / DEFAULT_EDITOR_WALK_SPEED,
+                    MAX_EDITOR_WALK_SPEED / DEFAULT_EDITOR_WALK_SPEED);
 
                 // Apply distanceScaleFactor to walking speed
-                float finalSpeed = 0.02 * (speedOffset + walkSpeed[sceneId]) * distanceScaleFactor;
+                float finalSpeed = 0.02 * walkSpeed * distanceScaleFactor;
 
                 // Shift multiplier for faster movement
                 if (ImGui::IsKeyDown(ImGuiMod_Shift)) {
@@ -1358,11 +1356,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     camera->slide(-0.01 * mouseDelta.x * distanceScaleFactor);
                     camera->slideUp(0.01 * mouseDelta.y * distanceScaleFactor);
                 } else if (ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
-                    float ctrlZoomAmount = -0.1f * mouseDelta.y * distanceScaleFactor;
-                    if (ctrlZoomAmount > distanceFromTarget - 0.1f) {
-                        ctrlZoomAmount = distanceFromTarget - 0.1f;
-                    }
-                    camera->zoom(ctrlZoomAmount);
+                    sceneRender3D->zoomCamera(-0.1f * mouseDelta.y * distanceScaleFactor);
                 } else {
                     camera->rotatePosition(-0.1 * mouseDelta.x);
                     camera->elevatePosition(0.1 * mouseDelta.y);
@@ -1393,14 +1387,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             camera->slideUp(0.01 * mouseDelta.y * distanceScaleFactor);
         }
 
+        if (!walkingMode) {
+            sceneRender3D->getUILayer()->hideSpeedGauge();
+        }
+
         // The zoom speed itself can remain constant
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
             if (isMouseInWindow && mouseWheel != 0.0f) {
-                float zoomAmount = 2.0 * mouseWheel * distanceScaleFactor;
-                if (zoomAmount > distanceFromTarget - 0.1f) {
-                     zoomAmount = distanceFromTarget - 0.1f;
-                }
-                camera->zoom(zoomAmount);
+                sceneRender3D->zoomCamera(2.0f * mouseWheel * distanceScaleFactor);
             }
         }
 
@@ -1570,6 +1564,7 @@ void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std:
     float paddedRadius = radius * 1.1f;
     float distance = paddedRadius / std::sin(limitingHalfFov);
     distance = std::max(distance, paddedRadius * 2.0f);
+    distance = std::clamp(distance, MIN_EDITOR_CAMERA_DISTANCE, MAX_EDITOR_CAMERA_DISTANCE);
 
     Vector3 direction = camera->getWorldDirection();
     direction.normalize();
@@ -1577,6 +1572,7 @@ void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std:
 
     camera->setPosition(newPos.x, newPos.y, newPos.z);
     camera->setTarget(center.x, center.y, center.z);
+    sceneProject->needUpdateRender = true;
 }
 
 void editor::SceneWindow::snapCameraToDirection(Camera* camera, const Vector3& direction) {

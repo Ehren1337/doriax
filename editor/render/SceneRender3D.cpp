@@ -1780,6 +1780,28 @@ void editor::SceneRender3D::activate(){
     }
 }
 
+void editor::SceneRender3D::zoomCamera(float amount){
+    if (amount == 0.0f){
+        return;
+    }
+
+    float distance = camera->getDistanceFromTarget();
+    float newDistance = std::clamp(distance - amount, MIN_EDITOR_CAMERA_DISTANCE, MAX_EDITOR_CAMERA_DISTANCE);
+
+    camera->zoom(distance - newDistance);
+}
+
+float editor::SceneRender3D::getWalkSpeedOffset() const{
+    return walkSpeedOffset;
+}
+
+void editor::SceneRender3D::setWalkSpeedOffset(float offset){
+    walkSpeedOffset = std::clamp(
+        offset,
+        MIN_EDITOR_WALK_SPEED - DEFAULT_EDITOR_WALK_SPEED,
+        MAX_EDITOR_WALK_SPEED - DEFAULT_EDITOR_WALK_SPEED);
+}
+
 void editor::SceneRender3D::updateSelLines(std::vector<OBB> obbs){
     Vector4 color = Vector4(1.0, 0.6, 0.0, 1.0);
 
@@ -1849,6 +1871,8 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     }
 
     viewgizmo.applyRotation(camera);
+
+    uilayer.updateCameraGauge(camera->getDistanceFromTarget(), MIN_EDITOR_CAMERA_DISTANCE, MAX_EDITOR_CAMERA_DISTANCE);
 
     std::set<Entity> selectedEntities(selEntities.begin(), selEntities.end());
 

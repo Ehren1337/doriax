@@ -8,6 +8,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "render/SceneRender2D.h"
+#include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
 
 #include <algorithm>
@@ -1598,10 +1599,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
                 Camera* editorCam = sceneProject.sceneRender->getCamera();
                 if (editorCam) {
                     float zoom = 0.0f;
+                    float walkSpeedOffset = 0.0f;
                     if (sceneProject.sceneType == SceneType::SCENE_2D || sceneProject.sceneType == SceneType::SCENE_UI) {
                         zoom = static_cast<SceneRender2D*>(sceneProject.sceneRender)->getZoom();
+                    } else if (sceneProject.sceneType == SceneType::SCENE_3D) {
+                        walkSpeedOffset = static_cast<SceneRender3D*>(sceneProject.sceneRender)->getWalkSpeedOffset();
                     }
-                    sceneNode["editorCamera"] = encodeEditorCamera(editorCam, zoom);
+                    sceneNode["editorCamera"] = encodeEditorCamera(editorCam, zoom, walkSpeedOffset);
                 }
             } else if (sceneProject.editorCameraState.IsDefined()) {
                 sceneNode["editorCamera"] = sceneProject.editorCameraState;
@@ -1801,9 +1805,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node) {
                                 Camera* editorCam = loadedScene.sceneRender->getCamera();
                                 if (editorCam) {
                                     float zoom = 0.0f;
-                                    Stream::decodeEditorCamera(editorCam, sceneNode["editorCamera"], zoom);
+                                    float walkSpeedOffset = 0.0f;
+                                    Stream::decodeEditorCamera(editorCam, sceneNode["editorCamera"], zoom, walkSpeedOffset);
                                     if ((loadedScene.sceneType == SceneType::SCENE_2D || loadedScene.sceneType == SceneType::SCENE_UI) && zoom > 0.0f) {
                                         static_cast<SceneRender2D*>(loadedScene.sceneRender)->setZoom(zoom);
+                                    }
+                                    if (loadedScene.sceneType == SceneType::SCENE_3D) {
+                                        static_cast<SceneRender3D*>(loadedScene.sceneRender)->setWalkSpeedOffset(walkSpeedOffset);
                                     }
                                 }
                             }
@@ -2025,7 +2033,7 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
     CameraTextureLink::resolve(sceneProject->scene);
 }
 
-YAML::Node editor::Stream::encodeEditorCamera(Camera* camera, float zoom) {
+YAML::Node editor::Stream::encodeEditorCamera(Camera* camera, float zoom, float walkSpeedOffset) {
     if (!camera) return YAML::Node();
     Entity camEntity = camera->getEntity();
     Scene* scene = camera->getScene();
@@ -2041,10 +2049,15 @@ YAML::Node editor::Stream::encodeEditorCamera(Camera* camera, float zoom) {
     encodeFinite(camNode, "farClip", camComp.farClip);
     encodeFiniteVector3(camNode, "position", camTransform.position);
     encodePositiveFinite(camNode, "zoom", zoom);
+    if (walkSpeedOffset != 0.0f) {
+        encodeFinite(camNode, "walkSpeed", walkSpeedOffset);
+    }
     return camNode;
 }
 
-void editor::Stream::decodeEditorCamera(Camera* camera, const YAML::Node& node, float& zoom) {
+void editor::Stream::decodeEditorCamera(Camera* camera, const YAML::Node& node, float& zoom, float& walkSpeedOffset) {
+    zoom = 0.0f;
+    walkSpeedOffset = 0.0f;
     if (!camera || !node) return;
     Entity camEntity = camera->getEntity();
     Scene* scene = camera->getScene();
@@ -2059,13 +2072,13 @@ void editor::Stream::decodeEditorCamera(Camera* camera, const YAML::Node& node, 
     camComp.farClip = decodeFinite(node["farClip"], camComp.farClip);
     camTransform.position = decodeFiniteVector3(node["position"], camTransform.position);
     camComp.needUpdate = true;
-    zoom = 0.0f;
     if (node["zoom"]) {
         float decodedZoom = decodeFinite(node["zoom"], 0.0f);
         if (decodedZoom > 0.0f) {
             zoom = decodedZoom;
         }
     }
+    walkSpeedOffset = decodeFinite(node["walkSpeed"], 0.0f);
 }
 
 YAML::Node editor::Stream::encodeScene(Scene* scene) {

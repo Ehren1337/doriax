@@ -1,8 +1,87 @@
 #include "UILayer.h"
 
+#include "Engine.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
 using namespace doriax;
 
-editor::UILayer::UILayer(bool enableViewGizmo){
+namespace {
+
+constexpr float GAUGE_TRACK_X = 18.0f;
+constexpr float GAUGE_TRACK_WIDTH = 4.0f;
+constexpr float GAUGE_TRACK_HEIGHT = 148.0f;
+constexpr float GAUGE_TICK_X = 16.0f;
+constexpr float GAUGE_TICK_WIDTH = 8.0f;
+constexpr float GAUGE_MARKER_X = 14.0f;
+constexpr float GAUGE_MARKER_WIDTH = 13.0f;
+constexpr float GAUGE_MARKER_HEIGHT = 3.0f;
+constexpr float GAUGE_LABEL_X = 33.0f;
+constexpr unsigned int GAUGE_LABEL_FONT_SIZE = 14;
+constexpr int GAUGE_TICK_COUNT = 5;
+
+constexpr float GAUGE_IDLE_OPACITY = 0.6f;
+constexpr float GAUGE_HIGHLIGHT_HOLD = 0.9f;
+constexpr float GAUGE_FADE_IN_SPEED = 8.0f;
+constexpr float GAUGE_FADE_OUT_SPEED = 2.5f;
+
+const Vector4 GAUGE_TRACK_COLOR(0.03, 0.03, 0.04, 0.75);
+const Vector4 GAUGE_TICK_COLOR(0.90, 0.92, 0.95, 0.5);
+const Vector4 GAUGE_MARKER_COLOR(0.88, 0.90, 0.94, 1.0);
+const Vector4 GAUGE_LABEL_COLOR(0.94, 0.95, 0.96, 1.0);
+const Vector4 GAUGE_DISTANCE_FILL_COLOR(0.50, 0.66, 0.90, 1.0);
+const Vector4 GAUGE_SPEED_FILL_COLOR(0.95, 0.72, 0.35, 1.0);
+
+void placeAtLeftCenter(UILayout* element, float x, float centerY){
+    element->setAnchorPreset(AnchorPreset::CENTER_LEFT);
+    element->setPositionOffset(Vector2(x, centerY));
+}
+
+Vector4 withOpacity(const Vector4& color, float opacity){
+    return Vector4(color.x, color.y, color.z, color.w * opacity);
+}
+
+void setPolygonRect(Polygon* polygon, float width, float height){
+    polygon->clearVertices();
+    polygon->addVertex(0, 0);
+    polygon->addVertex(0, height);
+    polygon->addVertex(width, 0);
+    polygon->addVertex(width, height);
+    // Anchoring uses the layout size, not the polygon bounds.
+    polygon->setSize(static_cast<unsigned int>(width), static_cast<unsigned int>(height));
+}
+
+std::string formatDistance(float distance){
+    char buffer[32];
+    if (distance >= 1000.0f){
+        snprintf(buffer, sizeof(buffer), "%.2f km", distance / 1000.0f);
+    }else if (distance >= 100.0f){
+        snprintf(buffer, sizeof(buffer), "%.0f m", distance);
+    }else if (distance >= 10.0f){
+        snprintf(buffer, sizeof(buffer), "%.1f m", distance);
+    }else{
+        snprintf(buffer, sizeof(buffer), "%.2f m", distance);
+    }
+    return std::string(buffer);
+}
+
+std::string formatSpeedFactor(float factor){
+    char buffer[32];
+    if (factor >= 10.0f){
+        snprintf(buffer, sizeof(buffer), "%.0fx speed", factor);
+    }else if (factor >= 1.0f){
+        snprintf(buffer, sizeof(buffer), "%.1fx speed", factor);
+    }else{
+        snprintf(buffer, sizeof(buffer), "%.2fx speed", factor);
+    }
+    return std::string(buffer);
+}
+
+}
+
+editor::UILayer::UILayer(bool enable3DOverlays){
     Vector3 rectColor = Vector3(0.3, 0.1, 0.2);
 
     scene = new Scene(EntityPool::System);
@@ -33,13 +112,52 @@ editor::UILayer::UILayer(bool enableViewGizmo){
     
     camera->setType(CameraType::CAMERA_UI);
 
-    if (enableViewGizmo){
+    if (enable3DOverlays){
         viewGizmoImage = new Image(scene);
 
         viewGizmoImage->setAnchorPreset(AnchorPreset::TOP_RIGHT);
         viewGizmoImage->setSize(100, 100);
     }else{
         viewGizmoImage = nullptr;
+    }
+
+    gaugeBar = nullptr;
+    gaugeMarker = nullptr;
+    gaugeLabel = nullptr;
+    gaugeLastValue = -1.0f;
+    gaugeHighlightTime = 0.0f;
+    gaugeOpacity = GAUGE_IDLE_OPACITY;
+
+    speedGaugeActive = false;
+    speedFactor = 1.0f;
+    speedMinFactor = 0.0f;
+    speedMaxFactor = 0.0f;
+
+    if (enable3DOverlays){
+        gaugeBar = new Progressbar(scene);
+        gaugeBar->setType(ProgressbarType::VERTICAL);
+        gaugeBar->setSize(GAUGE_TRACK_WIDTH, GAUGE_TRACK_HEIGHT);
+        gaugeBar->setValue(0.0f);
+        placeAtLeftCenter(gaugeBar, GAUGE_TRACK_X, 0);
+        // Keep the lazily-created fill behind the overlays.
+        gaugeBar->setFillColor(withOpacity(GAUGE_DISTANCE_FILL_COLOR, gaugeOpacity));
+
+        for (int i = 0; i < GAUGE_TICK_COUNT; i++){
+            Polygon* tick = new Polygon(scene);
+            setPolygonRect(tick, GAUGE_TICK_WIDTH, 1);
+            float fraction = static_cast<float>(i) / static_cast<float>(GAUGE_TICK_COUNT - 1);
+            placeAtLeftCenter(tick, GAUGE_TICK_X, (GAUGE_TRACK_HEIGHT * 0.5f) - fraction * GAUGE_TRACK_HEIGHT);
+            gaugeTicks.push_back(tick);
+        }
+
+        gaugeMarker = new Polygon(scene);
+        setPolygonRect(gaugeMarker, GAUGE_MARKER_WIDTH, GAUGE_MARKER_HEIGHT);
+
+        gaugeLabel = new Text(scene);
+        gaugeLabel->setFontSize(GAUGE_LABEL_FONT_SIZE);
+
+        applyGaugeOpacity(gaugeOpacity);
+        setCameraGaugeVisible(false);
     }
 
     scene->setCamera(camera);
@@ -57,6 +175,16 @@ editor::UILayer::~UILayer(){
         delete viewGizmoImage;
     }
 
+    for (Polygon* tick : gaugeTicks){
+        delete tick;
+    }
+    gaugeTicks.clear();
+    if (gaugeBar){
+        delete gaugeBar;
+        delete gaugeMarker;
+        delete gaugeLabel;
+    }
+
     delete scene;
 }
 
@@ -72,6 +200,132 @@ void editor::UILayer::setViewGizmoImageVisible(bool visible){
 
 void editor::UILayer::setSelectionBoxVisible(bool visible){
     selectionRect->setVisible(visible);
+}
+
+void editor::UILayer::setCameraGaugeVisible(bool visible){
+    if (!gaugeBar){
+        return;
+    }
+
+    if (!visible){
+        bool resetColors = speedGaugeActive || gaugeOpacity != GAUGE_IDLE_OPACITY;
+        speedGaugeActive = false;
+        gaugeLastValue = -1.0f;
+        gaugeHighlightTime = 0.0f;
+        gaugeOpacity = GAUGE_IDLE_OPACITY;
+        if (resetColors){
+            applyGaugeOpacity(gaugeOpacity);
+        }
+    }
+
+    gaugeBar->setVisible(visible);
+    gaugeMarker->setVisible(visible);
+    gaugeLabel->setVisible(visible);
+    for (Polygon* tick : gaugeTicks){
+        tick->setVisible(visible);
+    }
+}
+
+void editor::UILayer::applyGaugeOpacity(float opacity){
+    const Vector4& fillColor = speedGaugeActive ? GAUGE_SPEED_FILL_COLOR : GAUGE_DISTANCE_FILL_COLOR;
+    gaugeBar->setColor(withOpacity(GAUGE_TRACK_COLOR, opacity));
+    gaugeBar->setFillColor(withOpacity(fillColor, opacity));
+    gaugeMarker->setColor(withOpacity(GAUGE_MARKER_COLOR, opacity));
+    gaugeLabel->setColor(withOpacity(GAUGE_LABEL_COLOR, opacity));
+    for (Polygon* tick : gaugeTicks){
+        tick->setColor(withOpacity(GAUGE_TICK_COLOR, opacity));
+    }
+}
+
+void editor::UILayer::updateGauge(float value, float minValue, float maxValue){
+    bool firstValue = gaugeLastValue < 0.0f;
+    if (firstValue || value != gaugeLastValue){
+        float clamped = std::clamp(value, minValue, maxValue);
+        float fraction = std::log(clamped / minValue) / std::log(maxValue / minValue);
+        bool fractionChanged = gaugeBar->getValue() != fraction;
+        if (fractionChanged){
+            gaugeBar->setValue(fraction);
+        }
+        if (firstValue || fractionChanged){
+            float markerY = (GAUGE_TRACK_HEIGHT * 0.5f) - fraction * GAUGE_TRACK_HEIGHT;
+            placeAtLeftCenter(gaugeMarker, GAUGE_MARKER_X, markerY);
+            placeAtLeftCenter(gaugeLabel, GAUGE_LABEL_X, markerY);
+        }
+
+        std::string label = speedGaugeActive ? formatSpeedFactor(value) : formatDistance(value);
+        if (label != gaugeLabelText){
+            gaugeLabelText = label;
+            gaugeLabel->setText(label);
+        }
+
+        if (!firstValue && std::abs(value - gaugeLastValue) > std::max(0.001f, gaugeLastValue * 0.001f)){
+            gaugeHighlightTime = GAUGE_HIGHLIGHT_HOLD;
+        }
+        gaugeLastValue = value;
+    }
+
+    float deltatime = Engine::getDeltatime();
+    float previousOpacity = gaugeOpacity;
+    if (gaugeHighlightTime > 0.0f){
+        gaugeHighlightTime = std::max(0.0f, gaugeHighlightTime - deltatime);
+        gaugeOpacity = std::min(1.0f, gaugeOpacity + deltatime * GAUGE_FADE_IN_SPEED);
+    }else{
+        gaugeOpacity = std::max(GAUGE_IDLE_OPACITY, gaugeOpacity - deltatime * GAUGE_FADE_OUT_SPEED);
+    }
+    if (gaugeOpacity != previousOpacity){
+        applyGaugeOpacity(gaugeOpacity);
+    }
+
+    setCameraGaugeVisible(true);
+}
+
+void editor::UILayer::updateCameraGauge(float distance, float minDistance, float maxDistance){
+    if (!gaugeBar){
+        return;
+    }
+
+    if (speedGaugeActive){
+        updateGauge(speedFactor, speedMinFactor, speedMaxFactor);
+        return;
+    }
+
+    if (maxDistance <= minDistance || minDistance <= 0.0f){
+        return;
+    }
+
+    updateGauge(distance, minDistance, maxDistance);
+}
+
+bool editor::UILayer::isCameraGaugeAnimating() const{
+    return gaugeBar && gaugeBar->isVisible()
+        && (gaugeHighlightTime > 0.0f || gaugeOpacity > GAUGE_IDLE_OPACITY);
+}
+
+void editor::UILayer::showSpeedGauge(float factor, float minFactor, float maxFactor){
+    if (!gaugeBar || minFactor <= 0.0f || maxFactor <= minFactor){
+        return;
+    }
+
+    if (!speedGaugeActive){
+        speedGaugeActive = true;
+        gaugeLastValue = -1.0f;
+        gaugeHighlightTime = GAUGE_HIGHLIGHT_HOLD;
+        applyGaugeOpacity(gaugeOpacity);
+    }
+    speedFactor = factor;
+    speedMinFactor = minFactor;
+    speedMaxFactor = maxFactor;
+}
+
+void editor::UILayer::hideSpeedGauge(){
+    if (!gaugeBar || !speedGaugeActive){
+        return;
+    }
+
+    speedGaugeActive = false;
+    gaugeLastValue = -1.0f;
+    gaugeHighlightTime = GAUGE_HIGHLIGHT_HOLD;
+    applyGaugeOpacity(gaugeOpacity);
 }
 
 void editor::UILayer::updateRect(Vector2 position, Vector2 size){

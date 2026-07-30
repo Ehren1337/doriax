@@ -2016,9 +2016,13 @@ void editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                 Camera* editorCam = targetScene->sceneRender->getCamera();
                 if (editorCam) {
                     float zoom = 0.0f;
-                    Stream::decodeEditorCamera(editorCam, targetScene->editorCameraState, zoom);
+                    float walkSpeedOffset = 0.0f;
+                    Stream::decodeEditorCamera(editorCam, targetScene->editorCameraState, zoom, walkSpeedOffset);
                     if ((targetScene->sceneType == SceneType::SCENE_2D || targetScene->sceneType == SceneType::SCENE_UI) && zoom > 0.0f) {
                         static_cast<SceneRender2D*>(targetScene->sceneRender)->setZoom(zoom);
+                    }
+                    if (targetScene->sceneType == SceneType::SCENE_3D) {
+                        static_cast<SceneRender3D*>(targetScene->sceneRender)->setWalkSpeedOffset(walkSpeedOffset);
                     }
                 }
             }
@@ -2516,10 +2520,13 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
         Camera* editorCam = sceneProject->sceneRender->getCamera();
         if (editorCam) {
             float zoom = 0.0f;
+            float walkSpeedOffset = 0.0f;
             if (sceneProject->sceneType == SceneType::SCENE_2D || sceneProject->sceneType == SceneType::SCENE_UI) {
                 zoom = static_cast<SceneRender2D*>(sceneProject->sceneRender)->getZoom();
+            } else if (sceneProject->sceneType == SceneType::SCENE_3D) {
+                walkSpeedOffset = static_cast<SceneRender3D*>(sceneProject->sceneRender)->getWalkSpeedOffset();
             }
-            sceneProject->editorCameraState = Stream::encodeEditorCamera(editorCam, zoom);
+            sceneProject->editorCameraState = Stream::encodeEditorCamera(editorCam, zoom, walkSpeedOffset);
         }
     }
 
@@ -3866,6 +3873,12 @@ uint32_t editor::Project::getNextSceneId() const{
 
 void editor::Project::setSelectedSceneId(uint32_t selectedScene){
     if (this->selectedScene != selectedScene){
+        if (SceneProject* previousScene = getScene(this->selectedScene)){
+            if (previousScene->sceneRender){
+                previousScene->sceneRender->getUILayer()->setCameraGaugeVisible(false);
+            }
+        }
+
         this->selectedScene = selectedScene;
         this->selectedSceneForProperties = selectedScene;
 

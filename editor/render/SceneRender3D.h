@@ -64,6 +64,8 @@ namespace doriax::editor{
 
         ViewportGizmo viewgizmo;
 
+        float walkSpeedOffset = 0.0f;
+
         Vector2 linesOffset;
         float lastGridSpacing;
         float lastGridFarClip = 0.0f;
@@ -107,6 +109,11 @@ namespace doriax::editor{
 
         void activate() override;
         void updateSelLines(std::vector<OBB> obbs) override;
+
+        void zoomCamera(float amount);
+
+        float getWalkSpeedOffset() const;
+        void setWalkSpeedOffset(float offset);
 
         void update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings = SceneDisplaySettings{}) override;
         void mouseHoverEvent(float x, float y) override;
