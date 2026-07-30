@@ -43,7 +43,7 @@ Vector4 withOpacity(const Vector4& color, float opacity){
     return Vector4(color.x, color.y, color.z, color.w * opacity);
 }
 
-void setPolygonRect(Polygon* polygon, float width, float height){
+void setPolygonRect(doriax::Polygon* polygon, float width, float height){
     polygon->clearVertices();
     polygon->addVertex(0, 0);
     polygon->addVertex(0, height);
