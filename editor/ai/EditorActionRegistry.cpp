@@ -142,12 +142,12 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "search_resources",
-            "Search project files by name and optional file type. This only reads project paths.",
+            "Search project files by name and optional file type. Omit query (or pass an empty one) to browse: it then lists project files, narrowed by type when given. This only reads project paths.",
             objectSchema({
-                {"query", stringSchema("Case-insensitive filename search text")},
+                {"query", stringSchema("Case-insensitive filename search text. Omit to list files instead of filtering")},
                 {"type", stringSchema("Optional type: model, image, material, scene, script, audio, font, any")},
                 {"max_results", integerSchema("Maximum number of paths to return, 1-50")}
-            }, {"query"}),
+            }),
             true
         },
         {
@@ -1090,6 +1090,21 @@ bool hasString(const Json& args, const char* key) {
     return args.contains(key) && args[key].is_string() && !args[key].get<std::string>().empty();
 }
 
+// Json::value() throws type_error.302 on a present wrong-typed key; read it as absent.
+std::string stringArg(const Json& args, const char* key) {
+    if (!args.is_object()) return {};
+    const auto it = args.find(key);
+    if (it == args.end() || !it->is_string()) return {};
+    return it->get<std::string>();
+}
+
+// Wrong type, excluding null: models spell "no value" as null, but a number is a mistake.
+bool isWrongTypedString(const Json& args, const char* key) {
+    if (!args.is_object()) return false;
+    const auto it = args.find(key);
+    return it != args.end() && !it->is_string() && !it->is_null();
+}
+
 bool hasObject(const Json& args, const char* key) {
     return args.contains(key) && args[key].is_object();
 }
@@ -1155,7 +1170,14 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
     }
 
     if (name == "search_resources") {
-        return hasString(arguments, "query") ? ok() : fail("search_resources requires query.");
+        // Missing/empty/null query is a browse request; rejecting it only burned a step.
+        if (isWrongTypedString(arguments, "query")) {
+            return fail("search_resources query must be a string (omit it to list files).");
+        }
+        if (isWrongTypedString(arguments, "type")) {
+            return fail("search_resources type must be a string.");
+        }
+        return ok();
     }
     if (name == "search_engine_api") {
         return hasString(arguments, "query") ? ok() : fail("search_engine_api requires query.");
@@ -1465,7 +1487,14 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
         return "Read project summary";
     }
     if (name == "search_resources") {
-        return "Search resources for \"" + arguments.value("query", "") + "\"";
+        const std::string query = stringArg(arguments, "query");
+        const std::string type = stringArg(arguments, "type");
+        if (!query.empty()) {
+            return "Search resources for \"" + query + "\"";
+        }
+        return (type.empty() || type == "any")
+            ? "List project resources"
+            : "List project " + type + " resources";
     }
     if (name == "list_scene_entities") {
         return arguments.contains("scene_id")

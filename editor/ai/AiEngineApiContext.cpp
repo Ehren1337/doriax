@@ -75,6 +75,64 @@ bool isSameOrBaseClass(const std::string& candidateBase,
     return false;
 }
 
+// Lua-readable member names per bound class, e.g. Object::getPosition -> Object.position.
+std::unordered_map<std::string, std::vector<std::string>> buildLuaMemberMap() {
+    std::unordered_map<std::string, std::vector<std::string>> members;
+    for (const auto& symbol : doriax::editor::getEngineAPISymbols()) {
+        const std::string kind = symbol.kind ? symbol.kind : "";
+        if (kind != "Property" && kind != "Constant" && kind != "Event") continue;
+        const std::string parent = lower(symbol.parent ? symbol.parent : "");
+        if (parent.empty() || !symbol.name) continue;
+        members[parent].push_back(symbol.name);
+    }
+    return members;
+}
+
+std::string lowerFirst(std::string value) {
+    if (!value.empty()) {
+        value[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(value[0])));
+    }
+    return value;
+}
+
+// The Lua property a getX/setX/isX/hasX accessor stands in for, walking base classes.
+std::string luaPropertyForAccessor(
+    const std::string& method,
+    const std::string& parent,
+    const std::unordered_map<std::string, std::vector<std::string>>& members,
+    const std::unordered_map<std::string, std::string>& inheritance) {
+    std::vector<std::string> candidates;
+    if (method.size() > 3 && (method.compare(0, 3, "get") == 0 || method.compare(0, 3, "set") == 0)) {
+        candidates.push_back(lowerFirst(method.substr(3)));
+    }
+    if (method.size() > 2 && method.compare(0, 2, "is") == 0) {
+        candidates.push_back(lowerFirst(method.substr(2)));
+    }
+    if (method.size() > 3 && method.compare(0, 3, "has") == 0) {
+        candidates.push_back(lowerFirst(method.substr(3)));
+    }
+    if (candidates.empty()) return {};
+    candidates.push_back(lowerFirst(method));
+
+    std::string current = lower(parent);
+    for (int depth = 0; depth < 32 && !current.empty(); ++depth) {
+        auto classIt = members.find(current);
+        if (classIt != members.end()) {
+            for (const std::string& candidate : candidates) {
+                for (const std::string& member : classIt->second) {
+                    if (lower(member) == lower(candidate)) {
+                        return member;
+                    }
+                }
+            }
+        }
+        auto baseIt = inheritance.find(current);
+        if (baseIt == inheritance.end()) break;
+        current = baseIt->second;
+    }
+    return {};
+}
+
 std::string luaCallHint(const std::string& detail, const std::string& parent) {
     const std::string detailLower = lower(detail);
     const std::string parentLower = lower(parent);
@@ -195,6 +253,7 @@ Json AiEngineApiContext::search(const std::string& query,
     const std::string parentLower = lower(parentFilter);
     const std::vector<std::string> tokens = tokenize(query);
     const auto inheritance = buildInheritanceMap();
+    const auto luaMembers = buildLuaMemberMap();
 
     std::vector<ScoredSymbol> scored;
     auto consider = [&](const char* symName, const char* symKind,
@@ -289,6 +348,18 @@ Json AiEngineApiContext::search(const std::string& query,
         if (!hint.empty()) {
             entry["lua_call_hint"] = hint;
         }
+        if (entry.value("kind", "") == "CppMethod") {
+            const std::string parent = entry.value("parent", "");
+            const std::string property = luaPropertyForAccessor(
+                entry.value("name", ""), parent, luaMembers, inheritance);
+            // Short: detail_format carries the full explanation, and this repeats per result.
+            entry["lua_callable"] = false;
+            entry["lua_note"] = property.empty()
+                ? "C++ scripts only; not callable from Lua. Look for a bound property on " +
+                  parent + " instead."
+                : "C++ scripts only; not callable from Lua. Use the bound property " +
+                  parent + "." + property + " instead.";
+        }
         results.push_back(std::move(entry));
     }
 
@@ -297,9 +368,9 @@ Json AiEngineApiContext::search(const std::string& query,
         {"query", query},
         {"parent", parentFilter},
         {"results", results},
-        {"detail_format", "detail reads Parent<sep>name(params) -> ReturnType. The ':' separator marks an instance method, '.' a static method, and the part after '->' is the C++ return type (absent when it returns void). Param entries are 'Type name'. For kind 'Macro' (C++ script macros like DPROPERTY and REGISTER_*/UNREGISTER_* event subscriptions), 'LuaGlobal' (global Lua helpers like RegisterEngineEvent/RegisterEvent), and 'LuaScript' (Lua script-table conventions), the detail is the usage description; follow it verbatim."},
-        {"language_mapping", "Lua: instance methods obj:method(args), static/namespaced Class.method(args), and bound properties Class.prop (e.g. Engine.deltatime). C++: instance methods obj.method(args) or a bare method(args)/this->method(args) inside a cpp_subclass, static/namespaced Class::method(args) (e.g. Engine::getDeltatime()), and use getters/setters not the Lua property shortcut."},
-        {"usage_note", "Construct wrappers with the signatures returned here, e.g. Shape(self.scene, self.entity). For color on Mesh/Shape, Lua uses setColor with RGBA floats or Vector4; C++ cpp_subclass scripts inherit Mesh and call setColor(1,0,0,1) with flat headers like \"Mesh.h\". In C++ register engine callbacks with REGISTER_ENGINE_EVENT in the constructor and unregister with UNREGISTER_ENGINE_EVENT in the destructor; in Lua register with RegisterEngineEvent(self, \"onUpdate\") in :init() with no manual unregister. Read lua_call_hint when present."}
+        {"detail_format", "detail reads Parent<sep>name(params) -> ReturnType, and the separator tells you which languages can call it. ':' (kind 'Method') is a Lua-bound instance method, callable from BOTH Lua and C++. '.' is a static method (kind 'Function') or a bound property/constant (kind 'Property'/'Constant'/'Event'), also available in both. '::' (kind 'CppMethod') is a public C++ method that LuaBridge does NOT bind: it exists for C++ scripts only and calling it from Lua raises \"attempt to call a nil value\" -- such entries carry lua_callable=false and a lua_note naming the bound property to use instead. The part after '->' is the C++ return type (absent when it returns void), and param entries are 'Type name'. For kind 'Macro' (C++ script macros like DPROPERTY and REGISTER_*/UNREGISTER_* event subscriptions), 'LuaGlobal' (global Lua helpers like RegisterEngineEvent/RegisterEvent), and 'LuaScript' (Lua script-table conventions), the detail is the usage description; follow it verbatim."},
+        {"language_mapping", "Lua: instance methods obj:method(args) (kind 'Method' only), static/namespaced Class.method(args), and bound properties obj.prop / Class.prop (e.g. Engine.deltatime, object.position, body.linearVelocity). Lua has no getX()/setX() shortcut: an accessor that only appears as kind 'CppMethod' is reachable in Lua through its property, so write object.position = v, not object:setPosition(v). C++: instance methods obj.method(args) or a bare method(args)/this->method(args) inside a cpp_subclass, static/namespaced Class::method(args) (e.g. Engine::getDeltatime()), and use the getters/setters -- the Lua property shortcut does not exist in C++."},
+        {"usage_note", "Construct wrappers with the signatures returned here, e.g. Shape(self.scene, self.entity). For color on Mesh/Shape, Lua uses setColor with RGBA floats or Vector4; C++ cpp_subclass scripts inherit Mesh and call setColor(1,0,0,1) with flat headers like \"Mesh.h\". In C++ register engine callbacks with REGISTER_ENGINE_EVENT in the constructor and unregister with UNREGISTER_ENGINE_EVENT in the destructor; in Lua register with RegisterEngineEvent(self, \"onUpdate\") in :init() with no manual unregister. Read lua_call_hint and lua_note when present; a result with lua_callable=false must never be called from a Lua script."}
     };
 }
 

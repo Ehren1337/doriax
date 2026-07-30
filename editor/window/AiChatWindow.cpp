@@ -928,6 +928,14 @@ AiChatWindow::AiChatWindow(Project* project, ResourcesWindow* resourcesWindow)
     prefetchModels();
 }
 
+void AiChatWindow::setWakeCallback(std::function<void()> callback) {
+    service.setWakeCallback(std::move(callback));
+}
+
+void AiChatWindow::shutdown() {
+    service.shutdown();
+}
+
 void AiChatWindow::prefetchModels() {
     // Kick off a background /models fetch for every configured provider at
     // app open, so the picker is already populated by the time it is opened.
@@ -2695,15 +2703,32 @@ void AiChatWindow::autoRunProposals() {
         return;
     }
 
-    for (const auto& proposal : service.getProposals()) {
-        if (proposal.executed || proposal.executing) {
-            continue;
+    // One per frame cost a ~100 ms idle tick per batched tool. Drain the batch here,
+    // budgeted so one slow action cannot freeze the UI for the whole round.
+    const auto budget = std::chrono::milliseconds(50);
+    const auto started = std::chrono::steady_clock::now();
+
+    while (true) {
+        uint64_t nextId = 0;
+        for (const auto& proposal : service.getProposals()) {
+            if (proposal.executed || proposal.executing) {
+                continue;
+            }
+            bool eligible = (mode == ai::ApprovalMode::FullAgent) ||
+                            (mode == ai::ApprovalMode::SafeAutoRun && proposal.readOnly);
+            if (eligible) {
+                nextId = proposal.id;
+                break;
+            }
         }
-        bool eligible = (mode == ai::ApprovalMode::FullAgent) ||
-                        (mode == ai::ApprovalMode::SafeAutoRun && proposal.readOnly);
-        if (eligible) {
-            executeProposal(proposal.id);
-            break; // one per frame keeps the UI responsive
+        if (nextId == 0) {
+            return;
+        }
+
+        executeProposal(nextId);
+
+        if (std::chrono::steady_clock::now() - started >= budget) {
+            return; // the rest of the batch runs next frame
         }
     }
 }

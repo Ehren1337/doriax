@@ -328,14 +328,19 @@ void CustomTextEditor::addEngineAPISuggestions() {
         {"Enum", SuggestionKind::Enum},
         {"EnumMember", SuggestionKind::EnumMember},
         {"Method", SuggestionKind::Method},
+        {"CppMethod", SuggestionKind::Method},
         {"Function", SuggestionKind::Function},
         {"Property", SuggestionKind::Property},
         {"Constant", SuggestionKind::Constant},
         {"Variable", SuggestionKind::Variable},
     };
 
+    // "CppMethod" is unbound in Lua: suggesting it there yields a nil call at runtime.
+    const bool isLua = (language == SyntaxLanguage::Lua);
+
     for (const auto& sym : apiSymbols) {
         if (isEngineApiConstructorSymbol(sym)) continue;
+        if (isLua && sym.kind && std::string(sym.kind) == "CppMethod") continue;
 
         SuggestionKind sk = SuggestionKind::Variable;
         auto it = kindMap.find(sym.kind);

@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -150,6 +151,12 @@ public:
     static constexpr const char* WINDOW_NAME = "AI Chat";
 
     AiChatWindow(Project* project, ResourcesWindow* resourcesWindow);
+
+    // Wakes the backend loop from the AI worker instead of waiting out its idle tick.
+    void setWakeCallback(std::function<void()> callback);
+
+    // Stops the AI worker: this window is never deleted, so ~AiService never runs.
+    void shutdown();
 
     // Advances the agent loop (tool continuations, auto-run, persistence).
     // Safe to call every frame even when the panel is closed, collapsed, or

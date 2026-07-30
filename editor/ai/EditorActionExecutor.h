@@ -26,6 +26,11 @@ private:
     ResourcesWindow* resourcesWindow;
     const HttpClient* httpClient;
 
+    // Validates and runs one action; execute() wraps it to contain throws.
+    ActionResult dispatch(const std::string& name,
+                          const Json& arguments,
+                          const std::atomic<bool>* cancel);
+
     ActionResult getProjectSummary();
     ActionResult searchResources(const Json& arguments);
     ActionResult listSceneEntities(const Json& arguments);

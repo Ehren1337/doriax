@@ -205,7 +205,11 @@ namespace doriax::editor{
 
         bool didRenderScene() const { return renderedSceneThisFrame; }
         bool hasPendingMainThreadTasks();
-        void setWakeCallback(std::function<void()> cb) { wakeCallback = std::move(cb); }
+        // The AI worker gets its own copy: capturing this static App would dangle.
+        void setWakeCallback(std::function<void()> cb);
+
+        // Stops background work outliving the main loop; run before backend teardown.
+        void shutdownBackgroundWork();
 
         static std::filesystem::path getUserCacheBaseDir();
         static std::filesystem::path getUserShaderCacheDir();

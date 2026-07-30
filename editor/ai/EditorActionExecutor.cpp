@@ -1750,6 +1750,18 @@ EditorActionExecutor::EditorActionExecutor(Project* project, ResourcesWindow* re
 ActionResult EditorActionExecutor::execute(const std::string& name,
                                            const Json& arguments,
                                            const std::atomic<bool>* cancel) {
+    // A wrong-typed argument throws on the main thread, terminating the editor.
+    try {
+        return dispatch(name, arguments, cancel);
+    } catch (const std::exception& e) {
+        return failResult("Action " + name + " failed: " + e.what() +
+                          ". Check that each argument uses its documented type.");
+    }
+}
+
+ActionResult EditorActionExecutor::dispatch(const std::string& name,
+                                            const Json& arguments,
+                                            const std::atomic<bool>* cancel) {
     ValidationResult validation = EditorActionRegistry::validate(name, arguments);
     if (!validation.ok) {
         if (EditorActionRegistry::hasTool(name) &&
@@ -1874,9 +1886,17 @@ ActionResult EditorActionExecutor::getProjectSummary() {
 }
 
 ActionResult EditorActionExecutor::searchResources(const Json& arguments) {
-    const std::string query = lower(arguments.value("query", ""));
-    const std::string wantedType = lower(arguments.value("type", "any"));
-    int maxResults = arguments.value("max_results", 20);
+    // Optional here, and Json::value() would throw on a null spelled for "no value".
+    auto optionalString = [&arguments](const char* key, const char* fallback) {
+        const auto it = arguments.find(key);
+        return (it == arguments.end() || !it->is_string()) ? std::string(fallback)
+                                                           : it->get<std::string>();
+    };
+    const std::string query = lower(optionalString("query", ""));
+    const std::string wantedType = lower(optionalString("type", "any"));
+    const auto maxIt = arguments.find("max_results");
+    int maxResults = (maxIt == arguments.end() || !maxIt->is_number_integer())
+        ? 20 : maxIt->get<int>();
     maxResults = std::max(1, std::min(50, maxResults));
 
     const fs::path projectPath = project->getProjectPath();
@@ -1907,8 +1927,13 @@ ActionResult EditorActionExecutor::searchResources(const Json& arguments) {
         matches.push_back({{"path", relText}, {"type", type}});
     }
 
-    return okResult("Found " + std::to_string(matches.size()) + " resource(s).",
-                    Json{{"matches", matches}});
+    // The walk stops at maxResults, so a full page may be hiding more files.
+    const bool truncated = static_cast<int>(matches.size()) >= maxResults;
+    std::string summary = "Found " + std::to_string(matches.size()) + " resource(s).";
+    if (truncated) {
+        summary += " Result limit reached; narrow the query/type or raise max_results for more.";
+    }
+    return okResult(summary, Json{{"matches", matches}, {"truncated", truncated}});
 }
 
 ActionResult EditorActionExecutor::listSceneEntities(const Json& arguments) {

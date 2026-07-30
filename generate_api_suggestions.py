@@ -232,6 +232,7 @@ def kind_to_suggestion_kind(kind):
         'Enum': 'Enum',
         'EnumMember': 'EnumMember',
         'Method': 'Method',
+        'CppMethod': 'CppMethod',  # C++ only; kept distinct so Lua consumers can drop it
         'StaticMethod': 'Function',
         'Property': 'Property',
         'Constant': 'Constant',
@@ -422,6 +423,7 @@ def generate_header(symbols, output_path):
     classes = [s for s in unique if s.kind == 'Class']
     constructors = [s for s in unique if s.kind == 'Constructor']
     methods = [s for s in unique if s.kind == 'Method']
+    cpp_methods_only = [s for s in unique if s.kind == 'CppMethod']
     static_methods = [s for s in unique if s.kind == 'StaticMethod']
     properties = [s for s in unique if s.kind == 'Property']
     constants = [s for s in unique if s.kind == 'Constant']
@@ -489,7 +491,7 @@ def generate_header(symbols, output_path):
     lines.append('    static const std::vector<EngineAPISymbol> symbols = {')
 
     all_symbols = enums + enum_members + classes + constructors + methods + static_methods + \
-                  properties + constants + events
+                  properties + constants + events + cpp_methods_only
     for s in all_symbols:
         sk = kind_to_suggestion_kind(s.kind)
         lines.append(
@@ -509,6 +511,7 @@ def generate_header(symbols, output_path):
 
     print(f'[generate_api_suggestions] Generated {output_path}')
     print(f'  Classes: {len(classes)}, Methods: {len(methods)}, '
+          f'CppMethods: {len(cpp_methods_only)}, '
           f'StaticMethods: {len(static_methods)}, Properties: {len(properties)}, '
           f'Constants: {len(constants)}, Events: {len(events)}, '
           f'Enums: {len(enums)}, EnumMembers: {len(enum_members)}')
@@ -564,18 +567,22 @@ def main():
                 sep = '.' if s.kind == 'StaticMethod' else ':'
                 s.detail = _format_detail(s.parent, s.name, sep, sig)
 
-    # Find all classes from LuaBridge and append C++ methods not already present
+    # C++ methods a bound class does NOT expose to Lua: 'CppMethod' + Class::method,
+    # so nothing offers them as Lua calls that would resolve to nil.
     lua_classes = {s.name for s in all_symbols if s.kind == 'Class'}
-    existing_methods = {(s.name, s.parent) for s in all_symbols if s.kind == 'Method'}
+    lua_bound_methods = {
+        (s.name, s.parent) for s in all_symbols
+        if s.kind in ('Method', 'StaticMethod')
+    }
     cpp_symbols = []
     for cls in lua_classes:
         methods_dict = cpp_methods.get(cls, {})
         for method_name, overloads in methods_dict.items():
-            if (method_name, cls) not in existing_methods:
+            if (method_name, cls) not in lua_bound_methods:
                 shortest = min(overloads, key=lambda o: len(o[0])) if overloads else ('', '')
                 cpp_symbols.append(APISymbol(
-                    method_name, 'Method',
-                    _format_detail(cls, method_name, ':', shortest), cls
+                    method_name, 'CppMethod',
+                    _format_detail(cls, method_name, '::', shortest), cls
                 ))
     all_symbols.extend(cpp_symbols)
 

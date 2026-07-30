@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -20,6 +21,13 @@ public:
 
     void setSettings(const Settings& settings);
     Settings getSettings() const;
+
+    // Invoked from the worker when a reply lands, so the editor's ~100 ms idle wait
+    // does not add a tick per agent step. Must be safe off the main thread.
+    void setWakeCallback(std::function<void()> callback);
+
+    // Cancels any in-flight request, drops the callback, joins the worker. Idempotent.
+    void shutdown();
 
     // Attachments are consumed only when the message is accepted (returns
     // true); on a refusal (busy, empty input) the caller's vector is intact.
@@ -76,7 +84,10 @@ private:
         int attempt = 0;
     };
     std::optional<PendingRetry> pendingRetry;
+    std::function<void()> wakeCallback;
 
+    // Copies under the lock, invokes unlocked, so no wake runs holding the mutex.
+    void notifyWake() const;
     std::string buildSystemPrompt() const;
     ProviderRequest buildRequestSnapshotLocked() const;
     void dispatchRequest(ProviderRequest request, int retryAttempt = 0);

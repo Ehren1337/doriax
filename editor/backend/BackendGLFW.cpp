@@ -411,6 +411,9 @@ int editor::Backend::init(int argc, char* argv[]) {
         }
     }
 
+    // Stop the AI worker before tearing GLFW down; nothing else ever joins it.
+    app.shutdownBackgroundWork();
+
     // Save window size and state before closing
     int width, height;
     glfwGetWindowSize(window, &width, &height);

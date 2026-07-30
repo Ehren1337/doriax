@@ -1477,6 +1477,18 @@ bool editor::App::hasPendingMainThreadTasks() {
     return !mainThreadTasks.empty();
 }
 
+void editor::App::setWakeCallback(std::function<void()> cb) {
+    wakeCallback = cb;
+    // The AI service keeps its own copy, so nothing it holds points back here.
+    if (aiChatWindow) aiChatWindow->setWakeCallback(std::move(cb));
+}
+
+void editor::App::shutdownBackgroundWork() {
+    // Before glfwTerminate/SDL_Quit, or a late reply posts to a dead window system.
+    if (aiChatWindow) aiChatWindow->shutdown();
+    wakeCallback = nullptr;
+}
+
 void editor::App::engineViewDestroyed(){
     Engine::systemViewDestroyed();
 }

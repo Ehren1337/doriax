@@ -351,6 +351,33 @@ void AiService::setSettings(const Settings& newSettings) {
     }
 }
 
+void AiService::setWakeCallback(std::function<void()> callback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    wakeCallback = std::move(callback);
+}
+
+void AiService::shutdown() {
+    cancel();
+    {
+        // Dropped before the join, so a late reply cannot wake a torn-down target.
+        std::lock_guard<std::mutex> lock(mutex);
+        wakeCallback = nullptr;
+    }
+    // curl aborts from its progress callback, so this waits well under a second.
+    if (worker.joinable()) {
+        worker.join();
+    }
+}
+
+void AiService::notifyWake() const {
+    std::function<void()> callback;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        callback = wakeCallback;
+    }
+    if (callback) callback();
+}
+
 Settings AiService::getSettings() const {
     std::lock_guard<std::mutex> lock(mutex);
     return settings;
@@ -416,6 +443,11 @@ bool AiService::isBusy() const {
 std::string AiService::getActivityText() const {
     std::lock_guard<std::mutex> lock(mutex);
     if (!pendingRetry) {
+        // Show the in-flight tool step rather than an unchanging label.
+        if (toolRounds > 0) {
+            return "Thinking... (step " + std::to_string(toolRounds) + "/" +
+                   std::to_string(std::max(1, settings.maxToolRounds)) + ")";
+        }
         return "Thinking...";
     }
 
@@ -725,6 +757,7 @@ std::string AiService::buildSystemPrompt() const {
         << "Prefer project-relative paths. Never request arbitrary shell commands. Never ask for secrets in chat.\n"
         << "For external assets, use curated sources only and preserve license/author/source attribution.\n"
         << "For scripts and engine API code, the Doriax engine source under the editor's engine/ directory (read it with search_engine_source and read_engine_source) is the ONLY source of truth. Use ONLY classes, methods, properties, enums, macros, and constructor overloads you have confirmed exist in that source; if a symbol is not present there it does not exist in Doriax, so do not use it. Never invent APIs or carry over names, macros, or patterns from other engines or frameworks (e.g. Godot GDCLASS, Unreal GENERATED_BODY/UPROPERTY, Qt Q_OBJECT). search_engine_api is only a quick index into that same source; when a symbol is unfamiliar or you are unsure of its exact spelling or overloads, confirm it in the source before writing it (e.g. key codes are Input.KEY_* in Lua but D_KEY_* macros in C++, and Quaternion's axis-angle constructor takes the angle first: Quaternion(angle, axis)).\n"
+        << "A C++ method existing on a class does NOT mean Lua can call it. LuaBridge binds many accessors as properties instead of methods, and calling the accessor from Lua fails at runtime with \"attempt to call a nil value (method 'x')\". search_engine_api marks this: kind 'Method' with a ':' in the detail (Body2D:getMass()) is Lua-callable, while kind 'CppMethod' with '::' in the detail (Object::getPosition(), Body3D::setLinearVelocity()) is C++ only and carries lua_callable=false plus a lua_note naming the property to use (object.position, body.linearVelocity). In Lua, read and assign those properties (self.sphere.position = p, body.linearVelocity = Vector3(0,0,0)); never translate a CppMethod into obj:getX()/obj:setX(). If a class has no bound property for what you need either, check the LuaBridge binding source under engine/core/script/binding/ before writing the call.\n"
         << "When you create a script for requested behavior, write the complete script with update_script_file instead of asking the user to edit it manually.\n"
         << "After creating or editing ANY script (C++ or Lua), verify it before telling the user it is ready: start the scene with control_play_mode (action=start), then call read_output_log to inspect the editor output. A C++ compile error appears as a build failure with compiler messages; a Lua or C++ runtime error appears as a 'Script crash in scene ...' entry. If the scene is still building, read_output_log again. If you find errors, stop play with control_play_mode (action=stop), fix the script with update_script_file, and verify again -- repeat until the log is clean, then stop play. Do not claim the script works without reading the log.\n"
         << "Doriax Lua scripts are plain returned module tables: local Name = { properties = {} }; function Name:init() ... end; return Name.\n"
@@ -809,6 +842,12 @@ void AiService::finishTurnLocked(bool success) {
 }
 
 void AiService::runProviderRequest(ProviderRequest request, int retryAttempt) {
+    // Declared first so it destructs last: the woken frame must see `busy` cleared.
+    struct WakeOnExit {
+        const AiService* service;
+        ~WakeOnExit() { service->notifyWake(); }
+    } wakeOnExit{this};
+
     if (request.apiKey.empty()) {
         std::lock_guard<std::mutex> lock(mutex);
         appendAssistantMessageLocked("No API key set for " + toString(request.settings.provider) +
@@ -934,9 +973,21 @@ void AiService::addToolCallProposalLocked(const ToolCall& call) {
     proposal.toolName = call.name;
     proposal.arguments = call.arguments;
     proposal.readOnly = EditorActionRegistry::isReadOnly(call.name);
-    proposal.description = EditorActionRegistry::describe(call.name, call.arguments);
 
-    ValidationResult validation = EditorActionRegistry::validate(call.name, call.arguments);
+    // A wrong-typed argument throws here, outside the worker's try/catch: that would
+    // terminate the editor, so route it through the validation-failure path.
+    ValidationResult validation;
+    try {
+        proposal.description = EditorActionRegistry::describe(call.name, call.arguments);
+        validation = EditorActionRegistry::validate(call.name, call.arguments);
+    } catch (const std::exception& e) {
+        if (proposal.description.empty()) {
+            proposal.description = call.name;
+        }
+        validation = {false, "Malformed arguments for " + call.name + ": " + e.what() +
+                             ". Re-send the call with each field in its documented type."};
+    }
+
     if (!validation.ok) {
         // Resolve invalid calls immediately and feed the error back so the
         // tool round-trip stays well-formed and the model can recover.
