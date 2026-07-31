@@ -1543,7 +1543,17 @@ void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std:
     if (sceneProject->sceneType != SceneType::SCENE_3D) return;
 
     Camera* camera = sceneProject->sceneRender->getCamera();
-    AABB aabb = sceneProject->sceneRender->getEntitiesAABB(entities);
+
+    AABB aabb;
+    for (Entity entity : entities) {
+        AABB entityAABB = sceneProject->sceneRender->getEntitiesAABB({entity});
+        if (!entityAABB.isNull() && !entityAABB.isInfinite()) {
+            aabb.merge(entityAABB);
+        } else if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)) {
+            // entities without bounds, like lights, still have a world origin to focus on
+            aabb.merge(transform->worldPosition);
+        }
+    }
     if (aabb.isNull() || aabb.isInfinite()) return;
 
     Vector3 center = aabb.getCenter();
