@@ -34,7 +34,7 @@ namespace doriax{
         // push the function from the registry
         void push_function(lua_State *vm, int func);
 
-        // call the function, throws an exception on error
+        // call the function, logs a traceback on error
         void call(int args, int results = 0);
 
         // we overload push_value instead of specializing

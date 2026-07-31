@@ -12,6 +12,7 @@
 #include "object/physics/Contact3D.h"
 #include "object/physics/CollideShapeResult3D.h"
 #include "LuaBinding.h"
+#include "Log.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -71,38 +72,26 @@ void LuaFunctionBase::push_function(lua_State *vm, int func){
 }
 
 void LuaFunctionBase::call(int args, int results) {
-    // call it with no return values
-    int status = lua_pcall(m_vm, args, results, 0);
+    int status = LuaBinding::pcallWithTraceback(m_vm, args, results);
     if (status) {
-        // call failed; throw an exception
         std::string error = LuaBinding::getLuaStackErrorString(m_vm, -1);
         lua_pop(m_vm, 1);
 
         #ifdef DORIAX_CRASH_GUARD
         auto& crashHandler = FunctionSubscribeGlobal::getCrashHandler();
         if (crashHandler) {
-            std::string funcName = "Lua Script Error";
-
-            // Try to get the actual function name from the call stack
-            lua_Debug ar;
-            if (lua_getstack(m_vm, 0, &ar) && lua_getinfo(m_vm, "n", &ar)) {
-                if (ar.name && strlen(ar.name) > 0) {
-                    funcName = ar.name;
-                }
-            }
-
-            crashHandler(funcName, error);
-            // Push nil values to satisfy the expected results count
-            // This prevents stack underflow if the caller tries to retrieve return values
-            for (int i = 0; i < results; i++) {
-                lua_pushnil(m_vm);
-            }
-            return;
+            crashHandler("Lua Script Error", error);
+        } else {
+            Log::error("Lua Error: %s", error.c_str());
         }
+        #else
+        Log::error("Lua Error: %s", error.c_str());
         #endif
 
-        // in reality you'd want to use your own exception class here
-        throw std::runtime_error(error.c_str());
+        // Push nil values to satisfy the expected results count
+        for (int i = 0; i < results; i++) {
+            lua_pushnil(m_vm);
+        }
     }
 }
 

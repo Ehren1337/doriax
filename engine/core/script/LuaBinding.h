@@ -64,6 +64,9 @@ namespace doriax {
         // old lua function call
         static void luaCallback(int nargs, int nresults, int msgh);
 
+        // lua_pcall with stack traceback on error
+        static int pcallWithTraceback(lua_State* L, int nargs, int nresults);
+
         static void stackDump (lua_State *L);
 
         static void cleanup();

@@ -67,6 +67,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <locale>
 #include <vector>
 #include <memory>
@@ -115,6 +116,18 @@ std::string LuaBinding::getLuaStackErrorString(lua_State* L, int index) {
     }
 
     return std::string("(") + luaL_typename(L, index) + " error value)";
+}
+
+int LuaBinding::pcallWithTraceback(lua_State* L, int nargs, int nresults){
+    //message handler goes below the function and its arguments
+    int base = lua_gettop(L) - nargs;
+    lua_pushcfunction(L, handleLuaError);
+    lua_insert(L, base);
+
+    int status = lua_pcall(L, nargs, nresults, base);
+    lua_remove(L, base);
+
+    return status;
 }
 
 void LuaBinding::luaCallback(int nargs, int nresults, int msgh){
@@ -232,7 +245,8 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                 lua_pushvalue(Linner, i);
             }
 
-            if (lua_pcall(Linner, 1 + nargs, 0, 0) != LUA_OK) {
+            // lua_error below unwinds the script frames, get the traceback here
+            if (pcallWithTraceback(Linner, 1 + nargs, 0) != LUA_OK) {
                 return lua_error(Linner);
             }
             return 0;
@@ -372,6 +386,9 @@ int LuaBinding::handleLuaError(lua_State* L) {
         msg = lua_pushfstring(L, "(error object is a %s value)",
                                 luaL_typename(L, 1));
     }
+    if (strstr(msg, "stack traceback:") != NULL)
+        return 1;  /* a nested handler already added one */
+
     luaL_traceback(L, L, msg, 1);  /* append a standard traceback */
     return 1;  /* return the traceback */
 }
@@ -396,12 +413,9 @@ void LuaBinding::init(){
         filedata.open(luafile_subdir.c_str());
     }
 
-    lua_pushcfunction(L, handleLuaError);
-    int msgh = lua_gettop(L);
-
     //int luaL_dofile (lua_State *L, const char *filename);
     if (luaL_loadbuffer(L,(const char*)filedata.getMemPtr(),filedata.length(), luafile.c_str()) == 0){
-        if(lua_pcall(L, 0, LUA_MULTRET, msgh) != 0){
+        if(pcallWithTraceback(L, 0, LUA_MULTRET) != 0){
             Log::error("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
             lua_close(L);
@@ -596,7 +610,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
                 continue;
             }
 
-            status = lua_pcall(L, 0, 1, 0);
+            status = pcallWithTraceback(L, 0, 1);
             if (status != LUA_OK) {
                 Log::error("Failed to execute Lua module '%s': %s", scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
                 lua_pop(L, 1);
@@ -748,7 +762,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
             lua_getfield(L, -1, "init");
             if (lua_isfunction(L, -1)) {
                 lua_pushvalue(L, -2);
-                if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
+                if (pcallWithTraceback(L, 1, 0) != LUA_OK) {
                     Log::error("Lua init() failed for '%s': %s", scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
                     lua_pop(L, 1);
                 }
