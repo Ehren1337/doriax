@@ -16,9 +16,7 @@
 #include "component/Body2DComponent.h"
 #include "component/Body3DComponent.h"
 #include "component/MeshComponent.h"
-#include "component/MeshPolygonComponent.h"
 #include "component/ScriptComponent.h"
-#include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -4221,13 +4219,11 @@ ActionResult EditorActionExecutor::regenerateMeshGeometry(const Json& arguments)
     // Any mesh may be replaced by a primitive except one whose geometry is regenerated for it:
     // from a model source on load, or from its own component in the MeshSystem::update sweep,
     // which would throw the primitive away as soon as that component is next dirtied.
-    if (Stream::isModelBackedMesh(entity, sceneProject->scene, sceneProject->scene->getSignature(entity))) {
+    Signature signature = sceneProject->scene->getSignature(entity);
+    if (Stream::isModelBackedMesh(entity, sceneProject->scene, signature)) {
         return failResult("Entity geometry comes from a model file and is rebuilt from that source on load.");
     }
-    if (sceneProject->scene->findComponent<SpriteComponent>(entity) ||
-        sceneProject->scene->findComponent<TilemapComponent>(entity) ||
-        sceneProject->scene->findComponent<MeshPolygonComponent>(entity) ||
-        sceneProject->scene->findComponent<TerrainComponent>(entity)) {
+    if (Stream::isGeneratedMesh(sceneProject->scene, signature)) {
         return failResult("Entity geometry is generated from its sprite, tilemap, mesh polygon, or terrain component and is rebuilt on load.");
     }
 

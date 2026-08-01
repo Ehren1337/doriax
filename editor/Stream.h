@@ -183,6 +183,10 @@ namespace doriax::editor {
         // geometry in place would be undone on the next load.
         static bool isModelBackedMesh(const Entity entity, const EntityRegistry* registry, Signature signature);
 
+        // True when a mesh's geometry is rebuilt on load from its sprite, tilemap, mesh
+        // polygon or terrain component, so its buffers and bones must not be serialized.
+        static bool isGeneratedMesh(const EntityRegistry* registry, Signature signature);
+
         // Scaled single-shape offset above which physics may become unstable;
         // shared by the load-time warning and the Properties inspector warning
         static constexpr float MAX_SINGLE_SHAPE_PHYSICS_OFFSET = 50.0f;

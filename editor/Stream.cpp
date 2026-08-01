@@ -2902,6 +2902,13 @@ bool editor::Stream::isModelBackedMesh(const Entity entity, const EntityRegistry
     return false;
 }
 
+bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature signature) {
+    return signature.test(registry->getComponentId<SpriteComponent>()) ||
+           signature.test(registry->getComponentId<TilemapComponent>()) ||
+           signature.test(registry->getComponentId<MeshPolygonComponent>()) ||
+           signature.test(registry->getComponentId<TerrainComponent>());
+}
+
 YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityRegistry* registry, Signature signature) {
     YAML::Node compNode;
 
@@ -2918,8 +2925,10 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         // a manually added mesh) loads no geometry, so the mesh data must still be
         // encoded to remain visible.
         bool isModel = isModelBackedMesh(entity, registry, signature);
+        // a generated mesh rebuilds its buffers on load, but not its textures
+        bool isGenerated = isModel || isGeneratedMesh(registry, signature);
         MeshComponent mesh = registry->getComponent<MeshComponent>(entity);
-        compNode[Catalog::getComponentName(ComponentType::MeshComponent, true)] = encodeMeshComponent(mesh, !isModel, !isModel, !isModel);
+        compNode[Catalog::getComponentName(ComponentType::MeshComponent, true)] = encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated);
     }
 
     if (signature.test(registry->getComponentId<UIComponent>())) {
