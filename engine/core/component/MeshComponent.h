@@ -22,6 +22,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace doriax{
 
@@ -135,6 +136,9 @@ namespace doriax{
         AABB aabb = AABB::ZERO;
         AABB verticesAABB = AABB::ZERO; // is not influenced by instances
         AABB worldAABB; // initially NULL
+
+        std::vector<AABB> bonesAABB; // bind-pose bounds per bone index, empty when not skinned
+        AABB skinnedAABB; // local bounds of the posed mesh, null when not skinned
 
         bool receiveLights = true;
         bool receiveIBL = false; // image-based lighting from a sky environment

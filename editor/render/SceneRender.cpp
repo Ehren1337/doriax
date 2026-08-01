@@ -62,12 +62,16 @@ editor::SceneRender::~SceneRender(){
     delete camera;
 }
 
+AABB editor::SceneRender::getMeshLocalAABB(const MeshComponent& mesh){
+    return mesh.skinnedAABB.isNull() ? mesh.aabb : mesh.skinnedAABB;
+}
+
 AABB editor::SceneRender::getAABB(Entity entity, bool local){
     Signature signature = scene->getSignature(entity);
     if (signature.test(scene->getComponentId<MeshComponent>())){
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         if (local){
-            return mesh.aabb;
+            return getMeshLocalAABB(mesh);
         }else{
             return mesh.worldAABB;
         }
@@ -283,11 +287,12 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
 
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+            AABB meshAABB = getMeshLocalAABB(mesh);
             if (local){
-                return mesh.aabb.getOBB();
+                return meshAABB.getOBB();
             }else{
-                return visual ? transformAABBPreservingShear(modelMatrix, mesh.aabb)
-                              : modelMatrix * mesh.aabb.getOBB();
+                return visual ? transformAABBPreservingShear(modelMatrix, meshAABB)
+                              : modelMatrix * meshAABB.getOBB();
             }
         }else if (signature.test(scene->getComponentId<UIComponent>())){
             if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<UILayoutComponent>())){

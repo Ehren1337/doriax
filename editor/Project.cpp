@@ -3576,7 +3576,7 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
     Signature signature = scene->getSignature(entity);
 
     if (signature.test(scene->getComponentId<MeshComponent>())){
-        aabb = scene->getComponent<MeshComponent>(entity).aabb;
+        aabb = SceneRender::getMeshLocalAABB(scene->getComponent<MeshComponent>(entity));
     }else if (signature.test(scene->getComponentId<UIComponent>())){
         aabb = scene->getComponent<UIComponent>(entity).aabb;
         if (!signature.test(scene->getComponentId<PolygonComponent>()) && signature.test(scene->getComponentId<UILayoutComponent>())){

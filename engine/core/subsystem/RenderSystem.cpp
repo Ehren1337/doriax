@@ -6141,23 +6141,30 @@ void RenderSystem::update(double dt){
                 loadMesh(entity, mesh, pipelines, instmesh, terrain);
             }
             if (mesh.needUpdateAABB || transform.needUpdate){
-                // A skinned mesh has its own model matrix cancelled out at render time: each
-                // bonesMatrix carries inverseDerivedTransform (= modelMatrix.inverse()), so the
-                // shader places geometry at modelMatrix * bonesMatrix[b] * vertex (see mesh.vert
-                // / skinning.glsl). Bounding it with modelMatrix * aabb then mis-sizes the box
-                // whenever the mesh node scale differs from the skeleton's real scale (e.g. an
-                // armature exported at 0.01), which breaks ray picking and frustum culling. So
-                // bound the posed mesh by merging the local AABB through every active bone. A
-                // non-skinned mesh keeps only identity bone matrices, so it merges nothing and
-                // falls back to the plain modelMatrix * aabb.
-                const Matrix4 identityMatrix;
-                AABB skinnedAABB;
-                for (int b = 0; b < MAX_BONES; b++){
-                    if (mesh.bonesMatrix[b] != identityMatrix){
-                        skinnedAABB.merge((transform.modelMatrix * mesh.bonesMatrix[b]) * mesh.aabb);
+                // Bones cancel out this mesh's model matrix, so the shader draws at
+                // modelMatrix * bonesMatrix[b] * vertex and modelMatrix * aabb mis-sizes the box
+                // once posed. Each bone bounds only its own share: the whole aabb per bone works
+                // too, but unions body-sized boxes over the skeleton. Local space so the editor
+                // draws the same box.
+                mesh.skinnedAABB.setNull();
+                if (!instmesh){
+                    for (size_t b = 0; b < mesh.bonesAABB.size(); b++){
+                        if (!mesh.bonesAABB[b].isNull()){
+                            mesh.skinnedAABB.merge(mesh.bonesMatrix[b] * mesh.bonesAABB[b]);
+                        }
+                    }
+
+                    if (mesh.skinnedAABB.isNull()){ // no per-bone bounds to pose
+                        const Matrix4 identityMatrix;
+                        for (int b = 0; b < MAX_BONES; b++){
+                            if (mesh.bonesMatrix[b] != identityMatrix){
+                                mesh.skinnedAABB.merge(mesh.bonesMatrix[b] * mesh.aabb);
+                            }
+                        }
                     }
                 }
-                mesh.worldAABB = skinnedAABB.isNull() ? (transform.modelMatrix * mesh.aabb) : skinnedAABB;
+                mesh.worldAABB = mesh.skinnedAABB.isNull() ? (transform.modelMatrix * mesh.aabb)
+                                                           : (transform.modelMatrix * mesh.skinnedAABB);
 
                 mesh.needUpdateAABB = false;
 

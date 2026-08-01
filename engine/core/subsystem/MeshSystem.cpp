@@ -1865,6 +1865,44 @@ TextureWrap MeshSystem::convertWrap(int wrap){
     return TextureWrap::REPEAT;
 }
 
+// Bone ids and weights arrive as bytes, shorts or floats and the typed Buffer getters each
+// assume a fixed element size. Normalization is undone in the shader, not here.
+static bool readAttributeElement(Buffer* buffer, const Attribute& attribute, unsigned int index, unsigned int element, float& out){
+    AttributeDataType dataType = attribute.getDataType();
+
+    size_t typeSize = 4;
+    if (dataType == AttributeDataType::BYTE || dataType == AttributeDataType::UNSIGNED_BYTE){
+        typeSize = 1;
+    }else if (dataType == AttributeDataType::SHORT || dataType == AttributeDataType::UNSIGNED_SHORT){
+        typeSize = 2;
+    }
+
+    size_t pos = ((size_t)index * buffer->getStride()) + attribute.getOffset() + ((size_t)element * typeSize);
+    if ((pos + typeSize) > buffer->getSize()){
+        return false;
+    }
+
+    const unsigned char* data = buffer->getData() + pos;
+
+    if (dataType == AttributeDataType::BYTE){
+        int8_t value; memcpy(&value, data, typeSize); out = (float)value;
+    }else if (dataType == AttributeDataType::UNSIGNED_BYTE){
+        uint8_t value; memcpy(&value, data, typeSize); out = (float)value;
+    }else if (dataType == AttributeDataType::SHORT){
+        int16_t value; memcpy(&value, data, typeSize); out = (float)value;
+    }else if (dataType == AttributeDataType::UNSIGNED_SHORT){
+        uint16_t value; memcpy(&value, data, typeSize); out = (float)value;
+    }else if (dataType == AttributeDataType::INT){
+        int32_t value; memcpy(&value, data, typeSize); out = (float)value;
+    }else if (dataType == AttributeDataType::UNSIGNED_INT){
+        uint32_t value; memcpy(&value, data, typeSize); out = (float)value;
+    }else{
+        float value; memcpy(&value, data, typeSize); out = value;
+    }
+
+    return true;
+}
+
 void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
     std::map<std::string, Buffer*> buffers;
 
@@ -1886,12 +1924,25 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
     }
 
     mesh.verticesAABB = AABB::ZERO;
+    mesh.bonesAABB.clear();
+    mesh.skinnedAABB.setNull(); // reposed on the next RenderSystem update
 
     for (size_t i = 0; i < mesh.numSubmeshes; i++) {
+        Buffer* boneIdBuffer = NULL;
+        Attribute boneIdAttr;
+        Buffer* boneWeightBuffer = NULL;
+        Attribute boneWeightAttr;
+
         for (auto const& attr : mesh.submeshes[i].attributes){
             if (attr.first == AttributeType::POSITION){
                 vertexBuffer = buffers[attr.second.getBufferName()];
                 vertexAttr = attr.second;
+            }else if (attr.first == AttributeType::BONEIDS){
+                boneIdBuffer = buffers[attr.second.getBufferName()];
+                boneIdAttr = attr.second;
+            }else if (attr.first == AttributeType::BONEWEIGHTS){
+                boneWeightBuffer = buffers[attr.second.getBufferName()];
+                boneWeightAttr = attr.second;
             }
         }
 
@@ -1900,9 +1951,32 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
             continue;
         }
 
+        // bounds of the vertices each bone influences, posed by RenderSystem
+        unsigned int influences = 0;
+        if (boneIdBuffer && boneWeightBuffer){
+            influences = std::min(boneIdAttr.getElements(), boneWeightAttr.getElements());
+        }
+        if (influences > 0 && mesh.bonesAABB.empty()){
+            mesh.bonesAABB.resize(MAX_BONES);
+        }
+
         int verticesize = int(vertexAttr.getCount());
         for (int v = 0; v < verticesize; v++){
-            mesh.verticesAABB.merge(vertexBuffer->getVector3(&vertexAttr, v));
+            Vector3 position = vertexBuffer->getVector3(&vertexAttr, v);
+            mesh.verticesAABB.merge(position);
+
+            for (unsigned int e = 0; e < influences; e++){
+                float weight = 0;
+                float boneId = 0;
+                if (!readAttributeElement(boneWeightBuffer, boneWeightAttr, v, e, weight)) continue;
+                if (weight == 0) continue; // a zero weight never moves the vertex
+                if (!readAttributeElement(boneIdBuffer, boneIdAttr, v, e, boneId)) continue;
+
+                int bone = (int)boneId;
+                if (bone >= 0 && bone < MAX_BONES){
+                    mesh.bonesAABB[bone].merge(position);
+                }
+            }
         }
     }
 

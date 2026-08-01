@@ -179,6 +179,9 @@ namespace doriax::editor{
         SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOverlays, float gizmoScale, float selectionOffset);
         virtual ~SceneRender();
 
+        // bounds as drawn: a skinned mesh is posed by its bones, so skinnedAABB and not aabb
+        static AABB getMeshLocalAABB(const MeshComponent& mesh);
+
         virtual void hideAllGizmos();
 
         void setPlayMode(bool isPlaying);
