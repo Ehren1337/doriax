@@ -38,7 +38,7 @@ bool editor::CopyFileCmd::execute(){
             if (fs::exists(sourceFs)) {
                 if (fs::is_directory(sourceFs)) {
                     if (copy){
-                        fs::copy(sourceFs, destFs, fs::copy_options::recursive);
+                        fs::copy(sourceFs, destFs, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
                     }else{
                         fs::rename(sourceFs, destFs);
                         if (project) {

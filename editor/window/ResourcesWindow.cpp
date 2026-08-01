@@ -1282,11 +1282,11 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
 
     if (ImGui::BeginPopup("ResourcesContextMenu")){
         if (ImGui::MenuItem(ICON_FA_FILE_IMPORT " Import Files")){
-            std::vector<std::string> filePaths = editor::FileDialogs::openFileDialogMultiple();
-            if (!filePaths.empty()){
-                project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, filePaths, currentPath.string(), true));
-                scanDirectory(currentPath);
-            }
+            importExternalPaths(editor::FileDialogs::openFileDialogMultiple());
+        }
+
+        if (ImGui::MenuItem(ICON_FA_FOLDER_OPEN " Import Folders")){
+            importExternalPaths(editor::FileDialogs::pickFolderDialogMultiple());
         }
 
         ImGui::Separator();
@@ -1891,6 +1891,33 @@ void editor::ResourcesWindow::pasteFiles(const fs::path& targetDirectory) {
         clipboardFiles.clear();
     }
 
+    scanDirectory(currentPath);
+}
+
+void editor::ResourcesWindow::importExternalPaths(const std::vector<std::string>& sourcePaths) {
+    std::vector<std::string> validPaths;
+
+    for (const auto& sourcePath : sourcePaths) {
+        fs::path source = fs::path(sourcePath).lexically_normal();
+
+        std::error_code ec;
+        if (fs::is_directory(source, ec) && !ec) {
+            // copying a directory into itself would recurse forever
+            fs::path relative = currentPath.lexically_normal().lexically_relative(source);
+            if (!relative.empty() && *relative.begin() != "..") {
+                Log::error("Cannot import '%s': destination is inside it", source.string().c_str());
+                continue;
+            }
+        }
+
+        validPaths.push_back(sourcePath);
+    }
+
+    if (validPaths.empty()) {
+        return;
+    }
+
+    project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, validPaths, currentPath.string(), true));
     scanDirectory(currentPath);
 }
 
@@ -2559,9 +2586,7 @@ void editor::ResourcesWindow::show() {
     if (ImGui::BeginDragDropTarget()) {
         isDragDropTarget = true;
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("external_files")) {
-            std::vector<std::string> droppedPaths = Util::getStringsFromPayload(payload);
-            project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, droppedPaths, currentPath.string(), true));
-            scanDirectory(currentPath);
+            importExternalPaths(Util::getStringsFromPayload(payload));
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("material")) {
             const char* materialContent = static_cast<const char*>(payload->Data);

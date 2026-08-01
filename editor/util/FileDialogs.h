@@ -135,6 +135,44 @@ namespace doriax::editor{
             return filePaths;
         }
 
+        inline static std::vector<std::string> pickFolderDialogMultiple(){
+            std::vector<std::string> folderPaths;
+            const nfdpathset_t* pathSet;
+            nfdpickfolderu8args_t args = {0};
+
+            args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
+
+            const nfdresult_t res = NFD_PickFolderMultipleU8_With(&pathSet, &args);
+            switch (res) {
+                case NFD_OKAY:
+                    nfdpathsetsize_t num_paths;
+                    if (NFD_PathSet_GetCount(pathSet, &num_paths) != NFD_OKAY) {
+                        printf("Error: NFD_PathSet_GetCount failed: %s\n", NFD_GetError());
+                        break;
+                    }
+                    nfdpathsetsize_t i;
+                    for (i = 0; i != num_paths; ++i) {
+                        char* path;
+                        if (NFD_PathSet_GetPathU8(pathSet, i, &path) != NFD_OKAY) {
+                            printf("Error: NFD_PathSet_GetPathU8 failed: %s\n", NFD_GetError());
+                            break;
+                        }
+                        folderPaths.push_back(path);
+                        NFD_PathSet_FreePathU8(path);
+                    }
+                    NFD_PathSet_Free(pathSet);
+
+                    break;
+                case NFD_ERROR:
+                    printf("Error: %s", NFD_GetError());
+                    break;
+                default:
+                    break;
+            }
+
+            return folderPaths;
+        }
+
         inline static std::string saveFileDialog(std::string defaultPath = "", std::string defaultName = "", bool sceneOnly = false) {
             std::string retPath;
             char* path;
