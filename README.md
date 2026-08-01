@@ -102,6 +102,11 @@ cmake --build build --config Release
 
 The root project builds `doriax-editor`. On single-config generators the executable is typically created under `build/`. On multi-config generators such as Visual Studio, look under the configuration subdirectory. Platform-specific setup is still being refreshed under the Doriax name.
 
+## Examples
+
+- [Character Control](https://doriaxengine.github.io/charactercontrol/)
+- [Simple Physics Control](https://doriaxengine.github.io/simplephysicscontrol/)
+
 ## Documentation and Community
 
 - [Website](https://doriax.org)
