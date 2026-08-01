@@ -5,6 +5,7 @@
 #include "util/FileUtils.h"
 #include "window/TerrainEditWindow.h"
 
+#include <cmath>
 #include <fstream>
 #include <system_error>
 #include <chrono>
@@ -126,6 +127,107 @@ static bool propertyRequested(const std::string& propertyName, const std::vector
         }
     }
     return false;
+}
+
+static bool scriptPropertyFloatEqual(float lhs, float rhs, bool useTolerance) {
+    if (lhs == rhs) return true;
+    if (std::isnan(lhs) || std::isnan(rhs)) return std::isnan(lhs) && std::isnan(rhs);
+    return useTolerance && std::fabs(lhs - rhs) <= 1e-4f;
+}
+
+static bool scriptPropertyValuesEqual(ScriptPropertyType type, const ScriptPropertyValue& lhs, const ScriptPropertyValue& rhs, bool useTolerance = false) {
+    if (lhs.index() != rhs.index()) {
+        return false;
+    }
+
+    switch (type) {
+        case ScriptPropertyType::Bool:
+            return std::get<bool>(lhs) == std::get<bool>(rhs);
+        case ScriptPropertyType::Int:
+            return std::get<int>(lhs) == std::get<int>(rhs);
+        case ScriptPropertyType::Float:
+            return scriptPropertyFloatEqual(std::get<float>(lhs), std::get<float>(rhs), false);
+        case ScriptPropertyType::String:
+            return std::get<std::string>(lhs) == std::get<std::string>(rhs);
+        case ScriptPropertyType::Vector2: {
+            const Vector2& a = std::get<Vector2>(lhs);
+            const Vector2& b = std::get<Vector2>(rhs);
+            return scriptPropertyFloatEqual(a.x, b.x, useTolerance) &&
+                scriptPropertyFloatEqual(a.y, b.y, useTolerance);
+        }
+        case ScriptPropertyType::Vector3:
+        case ScriptPropertyType::Color3: {
+            const Vector3& a = std::get<Vector3>(lhs);
+            const Vector3& b = std::get<Vector3>(rhs);
+            return scriptPropertyFloatEqual(a.x, b.x, useTolerance) &&
+                scriptPropertyFloatEqual(a.y, b.y, useTolerance) &&
+                scriptPropertyFloatEqual(a.z, b.z, useTolerance);
+        }
+        case ScriptPropertyType::Vector4:
+        case ScriptPropertyType::Color4: {
+            const Vector4& a = std::get<Vector4>(lhs);
+            const Vector4& b = std::get<Vector4>(rhs);
+            return scriptPropertyFloatEqual(a.x, b.x, useTolerance) &&
+                scriptPropertyFloatEqual(a.y, b.y, useTolerance) &&
+                scriptPropertyFloatEqual(a.z, b.z, useTolerance) &&
+                scriptPropertyFloatEqual(a.w, b.w, useTolerance);
+        }
+        case ScriptPropertyType::EntityReference: {
+            const EntityReference& lhsRef = std::get<EntityReference>(lhs);
+            const EntityReference& rhsRef = std::get<EntityReference>(rhs);
+            return lhsRef.entity == rhsRef.entity;
+        }
+    }
+
+    return false;
+}
+
+static bool mergeScriptProperties(std::vector<ScriptProperty>& properties, const std::vector<ScriptProperty>& parsedProperties) {
+    bool hasChanges = properties.size() != parsedProperties.size();
+    std::vector<ScriptProperty> mergedProperties;
+    mergedProperties.reserve(parsedProperties.size());
+
+    for (size_t parsedIndex = 0; parsedIndex < parsedProperties.size(); ++parsedIndex) {
+        const ScriptProperty& parsedProp = parsedProperties[parsedIndex];
+        auto currentIt = std::find_if(properties.begin(), properties.end(),
+            [&](const ScriptProperty& current) { return current.name == parsedProp.name; });
+
+        if (currentIt == properties.end()) {
+            hasChanges = true;
+            mergedProperties.push_back(parsedProp);
+            continue;
+        }
+
+        const size_t currentIndex = static_cast<size_t>(currentIt - properties.begin());
+        const bool sameType = currentIt->type == parsedProp.type;
+        const bool defaultChanged = sameType &&
+            !scriptPropertyValuesEqual(currentIt->type, currentIt->defaultValue, parsedProp.defaultValue);
+        const bool updateValue = !sameType || (defaultChanged &&
+            scriptPropertyValuesEqual(currentIt->type, currentIt->value, currentIt->defaultValue, true));
+
+        if (currentIndex != parsedIndex ||
+            currentIt->displayName != parsedProp.displayName ||
+            !sameType ||
+            currentIt->ptrTypeName != parsedProp.ptrTypeName ||
+            defaultChanged) {
+            hasChanges = true;
+        }
+
+        ScriptProperty merged = *currentIt;
+        merged.displayName = parsedProp.displayName;
+        merged.type = parsedProp.type;
+        merged.ptrTypeName = parsedProp.ptrTypeName;
+        merged.defaultValue = parsedProp.defaultValue;
+
+        if (updateValue) {
+            merged.value = parsedProp.defaultValue;
+        }
+
+        mergedProperties.push_back(std::move(merged));
+    }
+
+    properties = std::move(mergedProperties);
+    return hasChanges;
 }
 
 // True when a component holds an entity reference pointing outside the bundle
@@ -4195,53 +4297,7 @@ bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity 
                 parsedProperties = ScriptParser::parseScriptProperties(fullPath);
             }
 
-            if (parsedProperties.empty()) {
-                if (!scriptEntry.properties.empty()) {
-                    scriptEntry.properties.clear();
-                    hasChanges = true;
-                }
-                continue;
-            }
-
-            // Merge with existing properties to preserve user-modified values
-            std::vector<ScriptProperty> mergedProperties;
-            bool structuralChanges = false; // added/removed properties
-            bool metaChanges = false;       // display name/type changed
-
-            for (const auto& parsedProp : parsedProperties) {
-                auto it = std::find_if(scriptEntry.properties.begin(), scriptEntry.properties.end(),
-                    [&](const ScriptProperty& existing) { return existing.name == parsedProp.name; });
-
-                if (it != scriptEntry.properties.end()) {
-                    ScriptProperty merged = *it;
-
-                    if (merged.displayName != parsedProp.displayName ||
-                        merged.type != parsedProp.type ||
-                        merged.ptrTypeName != parsedProp.ptrTypeName) {
-                        metaChanges = true;
-                        merged.displayName = parsedProp.displayName;
-                        merged.type = parsedProp.type;
-                        merged.ptrTypeName = parsedProp.ptrTypeName;
-                    }
-
-                    merged.defaultValue = parsedProp.defaultValue;
-
-                    mergedProperties.push_back(std::move(merged));
-                } else {
-                    structuralChanges = true;
-                    mergedProperties.push_back(parsedProp);
-                }
-            }
-
-            if (scriptEntry.properties.size() != mergedProperties.size()) {
-                structuralChanges = true;
-            }
-
-            scriptEntry.properties = std::move(mergedProperties);
-
-            if (structuralChanges || metaChanges) {
-                hasChanges = true;
-            }
+            hasChanges |= mergeScriptProperties(scriptEntry.properties, parsedProperties);
 
             continue;
         }
@@ -4255,31 +4311,15 @@ bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity 
                 fullPath = getProjectPath() / fullPath;
             }
 
-            // Keep previous properties to preserve current values
-            std::vector<ScriptProperty> oldProps = scriptEntry.properties;
+            ScriptEntry parsedEntry = scriptEntry;
 
             if (!inMemoryContent.empty() && fullPath.string() == fs::path(inMemoryPath).string()) {
-                ProjectUtils::loadLuaScriptPropertiesFromString(scriptEntry, inMemoryContent, fullPath.string());
+                ProjectUtils::loadLuaScriptPropertiesFromString(parsedEntry, inMemoryContent, fullPath.string());
             } else {
-                ProjectUtils::loadLuaScriptProperties(scriptEntry, fullPath.string());
+                ProjectUtils::loadLuaScriptProperties(parsedEntry, fullPath.string());
             }
 
-            // Merge: keep old values if names match
-            for (auto& newProp : scriptEntry.properties) {
-                auto itOld = std::find_if(oldProps.begin(), oldProps.end(),
-                    [&](const ScriptProperty& p) { return p.name == newProp.name; });
-
-                if (itOld != oldProps.end()) {
-                    // If type changed, reset to default; otherwise keep user value
-                    if (itOld->type == newProp.type) {
-                        newProp.value = itOld->value;
-                    } else {
-                        hasChanges = true;
-                    }
-                } else {
-                    hasChanges = true;
-                }
-            }
+            hasChanges |= mergeScriptProperties(scriptEntry.properties, parsedEntry.properties);
 
             continue;
         }

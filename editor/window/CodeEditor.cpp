@@ -603,9 +603,7 @@ void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepa
                 if (matchesFile) {
                     std::vector<ScriptEntry> newScripts = scriptComponent->scripts;
 
-                    // Only apply when the schema actually changed, so re-parsing after an
-                    // unrelated edit (e.g. a function body) doesn't needlessly mark the
-                    // scene modified.
+                    // Ignore edits that do not change script properties.
                     if (project->updateScriptProperties(&sceneProject, entity, newScripts, inMemoryContent, fullPath.string())) {
                         PropertyCmd<std::vector<ScriptEntry>> propertyCmd(project, sceneProject.id, entity, ComponentType::ScriptComponent, "scripts", newScripts);
                         propertyCmd.execute();
