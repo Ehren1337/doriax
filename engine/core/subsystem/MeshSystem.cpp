@@ -1501,6 +1501,63 @@ int MeshSystem::bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, c
     return static_cast<int>(model.gltfModel->bufferViews.size()) - 1;
 }
 
+int MeshSystem::convertGLTFColorToVec4(const tinygltf::Accessor& accessor, ModelComponent& model){
+    // Widens a normalized integer VEC3 COLOR_0 into a synthetic tightly-packed VEC4 of the same
+    // component type, with an opaque alpha. Sokol has no UBYTE3N/USHORT3N to bind those directly,
+    // while a float VEC3 binds as-is. Caller must reserve buffers/bufferViews up-front.
+    if (!model.gltfModel || !isValidGLTFIndex(accessor.bufferView, model.gltfModel->bufferViews)) {
+        return -1;
+    }
+    if (accessor.type != TINYGLTF_TYPE_VEC3) {
+        return -1;
+    }
+    if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE &&
+            accessor.componentType != TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+        return -1;
+    }
+    const int componentSize = tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(accessor.componentType));
+
+    const tinygltf::BufferView& srcView = model.gltfModel->bufferViews[accessor.bufferView];
+    if (!isValidGLTFIndex(srcView.buffer, model.gltfModel->buffers)) {
+        return -1;
+    }
+    const std::vector<unsigned char>& srcData = model.gltfModel->buffers[srcView.buffer].data;
+
+    const size_t count = accessor.count;
+    const int stride = accessor.ByteStride(srcView);
+    if (count == 0 || stride < 3 * componentSize) {
+        return -1;
+    }
+    const size_t base = srcView.byteOffset + accessor.byteOffset;
+    if (base + (count - 1) * static_cast<size_t>(stride) + 3 * static_cast<size_t>(componentSize) > srcData.size()) {
+        Log::error("GLTF vertex color range out of bounds");
+        return -1;
+    }
+
+    const size_t colorSize = 3 * static_cast<size_t>(componentSize);
+    const size_t elementSize = 4 * static_cast<size_t>(componentSize);
+    tinygltf::Buffer newBuffer;
+    newBuffer.data.resize(count * elementSize);
+    for (size_t i = 0; i < count; i++) {
+        unsigned char* dst = newBuffer.data.data() + i * elementSize;
+        memcpy(dst, srcData.data() + base + i * static_cast<size_t>(stride), colorSize);
+        memset(dst + colorSize, 0xFF, componentSize); // all bits set is 1.0 once normalized
+    }
+    model.gltfModel->buffers.push_back(std::move(newBuffer));
+    const int newBufferIndex = static_cast<int>(model.gltfModel->buffers.size()) - 1;
+
+    tinygltf::BufferView newView;
+    newView.buffer = newBufferIndex;
+    newView.byteOffset = 0;
+    newView.byteLength = count * elementSize;
+    newView.byteStride = 0; // tightly packed
+    newView.target = 34962; // GL_ARRAY_BUFFER
+    newView.name = "color_vec4_synth";
+    model.gltfModel->bufferViews.push_back(std::move(newView));
+
+    return static_cast<int>(model.gltfModel->bufferViews.size()) - 1;
+}
+
 bool MeshSystem::canMergeStaticModel(const ModelComponent& model, std::string* reason) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
@@ -3414,10 +3471,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
         loadedBuffers.clear();
         if (model.gltfModel) {
-            // One synthetic view per primitive for byte-index expansion, up to three more (position,
-            // normal, tangent) when baking node transforms, and up to eight supported sparse morph
-            // attributes. Reserve so appends never invalidate non-owning external-buffer pointers.
-            const size_t synthPerSubmesh = (bakingFlatten ? 4 : 1) + MAX_MORPHTARGETS;
+            // One synthetic view per primitive for byte-index expansion, one for a VEC3 COLOR_0, up to
+            // three more (position, normal, tangent) when baking node transforms, and up to eight sparse
+            // morph attributes. Reserve so appends never invalidate non-owning external-buffer pointers.
+            const size_t synthPerSubmesh = (bakingFlatten ? 5 : 2) + MAX_MORPHTARGETS;
             model.gltfModel->buffers.reserve(model.gltfModel->buffers.size() + mesh.numSubmeshes * synthPerSubmesh);
             model.gltfModel->bufferViews.reserve(model.gltfModel->bufferViews.size() + mesh.numSubmeshes * synthPerSubmesh);
         }
@@ -3520,10 +3577,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                                     : getGLTFMeshGlobalMatrix(nodeIdx, model, nodesParent).determinant();
             mesh.windingOrder = (windingDet < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
 
-            // Reserve one synthetic byte-index view plus up to eight supported sparse morph views
-            // per primitive so appends never invalidate non-owning external-buffer pointers.
+            // Reserve one synthetic byte-index view, one for a VEC3 COLOR_0, plus up to eight supported
+            // sparse morph views per primitive so appends never invalidate non-owning buffer pointers.
             if (model.gltfModel) {
-                const size_t synthPerSubmesh = 1 + MAX_MORPHTARGETS;
+                const size_t synthPerSubmesh = 2 + MAX_MORPHTARGETS;
                 model.gltfModel->buffers.reserve(model.gltfModel->buffers.size() + mesh.numSubmeshes * synthPerSubmesh);
                 model.gltfModel->bufferViews.reserve(model.gltfModel->bufferViews.size() + mesh.numSubmeshes * synthPerSubmesh);
             }
@@ -3693,6 +3750,17 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                         byteStride = static_cast<int>(4 * sizeof(float));
                     }
                 }
+                // glTF also allows VEC3 colors; only the normalized integer ones need a copy
+                bool colorConvertedToVec4 = false;
+                if (attrib.first == "COLOR_0" && accessor.type == TINYGLTF_TYPE_VEC3) {
+                    int converted = convertGLTFColorToVec4(accessor, model);
+                    if (converted >= 0) {
+                        attrBufferView = converted;
+                        attrByteOffset = 0;
+                        byteStride = 4 * tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(accessor.componentType));
+                        colorConvertedToVec4 = true;
+                    }
+                }
                 const std::string bufferName = getBufferName(attrBufferView, model);
 
                 loadGLTFBuffer(attrBufferView, mesh, model, byteStride, loadedBuffers);
@@ -3709,12 +3777,19 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 } else if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
                     dataType = AttributeDataType::UNSIGNED_SHORT;
                 } else if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-                    //dataType = AttributeDataType::UNSIGNED_INT;
+                    // no vertex format binds a 32-bit integer (indices take their own path)
+                    Log::warn("Not supported unsigned int of: %s", attrib.first.c_str());
+                    continue;
                 } else if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
                     dataType = AttributeDataType::FLOAT;
                 } else {
                     Log::error("Unknown data type %i of %s", accessor.componentType, attrib.first.c_str());
                     continue;
+                }
+
+                bool attributeNormalized = accessor.normalized;
+                if (colorConvertedToVec4) {
+                    elements = 4;
                 }
 
                 AttributeType attType;
@@ -3745,11 +3820,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                         attType = AttributeType::COLOR;
                         foundAttrs = true;
                         mesh.submeshes[i].hasVertexColor4 = true;
+                    } else if (dataType == AttributeDataType::FLOAT) {
+                        attType = AttributeType::COLOR;
+                        foundAttrs = true;
+                        mesh.submeshes[i].hasVertexColor3 = true;
                     } else {
-                        Log::warn("Not supported vector(3) of: %s", attrib.first.c_str());
+                        Log::warn("Could not convert vector(3) of: %s", attrib.first.c_str());
                     }
                 }
-                bool attributeNormalized = accessor.normalized;
 
                 if (attrib.first == "JOINTS_0") {
                     attType = AttributeType::BONEIDS;

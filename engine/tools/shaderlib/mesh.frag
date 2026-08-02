@@ -28,7 +28,7 @@
     in vec2 v_uv2;
 #endif
 
-#ifdef HAS_VERTEX_COLOR_VEC3
+#if defined(HAS_VERTEX_COLOR_VEC3) && !defined(HAS_INSTANCING)
     in vec3 v_color;
 #endif
 #if defined(HAS_VERTEX_COLOR_VEC4) || defined(HAS_INSTANCING)

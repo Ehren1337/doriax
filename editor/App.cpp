@@ -1780,7 +1780,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and add the shared u_spotMaskAtlas sampler to punctual mesh variants,
     //      using the engine's native texture Y orientation.
     // v17: projective shadows use a depth-only atlas with a comparison sampler.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v17";
+    // v18: vec3 vertex colors on meshes — v_color is promoted to vec4 under instancing.
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v18";
 }
 
 void editor::App::pushTabNotificationStyle(){

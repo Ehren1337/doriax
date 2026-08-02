@@ -1384,6 +1384,7 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     node["hasTexCoord2"] = submesh.hasTexCoord2;
     node["hasNormalMap"] = submesh.hasNormalMap;
     node["hasTangent"] = submesh.hasTangent;
+    node["hasVertexColor3"] = submesh.hasVertexColor3;
     node["hasVertexColor4"] = submesh.hasVertexColor4;
     node["hasTextureRect"] = submesh.hasTextureRect;
     node["hasSkinning"] = submesh.hasSkinning;
@@ -1412,7 +1413,8 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     if (node["hasTexCoord2"]) submesh.hasTexCoord2 = node["hasTexCoord2"].as<bool>();
     submesh.hasNormalMap = node["hasNormalMap"].as<bool>();
     submesh.hasTangent = node["hasTangent"].as<bool>();
-    submesh.hasVertexColor4 = node["hasVertexColor4"].as<bool>();
+    if (node["hasVertexColor3"]) submesh.hasVertexColor3 = node["hasVertexColor3"].as<bool>();
+    if (node["hasVertexColor4"]) submesh.hasVertexColor4 = node["hasVertexColor4"].as<bool>();
     submesh.hasTextureRect = node["hasTextureRect"].as<bool>();
     submesh.hasSkinning = node["hasSkinning"].as<bool>();
     submesh.hasMorphTarget = node["hasMorphTarget"].as<bool>();

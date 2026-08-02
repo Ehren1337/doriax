@@ -2205,6 +2205,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
         mesh.submeshes[i].hasNormal = false;
         mesh.submeshes[i].hasNormalMap = false;
         mesh.submeshes[i].hasTangent = false;
+        mesh.submeshes[i].hasVertexColor3 = false;
         mesh.submeshes[i].hasVertexColor4 = false;
         mesh.submeshes[i].hasSkinning = false;
         mesh.submeshes[i].hasMorphTarget = false;
@@ -2231,7 +2232,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
                         mesh.submeshes[i].hasTangent = true;
                     }
                     if (attr.first == AttributeType::COLOR){
-                        mesh.submeshes[i].hasVertexColor4 = true;
+                        if (attr.second.getElements() == 3){
+                            mesh.submeshes[i].hasVertexColor3 = true;
+                        }else{
+                            mesh.submeshes[i].hasVertexColor4 = true;
+                        }
                     }
                     if (attr.first == AttributeType::BONEIDS || attr.first == AttributeType::BONEWEIGHTS){
                         mesh.submeshes[i].hasSkinning = true;
@@ -2262,7 +2267,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
                 mesh.submeshes[i].hasTangent = true;
             }
             if (attr.first == AttributeType::COLOR){
-                mesh.submeshes[i].hasVertexColor4 = true;
+                if (attr.second.getElements() == 3){
+                    mesh.submeshes[i].hasVertexColor3 = true;
+                }else{
+                    mesh.submeshes[i].hasVertexColor4 = true;
+                }
             }
             if (attr.first == AttributeType::BONEIDS || attr.first == AttributeType::BONEWEIGHTS){
                 mesh.submeshes[i].hasSkinning = true;
@@ -2356,7 +2365,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
         mesh.submeshes[i].shaderProperties = ShaderPool::getMeshProperties(
                         p_unlit, p_hasTexture1, p_hasTexture2, p_punctual,
                         p_receiveShadows, p_hasNormal, p_hasNormalMap,
-                        p_hasTangent, false, mesh.submeshes[i].hasVertexColor4, mesh.submeshes[i].hasTextureRect,
+                        p_hasTangent, mesh.submeshes[i].hasVertexColor3, mesh.submeshes[i].hasVertexColor4, mesh.submeshes[i].hasTextureRect,
                         hasFog, mesh.submeshes[i].hasSkinning, mesh.submeshes[i].hasMorphTarget, mesh.submeshes[i].hasMorphNormal, mesh.submeshes[i].hasMorphTangent,
                         (terrain)?true:false, (instmesh)?true:false, p_ibl, p_mirror, p_ssao, p_light2d, p_shadows2d,
                         p_alphaMask, p_alphaOpaque);

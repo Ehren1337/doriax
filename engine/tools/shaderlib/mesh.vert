@@ -48,11 +48,14 @@ in vec3 a_position;
 
 #ifdef HAS_VERTEX_COLOR_VEC3
     in vec3 a_color;
-    out vec3 v_color;
 #endif
 
 #ifdef HAS_VERTEX_COLOR_VEC4
     in vec4 a_color;
+#endif
+// instancing multiplies by the vec4 instance color, so a vec3 attribute is promoted
+#if defined(HAS_VERTEX_COLOR_VEC3) && !defined(HAS_INSTANCING)
+    out vec3 v_color;
 #endif
 #if defined(HAS_VERTEX_COLOR_VEC4) || defined(HAS_INSTANCING)
     out vec4 v_color;
@@ -181,7 +184,9 @@ void main() {
     #endif
 
     #ifdef HAS_INSTANCING
-        #if defined(HAS_VERTEX_COLOR_VEC3) || defined(HAS_VERTEX_COLOR_VEC4)
+        #ifdef HAS_VERTEX_COLOR_VEC3
+            v_color = vec4(a_color, 1.0) * i_color;
+        #elif defined(HAS_VERTEX_COLOR_VEC4)
             v_color = a_color * i_color;
         #else
             v_color = i_color;

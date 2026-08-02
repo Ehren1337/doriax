@@ -88,6 +88,7 @@ namespace doriax{
         bool hasIBL = false;
         bool hasNormalMap = false;
         bool hasTangent = false;
+        bool hasVertexColor3 = false;
         bool hasVertexColor4 = false;
         bool hasTextureRect = false;
         bool hasSkinning = false;
