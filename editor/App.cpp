@@ -46,7 +46,8 @@ editor::App::App(){
     propertiesWindow->setSceneWindow(sceneWindow);
     structureWindow = new Structure(&project, sceneWindow);
     codeEditor = new CodeEditor(&project);
-    resourcesWindow = new ResourcesWindow(&project, codeEditor);
+    imageViewerWindow = new ImageViewerWindow(&project);
+    resourcesWindow = new ResourcesWindow(&project, codeEditor, imageViewerWindow);
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
@@ -756,7 +757,7 @@ void editor::App::buildDefaultLayout(){
 }
 
 void editor::App::dockProjectTabs(){
-    // Re-open code tabs and dock scenes in their saved order. dockTabWindow()
+    // Re-open document tabs and dock scenes in their saved order. dockTabWindow()
     // leaves already-known windows where the ini put them (unless resetting).
     const std::vector<TabEntry>& tabs = project.getTabs();
 
@@ -780,6 +781,17 @@ void editor::App::dockProjectTabs(){
         }
     };
 
+    auto dockImageTab = [&](const TabEntry& tab) {
+        fs::path fullPath = project.getProjectPath() / tab.filepath;
+        if (fs::exists(fullPath)) {
+            if (!imageViewerWindow->isFileOpen(tab.filepath)) {
+                imageViewerWindow->openFile(tab.filepath, false);
+            } else {
+                dockTabWindow(ImageViewerWindow::getWindowId(tab.filepath));
+            }
+        }
+    };
+
     auto dockOrphanScenes = [&]() {
         for (auto& sceneProject : project.getScenes()) {
             if (!sceneProject.opened) continue;
@@ -790,7 +802,7 @@ void editor::App::dockProjectTabs(){
     };
 
     if (forceDockTabs) {
-        // Reset layout: scenes first, then code editors.
+        // Reset layout: scenes first, then code and image documents.
         for (const auto& tab : tabs) {
             if (tab.type == TabType::SCENE) dockSceneTab(tab);
         }
@@ -798,10 +810,14 @@ void editor::App::dockProjectTabs(){
         for (const auto& tab : tabs) {
             if (tab.type == TabType::CODE_EDITOR) dockCodeTab(tab);
         }
+        for (const auto& tab : tabs) {
+            if (tab.type == TabType::IMAGE_VIEWER) dockImageTab(tab);
+        }
     } else {
         for (const auto& tab : tabs) {
             if (tab.type == TabType::SCENE) dockSceneTab(tab);
             else if (tab.type == TabType::CODE_EDITOR) dockCodeTab(tab);
+            else if (tab.type == TabType::IMAGE_VIEWER) dockImageTab(tab);
         }
         dockOrphanScenes();
     }
@@ -840,6 +856,9 @@ void editor::App::dockProjectTabs(){
         for (const auto& tab : tabs) {
             if (tab.type == TabType::CODE_EDITOR) stampDockOrder(tabWindowName(tab));
         }
+        for (const auto& tab : tabs) {
+            if (tab.type == TabType::IMAGE_VIEWER) stampDockOrder(tabWindowName(tab));
+        }
     } else {
         for (const auto& tab : tabs) {
             stampDockOrder(tabWindowName(tab));
@@ -856,13 +875,16 @@ std::string editor::App::tabWindowName(const TabEntry& tab) const {
         }
         return {};
     }
+    if (tab.type == TabType::IMAGE_VIEWER) {
+        return ImageViewerWindow::getWindowId(tab.filepath);
+    }
     // CodeEditor docks its windows as "###<relative-filepath>" (see getWindowTitle()).
     return "###" + tab.filepath;
 }
 
 void editor::App::captureTabOrder() {
     // Mirror the live ImGui tab order back into project.tabs so a user's
-    // drag-reordering of scene/code tabs survives a save and the next launch.
+    // drag-reordering of scene/code/image tabs survives a save and the next launch.
     // ImGui keeps each window's visual position in its DockNode as DockOrder;
     // we reorder the (filepath-keyed, stable) tab list to match. Reordering a
     // tab triggers no save on its own, so we persist the change ourselves,
@@ -1236,6 +1258,7 @@ void editor::App::show(){
 
     structureWindow->show();
     resourcesWindow->show();
+    imageViewerWindow->show();
     outputWindow->show();
     animationWindow->show();
     terrainEditWindow->show();
@@ -1496,6 +1519,7 @@ void editor::App::shutdownBackgroundWork() {
 }
 
 void editor::App::engineViewDestroyed(){
+    imageViewerWindow->closeAll();
     Engine::systemViewDestroyed();
 }
 
@@ -1524,6 +1548,7 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    imageViewerWindow->closeAll();
     resourcesWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
     // now quiesce any remaining scene/model jobs before pool cleanup.
@@ -1550,6 +1575,12 @@ void editor::App::requestScenePlayFocus(uint32_t sceneId) {
 void editor::App::addNewCodeWindowToDock(fs::path path, bool force){
     if (isInitialized){
         dockTabWindow("###" + path.string(), force);
+    }
+}
+
+void editor::App::addImageViewerWindowToDock(fs::path path, bool force){
+    if (isInitialized){
+        dockTabWindow(ImageViewerWindow::getWindowId(path), force);
     }
 }
 

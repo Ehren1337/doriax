@@ -1,5 +1,7 @@
 #include "ResourcesWindow.h"
 
+#include "ImageViewerWindow.h"
+
 #include "AppSettings.h"
 #include "external/IconsFontAwesome6.h"
 #include "resources/icons/folder-icon_png.h"
@@ -144,9 +146,10 @@ std::string editor::ResourcesWindow::thumbnailRequestKey(const fs::path& filePat
     return filePath.lexically_normal().string();
 }
 
-editor::ResourcesWindow::ResourcesWindow(Project* project, CodeEditor* codeEditor) {
+editor::ResourcesWindow::ResourcesWindow(Project* project, CodeEditor* codeEditor, ImageViewerWindow* imageViewerWindow) {
     this->project = project;
     this->codeEditor = codeEditor;
+    this->imageViewerWindow = imageViewerWindow;
     this->firstOpen = true;
     this->requestSort = true;
     this->iconSize = 32;
@@ -938,11 +941,13 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 if (file.isDirectory){
                     deferredDirectoryChange = true;
                 }else{
-                    std::string extension = file.extension;
-                    if (extension == ".scene")
-                        project->openScene(currentPath / file.name);
+                    const fs::path filePath = currentPath / file.name;
+                    if (file.type == FileType::IMAGE)
+                        imageViewerWindow->openFile(filePath);
+                    else if (file.type == FileType::SCENE)
+                        project->openScene(filePath);
                     else
-                        codeEditor->openFile((currentPath / file.name).string(), true);
+                        codeEditor->openFile(filePath.string(), true);
                 }
             }
 
@@ -1363,6 +1368,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 fs::path filePath = currentPath / fileName;
                 pathsToDelete.push_back(filePath);
                 codeEditor->closeFile(filePath.string());
+                imageViewerWindow->closeFile(filePath);
             }
 
             project->getProjectCommandHistory()->addCommand(new DeleteFileCmd(project, pathsToDelete, project->getProjectPath()));
@@ -1805,6 +1811,7 @@ void editor::ResourcesWindow::handleRename(){
                     } else {
                         project->getProjectCommandHistory()->addCommand(new RenameFileCmd(project, fileBeingRenamed, newName, currentPath.string()));
                         codeEditor->handleFileRename(oldPath, newPath);
+                        imageViewerWindow->handleFileRename(oldPath, newPath);
                         scanDirectory(currentPath);
                         isRenaming = false;
                         ImGui::CloseCurrentPopup();

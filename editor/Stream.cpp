@@ -1562,8 +1562,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     for (const auto& tab : project->getTabs()) {
         YAML::Node tabNode;
         switch (tab.type) {
-            case TabType::SCENE:       tabNode["type"] = "scene"; break;
-            case TabType::CODE_EDITOR: tabNode["type"] = "codeeditor"; break;
+            case TabType::SCENE:        tabNode["type"] = "scene"; break;
+            case TabType::CODE_EDITOR:  tabNode["type"] = "codeeditor"; break;
+            case TabType::IMAGE_VIEWER: tabNode["type"] = "imageviewer"; break;
         }
         tabNode["filepath"] = tab.filepath;
         tabsNode.push_back(tabNode);
@@ -1749,6 +1750,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node) {
                 project->addTab(TabType::SCENE, filepath);
             } else if (type == "codeeditor") {
                 project->addTab(TabType::CODE_EDITOR, filepath);
+            } else if (type == "imageviewer") {
+                project->addTab(TabType::IMAGE_VIEWER, filepath);
             }
         }
     }

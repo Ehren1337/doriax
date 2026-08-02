@@ -24,6 +24,8 @@ namespace fs = std::filesystem;
 
 namespace doriax::editor {
 
+    class ImageViewerWindow;
+
     enum class FileType {
         NONE,
         IMAGE,
@@ -64,6 +66,7 @@ namespace doriax::editor {
     private:
         Project* project;
         CodeEditor* codeEditor;
+        ImageViewerWindow* imageViewerWindow;
 
         enum class LayoutType {
             AUTO,              // Automatically switch between GRID and SPLIT_FILES_ONLY based on window size
@@ -206,7 +209,7 @@ namespace doriax::editor {
     public:
         static constexpr const char* WINDOW_NAME = "Resources";
 
-        ResourcesWindow(Project* project, CodeEditor* codeEditor);
+        ResourcesWindow(Project* project, CodeEditor* codeEditor, ImageViewerWindow* imageViewerWindow);
         ~ResourcesWindow();
 
         bool isFocused() const;

@@ -11,6 +11,7 @@
 #include "window/OutputWindow.h"
 #include "window/SceneWindow.h"
 #include "window/ResourcesWindow.h"
+#include "window/ImageViewerWindow.h"
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
@@ -88,6 +89,7 @@ namespace doriax::editor{
         SceneWindow* sceneWindow;
         CodeEditor* codeEditor;
         ResourcesWindow* resourcesWindow;
+        ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
         AiChatWindow* aiChatWindow;
@@ -177,6 +179,7 @@ namespace doriax::editor{
 
         void addNewSceneToDock(uint32_t sceneId) override;
         void addNewCodeWindowToDock(fs::path path, bool force = false);
+        void addImageViewerWindowToDock(fs::path path, bool force = false);
         void clearSceneWindowState(uint32_t sceneId) override;
         void prepareForProjectSwitch() override;
 
