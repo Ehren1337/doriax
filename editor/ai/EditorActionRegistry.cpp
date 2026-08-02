@@ -648,7 +648,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "attach_script",
-            "Attach an existing Lua or C++ script entry to an entity ScriptComponent.",
+            "Attach an existing Lua or C++ script to an entity ScriptComponent as a new entry. Use it only for a script the entity does not have yet; to rename or repoint a script it already has, use update_script_entry.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Entity id")},
@@ -658,6 +658,35 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"path", stringSchema("Safe project-relative .lua or .cpp path")},
                 {"header_path", stringSchema("Safe project-relative header path for C++ scripts")}
             }, {"type", "class_name", "path"}),
+            false
+        },
+        {
+            "update_script_entry",
+            "Rename the class of a script an entity already has, or repoint it at other files. Use this after renaming a script file or its class; it edits the attachment in place instead of adding a second one. Entries come from inspect_component on ScriptComponent.",
+            objectSchema({
+                {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
+                {"entity_id", integerSchema("Entity id")},
+                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"index", integerSchema("Script entry index")},
+                {"class_name", stringSchema("Current class name of the entry, used when index is omitted")},
+                {"path", stringSchema("Current source or header path of the entry, used when index and class_name are omitted")},
+                {"new_class_name", stringSchema("New class/module name")},
+                {"new_path", stringSchema("New safe project-relative .lua or .cpp path")},
+                {"new_header_path", stringSchema("New safe project-relative header path, C++ entries only")}
+            }),
+            false
+        },
+        {
+            "remove_script_entry",
+            "Detach one script from an entity ScriptComponent. The script files are kept; delete them with delete_resource when they are no longer used.",
+            objectSchema({
+                {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
+                {"entity_id", integerSchema("Entity id")},
+                {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
+                {"index", integerSchema("Script entry index")},
+                {"class_name", stringSchema("Class name of the entry, used when index is omitted")},
+                {"path", stringSchema("Source or header path of the entry, used when index and class_name are omitted")}
+            }),
             false
         },
         {
@@ -1318,6 +1347,18 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         return hasString(arguments, "type") && hasString(arguments, "class_name") && hasString(arguments, "path")
             ? ok() : fail("attach_script requires type, class_name, and path.");
     }
+    if (name == "update_script_entry" || name == "remove_script_entry") {
+        if (!hasEntitySelector(arguments)) return fail(name + " requires entity_id or entity_name.");
+        const bool hasIndex = arguments.contains("index") && arguments["index"].is_number_integer();
+        if (!hasIndex && !hasString(arguments, "class_name") && !hasString(arguments, "path")) {
+            return fail(name + " requires index, class_name, or path.");
+        }
+        if (name == "update_script_entry" && !hasString(arguments, "new_class_name") &&
+            !hasString(arguments, "new_path") && !hasString(arguments, "new_header_path")) {
+            return fail("update_script_entry requires new_class_name, new_path, or new_header_path.");
+        }
+        return ok();
+    }
     if (name == "update_script_file") {
         if (!hasString(arguments, "path")) return fail("update_script_file requires path.");
         if (!arguments.contains("content") || !arguments["content"].is_string()) {
@@ -1645,6 +1686,12 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
     }
     if (name == "attach_script") {
         return "Attach script " + arguments.value("class_name", "");
+    }
+    if (name == "update_script_entry" || name == "remove_script_entry") {
+        const std::string action = (name == "update_script_entry") ? "Update" : "Remove";
+        std::string label = arguments.value("class_name", "");
+        if (label.empty()) label = arguments.value("path", "");
+        return label.empty() ? action + " script entry" : action + " script entry " + label;
     }
     if (name == "update_script_file") {
         return "Update script file " + arguments.value("path", "");

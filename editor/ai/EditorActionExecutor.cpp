@@ -965,6 +965,15 @@ std::string scriptTypeExtension(ScriptType type, bool header) {
     return header ? ".h" : ".cpp";
 }
 
+std::string scriptTypeName(ScriptType type) {
+    switch (type) {
+        case ScriptType::SCRIPT_LUA: return "lua";
+        case ScriptType::SUBCLASS: return "cpp_subclass";
+        case ScriptType::SCRIPT_CLASS: return "cpp_script_class";
+    }
+    return "unknown";
+}
+
 std::string sanitizeIdentifier(const std::string& value, const std::string& fallback) {
     std::string result;
     result.reserve(value.size());
@@ -1245,6 +1254,78 @@ bool safeRelativePath(Project* project, const Json& args, const char* key, fs::p
         error = std::string(key) + " does not exist in the project.";
         return false;
     }
+    return true;
+}
+
+// Json::value() throws when the key is present with another type.
+std::string optionalString(const Json& args, const char* key, const char* fallback = "") {
+    const auto it = args.find(key);
+    return (it == args.end() || !it->is_string()) ? std::string(fallback) : it->get<std::string>();
+}
+
+// Script entries may store absolute paths, so compare them project-relative.
+std::string normalizeScriptPath(Project* project, const std::string& value) {
+    fs::path path(value);
+    if (path.is_absolute() && project) {
+        std::error_code ec;
+        fs::path relative = fs::relative(path, project->getProjectPath(), ec);
+        if (!ec) path = relative;
+    }
+    return path.lexically_normal().generic_string();
+}
+
+// Catalog exposes scripts as an opaque Custom property, so entries are listed here instead.
+Json scriptEntriesJson(const std::vector<ScriptEntry>& scripts) {
+    Json entries = Json::array();
+    for (size_t i = 0; i < scripts.size(); i++) {
+        entries.push_back({{"index", i},
+                           {"type", scriptTypeName(scripts[i].type)},
+                           {"class_name", scripts[i].className},
+                           {"path", scripts[i].path},
+                           {"header_path", scripts[i].headerPath},
+                           {"enabled", scripts[i].enabled}});
+    }
+    return entries;
+}
+
+bool resolveScriptIndex(Project* project, const std::vector<ScriptEntry>& scripts, const Json& args,
+                        size_t& outIndex, std::string& error) {
+    const auto indexIt = args.find("index");
+    if (indexIt != args.end() && indexIt->is_number_integer()) {
+        const int64_t index = indexIt->get<int64_t>();
+        if (index < 0 || static_cast<size_t>(index) >= scripts.size()) {
+            error = "index is out of range.";
+            return false;
+        }
+        outIndex = static_cast<size_t>(index);
+        return true;
+    }
+
+    const std::string className = optionalString(args, "class_name");
+    const std::string path = className.empty()
+        ? normalizeScriptPath(project, optionalString(args, "path")) : "";
+    if (className.empty() && path.empty()) {
+        error = "Select the script entry with index, class_name, or path.";
+        return false;
+    }
+
+    std::vector<size_t> matches;
+    for (size_t i = 0; i < scripts.size(); i++) {
+        const bool match = className.empty()
+            ? (normalizeScriptPath(project, scripts[i].path) == path ||
+               normalizeScriptPath(project, scripts[i].headerPath) == path)
+            : scripts[i].className == className;
+        if (match) matches.push_back(i);
+    }
+    if (matches.empty()) {
+        error = "No script entry matches the selector.";
+        return false;
+    }
+    if (matches.size() > 1) {
+        error = "Selector matches " + std::to_string(matches.size()) + " script entries; pass index instead.";
+        return false;
+    }
+    outIndex = matches.front();
     return true;
 }
 
@@ -1820,6 +1901,8 @@ ActionResult EditorActionExecutor::dispatch(const std::string& name,
     if (name == "add_terrain_collision") return addTerrainCollision(arguments);
     if (name == "create_script") return createScript(arguments);
     if (name == "attach_script") return attachScript(arguments);
+    if (name == "update_script_entry") return updateScriptEntry(arguments);
+    if (name == "remove_script_entry") return removeScriptEntry(arguments);
     if (name == "update_script_file") return updateScriptFile(arguments);
     if (name == "create_bundle_from_entity") return createBundleFromEntity(arguments);
     if (name == "import_bundle_instance") return importBundleInstance(arguments);
@@ -1884,14 +1967,8 @@ ActionResult EditorActionExecutor::getProjectSummary() {
 }
 
 ActionResult EditorActionExecutor::searchResources(const Json& arguments) {
-    // Optional here, and Json::value() would throw on a null spelled for "no value".
-    auto optionalString = [&arguments](const char* key, const char* fallback) {
-        const auto it = arguments.find(key);
-        return (it == arguments.end() || !it->is_string()) ? std::string(fallback)
-                                                           : it->get<std::string>();
-    };
-    const std::string query = lower(optionalString("query", ""));
-    const std::string wantedType = lower(optionalString("type", "any"));
+    const std::string query = lower(optionalString(arguments, "query"));
+    const std::string wantedType = lower(optionalString(arguments, "type", "any"));
     const auto maxIt = arguments.find("max_results");
     int maxResults = (maxIt == arguments.end() || !maxIt->is_number_integer())
         ? 20 : maxIt->get<int>();
@@ -2005,6 +2082,9 @@ ActionResult EditorActionExecutor::inspectEntity(const Json& arguments) {
             }
             comp["properties"] = props;
         }
+        if (type == ComponentType::ScriptComponent) {
+            comp["scripts"] = scriptEntriesJson(sceneProject->scene->getComponent<ScriptComponent>(entity).scripts);
+        }
         data["components"].push_back(comp);
     }
 
@@ -2046,6 +2126,9 @@ ActionResult EditorActionExecutor::inspectComponent(const Json& arguments) {
 
     if (component == ComponentType::MeshComponent) {
         addMeshBounds(data, sceneProject->scene, entity);
+    }
+    if (component == ComponentType::ScriptComponent) {
+        data["scripts"] = scriptEntriesJson(sceneProject->scene->getComponent<ScriptComponent>(entity).scripts);
     }
 
     return okResult("Inspected component.", data);
@@ -3258,7 +3341,28 @@ ActionResult EditorActionExecutor::attachScript(const Json& arguments) {
     if (hasScript) {
         scripts = sceneProject->scene->getComponent<ScriptComponent>(entity).scripts;
     }
-    scripts.push_back(entry);
+
+    // The same file, or the same class, is one attachment: re-attaching a renamed script must
+    // repoint its entry instead of leaving a stale duplicate behind.
+    size_t index = scripts.size();
+    for (size_t i = 0; i < scripts.size(); i++) {
+        if (normalizeScriptPath(project, scripts[i].path) == normalizeScriptPath(project, entry.path) ||
+            (scripts[i].type == entry.type && scripts[i].className == entry.className)) {
+            index = i;
+            break;
+        }
+    }
+
+    const bool replaced = index < scripts.size();
+    if (replaced) {
+        // Keeps the entry enabled state and its property values.
+        scripts[index].type = entry.type;
+        scripts[index].path = entry.path;
+        scripts[index].headerPath = entry.headerPath;
+        scripts[index].className = entry.className;
+    } else {
+        scripts.push_back(entry);
+    }
     project->updateScriptProperties(sceneProject, entity, scripts);
 
     auto* multiCmd = new MultiPropertyCmd();
@@ -3268,7 +3372,80 @@ ActionResult EditorActionExecutor::attachScript(const Json& arguments) {
     multiCmd->addCommand(std::make_unique<PropertyCmd<std::vector<ScriptEntry>>>(
         project, sceneId, entity, ComponentType::ScriptComponent, "scripts", scripts));
     CommandHandle::get(sceneId)->addCommandNoMerge(multiCmd);
-    return okResult("Attached script through the command history.");
+    return okResult(replaced ? "Script was already attached, updated its entry through the command history."
+                             : "Attached script through the command history.",
+                    Json{{"scene_id", sceneId}, {"entity_id", entity},
+                         {"script_index", replaced ? index : scripts.size() - 1}});
+}
+
+ActionResult EditorActionExecutor::updateScriptEntry(const Json& arguments) {
+    uint32_t sceneId = resolveSceneId(project, arguments);
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
+    Entity entity = resolveEntity(sceneProject, arguments);
+    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+
+    ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
+    if (!component) return failResult("Entity has no ScriptComponent.");
+
+    std::vector<ScriptEntry> scripts = component->scripts;
+    size_t index = 0;
+    std::string error;
+    if (!resolveScriptIndex(project, scripts, arguments, index, error)) return failResult(error);
+
+    ScriptEntry& entry = scripts[index];
+
+    if (arguments.contains("new_class_name")) {
+        const std::string className = sanitizeIdentifier(optionalString(arguments, "new_class_name"), "");
+        if (className.empty()) return failResult("new_class_name must be a valid class identifier.");
+        entry.className = className;
+    }
+    if (arguments.contains("new_path")) {
+        fs::path sourceRel;
+        if (!safeRelativePath(project, arguments, "new_path", sourceRel, error, true)) return failResult(error);
+        const bool validSource = (entry.type == ScriptType::SCRIPT_LUA)
+            ? Util::isLuaFile(sourceRel.string()) : Util::isSourceFile(sourceRel.string());
+        if (!validSource) return failResult("new_path must be a .lua file for Lua entries and a .cpp file for C++ entries.");
+        entry.path = sourceRel.generic_string();
+    }
+    if (arguments.contains("new_header_path")) {
+        if (entry.type == ScriptType::SCRIPT_LUA) return failResult("Lua script entries have no header file.");
+        fs::path headerRel;
+        if (!safeRelativePath(project, arguments, "new_header_path", headerRel, error, true)) return failResult(error);
+        if (!Util::isHeaderFile(headerRel.string())) return failResult("new_header_path must be a header file.");
+        entry.headerPath = headerRel.generic_string();
+    }
+
+    // Reloads the exposed properties from the files the entry now points at.
+    project->updateScriptProperties(sceneProject, entity, scripts);
+    CommandHandle::get(sceneId)->addCommandNoMerge(new PropertyCmd<std::vector<ScriptEntry>>(
+        project, sceneId, entity, ComponentType::ScriptComponent, "scripts", scripts));
+    return okResult("Updated script entry through the command history.",
+                    Json{{"scene_id", sceneId}, {"entity_id", entity}, {"script_index", index}});
+}
+
+ActionResult EditorActionExecutor::removeScriptEntry(const Json& arguments) {
+    uint32_t sceneId = resolveSceneId(project, arguments);
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) return failResult("Scene not found.");
+    Entity entity = resolveEntity(sceneProject, arguments);
+    if (entity == NULL_ENTITY) return failResult("Entity not found.");
+
+    ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
+    if (!component) return failResult("Entity has no ScriptComponent.");
+
+    std::vector<ScriptEntry> scripts = component->scripts;
+    size_t index = 0;
+    std::string error;
+    if (!resolveScriptIndex(project, scripts, arguments, index, error)) return failResult(error);
+
+    const std::string className = scripts[index].className;
+    scripts.erase(scripts.begin() + static_cast<std::ptrdiff_t>(index));
+    project->updateScriptProperties(sceneProject, entity, scripts);
+    CommandHandle::get(sceneId)->addCommandNoMerge(new PropertyCmd<std::vector<ScriptEntry>>(
+        project, sceneId, entity, ComponentType::ScriptComponent, "scripts", scripts));
+    return okResult("Removed script " + className + " through the command history.",
+                    Json{{"scene_id", sceneId}, {"entity_id", entity}, {"removed_script_index", index}});
 }
 
 ActionResult EditorActionExecutor::updateScriptFile(const Json& arguments) {
@@ -3311,18 +3488,6 @@ ActionResult EditorActionExecutor::updateScriptFile(const Json& arguments) {
         return failResult("Failed to write script file.");
     }
 
-    auto normalizeScriptPath = [this](const std::string& value) {
-        fs::path path(value);
-        if (path.is_absolute() && project) {
-            std::error_code ec;
-            fs::path relPath = fs::relative(path, project->getProjectPath(), ec);
-            if (!ec) {
-                path = relPath;
-            }
-        }
-        return path.lexically_normal().generic_string();
-    };
-
     const std::string relString = rel.lexically_normal().generic_string();
     int refreshedComponents = 0;
     for (auto& sceneProject : project->getScenes()) {
@@ -3334,11 +3499,11 @@ ActionResult EditorActionExecutor::updateScriptFile(const Json& arguments) {
 
             bool matchesFile = false;
             for (const ScriptEntry& scriptEntry : scriptComponent->scripts) {
-                if (!scriptEntry.path.empty() && normalizeScriptPath(scriptEntry.path) == relString) {
+                if (!scriptEntry.path.empty() && normalizeScriptPath(project, scriptEntry.path) == relString) {
                     matchesFile = true;
                     break;
                 }
-                if (!scriptEntry.headerPath.empty() && normalizeScriptPath(scriptEntry.headerPath) == relString) {
+                if (!scriptEntry.headerPath.empty() && normalizeScriptPath(project, scriptEntry.headerPath) == relString) {
                     matchesFile = true;
                     break;
                 }

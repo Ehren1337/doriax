@@ -78,6 +78,8 @@ private:
     ActionResult addTerrainCollision(const Json& arguments);
     ActionResult createScript(const Json& arguments);
     ActionResult attachScript(const Json& arguments);
+    ActionResult updateScriptEntry(const Json& arguments);
+    ActionResult removeScriptEntry(const Json& arguments);
     ActionResult updateScriptFile(const Json& arguments);
     ActionResult createBundleFromEntity(const Json& arguments);
     ActionResult importBundleInstance(const Json& arguments);
