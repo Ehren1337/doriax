@@ -256,6 +256,15 @@ static std::string getCommandName(const char* executableName) {
     return filename.empty() ? std::string("doriax-editor") : filename;
 }
 
+static void printMainUsage(const std::string& commandName) {
+    std::cout
+        << "Usage:\n"
+        << "  " << commandName << "                          Open the editor.\n"
+        << "  " << commandName << " export [options]         Export a project.\n"
+        << "  " << commandName << " shaders [options]        Generate shaders.\n\n"
+        << "Run a subcommand with --help for its options.\n";
+}
+
 static void printUsage(const std::string& commandName) {
     std::cout
         << "Usage:\n"
@@ -607,6 +616,22 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
     }
 
     return 0;
+}
+
+int CommandLine::runHelpCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+
+    const std::string commandName = getCommandName(executableName);
+    const std::string argument = argc >= 1 ? argv[0] : "";
+
+    if (argument == "-h" || argument == "--help" || argument == "help") {
+        printMainUsage(commandName);
+        return 0;
+    }
+
+    std::cerr << commandName << ": unknown argument '" << argument << "'\n\n";
+    printMainUsage(commandName);
+    return 2;
 }
 
 }

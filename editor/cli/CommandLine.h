@@ -13,6 +13,9 @@ namespace doriax::editor {
 
         // Runs the standalone shader generation subcommand.
         static int runShadersCommand(int argc, char** argv, const char* executableName);
+
+        // Prints the top level usage, or reports an unrecognized argument.
+        static int runHelpCommand(int argc, char** argv, const char* executableName);
     };
 
 }
