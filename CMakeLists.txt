@@ -1,6 +1,38 @@
 cmake_minimum_required(VERSION 3.20)
 project(doriax-editor)
 
+# Tag when the commit has one, short hash otherwise. CI passes it in, local
+# builds ask git so Help > About shows something real.
+if(NOT DORIAXEDITOR_VERSION)
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE DORIAXEDITOR_VERSION
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+    endif()
+endif()
+
+# Git allows characters that would break the generated C++ and .rc string literals
+string(REGEX REPLACE "[^A-Za-z0-9._+-]" "" DORIAXEDITOR_VERSION "${DORIAXEDITOR_VERSION}")
+
+if(NOT DORIAXEDITOR_VERSION)
+    set(DORIAXEDITOR_VERSION "unknown")
+endif()
+
+# Windows VERSIONINFO wants four integers, which only a vX.Y[.Z] tag can give.
+set(DORIAX_VERSION_NUMERIC "0,0,0,0")
+if(DORIAXEDITOR_VERSION MATCHES "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+    set(DORIAX_VERSION_NUMERIC "${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},0")
+elseif(DORIAXEDITOR_VERSION MATCHES "^v?([0-9]+)\\.([0-9]+)$")
+    set(DORIAX_VERSION_NUMERIC "${CMAKE_MATCH_1},${CMAKE_MATCH_2},0,0")
+endif()
+
+message(STATUS "Doriax version is ${DORIAXEDITOR_VERSION}")
+
 if(APPLE)
     enable_language(OBJCXX)
 endif()
@@ -44,18 +76,38 @@ endif()
 set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
 
+# Icon and version resource for one executable. Each target needs its own so
+# OriginalFilename matches the file on disk. Added after Defender quarantined
+# doriax-editor-cmd.exe, the only binary that shipped without any resource.
+function(doriax_add_windows_resource out_var target_name icon_name original_filename description)
+    set(DORIAX_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/${icon_name}")
+    set(DORIAX_ORIGINAL_FILENAME ${original_filename})
+    set(DORIAX_FILE_DESCRIPTION ${description})
+    set(DORIAX_INTERNAL_NAME ${target_name})
+
+    set(generated_rc "${CMAKE_CURRENT_BINARY_DIR}/resources/${target_name}.rc")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.rc.in"
+        ${generated_rc}
+        @ONLY
+    )
+    set_property(SOURCE ${generated_rc} APPEND PROPERTY OBJECT_DEPENDS ${DORIAX_ICON_FILE})
+
+    add_library(${target_name}-resource OBJECT ${generated_rc})
+    # rc.exe chokes on the editor's include list, and the .rc needs no search path
+    set_property(TARGET ${target_name}-resource PROPERTY INCLUDE_DIRECTORIES "")
+
+    set(${out_var} $<TARGET_OBJECTS:${target_name}-resource> PARENT_SCOPE)
+endfunction()
+
 set(DORIAX_EDITOR_ICON_OBJECTS)
 if(WIN32)
-    set(DORIAX_EDITOR_ICON_RC
-        "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.rc"
-    )
-    set_property(SOURCE "${DORIAX_EDITOR_ICON_RC}" APPEND PROPERTY
-        OBJECT_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.ico"
-    )
-    add_library(doriax-editor-icon-resource OBJECT "${DORIAX_EDITOR_ICON_RC}")
-    set(DORIAX_EDITOR_ICON_OBJECTS
-        $<TARGET_OBJECTS:doriax-editor-icon-resource>
+    doriax_add_windows_resource(
+        DORIAX_EDITOR_ICON_OBJECTS
+        doriax-editor
+        "doriax-editor.ico"
+        "doriax-editor.exe"
+        "Doriax Engine Editor"
     )
 endif()
 
@@ -122,6 +174,12 @@ set(SHADERS_DIR "${CMAKE_SOURCE_DIR}/engine/tools/shaderlib")
 set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
 set(SHADERS_HEADER "${GENERATED_DIR}/shaders.h")
 set(GENERATE_SHADERS_SCRIPT "${CMAKE_SOURCE_DIR}/generate_shaders.cmake")
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/EditorVersion.h.in"
+    "${GENERATED_DIR}/EditorVersion.h"
+    @ONLY
+)
 
 file(GLOB_RECURSE SHADER_FILES CONFIGURE_DEPENDS "${SHADERS_DIR}/*.glsl" "${SHADERS_DIR}/*.frag" "${SHADERS_DIR}/*.vert")
 
@@ -402,12 +460,6 @@ function(configure_doriax_editor_target target_name)
     endif()
 endfunction()
 
-if(TARGET doriax-editor-icon-resource)
-    set_property(TARGET doriax-editor-icon-resource
-        PROPERTY INCLUDE_DIRECTORIES ""
-    )
-endif()
-
 add_executable(
     doriax-editor
 
@@ -444,12 +496,22 @@ set(DORIAX_EDITOR_INSTALL_TARGETS doriax-editor)
 # .github/workflows/cmake.yml); the install rule below still installs it because
 # CI builds it before installing.
 if(WIN32)
+    # Its own icon because both executables install to the same folder
+    doriax_add_windows_resource(
+        DORIAX_EDITOR_CMD_ICON_OBJECTS
+        doriax-editor-cmd
+        "doriax-editor-cmd.ico"
+        "doriax-editor-cmd.exe"
+        "Doriax Engine Editor (command line)"
+    )
+
     add_executable(
         doriax-editor-cmd
 
         EXCLUDE_FROM_ALL
 
         ${DORIAX_EDITOR_SOURCES}
+        ${DORIAX_EDITOR_CMD_ICON_OBJECTS}
     )
 
     configure_doriax_editor_target(doriax-editor-cmd)

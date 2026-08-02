@@ -152,10 +152,21 @@ jobs:
 
       - name: Set version
         shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          VERSION=$(git rev-parse --short ${{ github.sha }})-${{ github.ref_name }}
-          if [[ $VERSION == refs/tags/* ]]; then
-            VERSION=${VERSION#refs/tags/}
+          # Tag when the commit has one, short hash otherwise. Branch pushes need
+          # the tags fetched first, actions/checkout skips them by default. Refs
+          # come in through env because git allows shell metacharacters in them.
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            VERSION="$REF_NAME"
+          else
+            git fetch --tags --quiet || true
+            VERSION="$(git tag --points-at HEAD | head -n 1)"
+            if [[ -z "$VERSION" ]]; then
+              VERSION="$(git rev-parse --short HEAD)"
+            fi
           fi
           echo "DORIAX_VERSION=$VERSION" >> $GITHUB_ENV
           
@@ -170,7 +181,7 @@ jobs:
           cmake \
             -S . \
             -B build \
-            -DDORIAXEDITOR_VERSION:STRING="\"${{env.DORIAX_VERSION}}\"" \
+            -DDORIAXEDITOR_VERSION:STRING="$DORIAX_VERSION" \
             -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
             -G "${{ matrix.config.generators }}" \
             -DCMAKE_INSTALL_PREFIX:PATH=instdir \

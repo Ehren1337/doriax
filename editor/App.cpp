@@ -13,6 +13,7 @@
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
 
+#include "EditorVersion.h"
 #include "Out.h"
 #include "AppSettings.h"
 #include "Theme.h"
@@ -426,7 +427,7 @@ void editor::App::showMenu(){
         }
         if (ImGui::BeginMenu("Help")) {
             if (ImGui::MenuItem("About Doriax")) {
-                registerAlert("About Doriax", "Doriax Engine\n\nVersion: (development)\n\nDeveloped by Eduardo Doria");
+                registerAlert("About Doriax", "Doriax Engine\n\nVersion: " DORIAX_EDITOR_VERSION "\n\nDeveloped by Eduardo Doria");
             }
             ImGui::EndMenu();
         }

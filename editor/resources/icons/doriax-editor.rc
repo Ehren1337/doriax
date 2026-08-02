@@ -1,7 +1,0 @@
-// GLFW looks up this exact resource name to set the initial window/taskbar
-// icon, and the editor never calls glfwSetWindowIcon at runtime, so the name
-// has to stay GLFW_ICON. Explorer picks it up too: it shows the first icon
-// group in the executable, and named entries precede numbered ones. Exported
-// games instead use "1 ICON" (see Exporter.cpp), because they set the window
-// icon at runtime from app_icon.h.
-GLFW_ICON ICON "doriax-editor.ico"
