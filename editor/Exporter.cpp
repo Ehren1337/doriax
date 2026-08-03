@@ -347,7 +347,7 @@ bool editor::Exporter::checkTargetDir() {
         }
     }
 
-    if (project && !fs::is_empty(config.targetDir, ec)) {
+    if (project && !config.overwriteTarget && !fs::is_empty(config.targetDir, ec)) {
         setError("Target directory is not empty");
         return false;
     }

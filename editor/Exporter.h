@@ -34,6 +34,7 @@ namespace doriax::editor {
         ExportMode mode = ExportMode::SourceCode;
         fs::path targetDir;        // SourceCode: user dir; Desktop/Web: overwritten with the build cache dir
         fs::path destinationDir;   // Desktop/Web only: where the final artifacts are copied
+        bool overwriteTarget = false;  // SourceCode: allow exporting into a non-empty targetDir
         fs::path assetsDir;
         fs::path luaDir;
         uint32_t startSceneId = 0;

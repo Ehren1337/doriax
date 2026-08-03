@@ -650,12 +650,8 @@ void ExportWindow::drawSettings() {
     bool targetNotEmpty = targetExists && !fs::is_empty(m_targetDir, ec);
 
     if (targetNotEmpty) {
-        if (m_mode == ExportMode::SourceCode) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Target directory is not empty!");
-            canExport = false;
-        } else {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Destination is not empty: existing files will be overwritten");
-        }
+        const char* dirLabel = (m_mode == ExportMode::SourceCode) ? "Target directory" : "Destination";
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s is not empty: existing files will be overwritten", dirLabel);
     }
 
     bool hasSavedScenes = false;
@@ -707,7 +703,11 @@ void ExportWindow::drawSettings() {
 
     ImGui::BeginDisabled(!canExport);
     if (ImGui::Button("Export", ImVec2(120, 0))) {
-        startConfiguredExport();
+        if (targetNotEmpty) {
+            ImGui::OpenPopup("Directory Not Empty##ExportOverwrite");
+        } else {
+            startConfiguredExport(false);
+        }
     }
     ImGui::EndDisabled();
 
@@ -716,11 +716,59 @@ void ExportWindow::drawSettings() {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }
+
+    drawOverwriteConfirmDialog();
 }
 
-void ExportWindow::startConfiguredExport() {
+void ExportWindow::drawOverwriteConfirmDialog() {
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(440, 0), ImVec2(440, FLT_MAX));
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize |
+                             ImGuiWindowFlags_NoSavedSettings |
+                             ImGuiWindowFlags_Modal;
+
+    if (!ImGui::BeginPopupModal("Directory Not Empty##ExportOverwrite", nullptr, flags)) return;
+
+    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " This directory already contains files:");
+    ImGui::Spacing();
+
+    Vector2 pathSize = Vector2(ImGui::GetContentRegionAvail().x, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2);
+    Widgets::pathDisplay("##OverwritePath", m_targetDir, pathSize);
+
+    ImGui::Spacing();
+    ImGui::PushTextWrapPos();
+    ImGui::Text("Files with the same name will be overwritten.");
+    if (m_mode == ExportMode::SourceCode) {
+        ImGui::TextDisabled("Files left from an earlier export are not removed and may break the build.");
+    }
+    ImGui::PopTextWrapPos();
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    float windowWidth = ImGui::GetWindowSize().x;
+    float buttonsWidth = 250;
+    ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
+
+    if (ImGui::Button("Overwrite", ImVec2(120, 0))) {
+        ImGui::CloseCurrentPopup();
+        startConfiguredExport(true);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+}
+
+void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     ExportConfig exportConfig;
     exportConfig.mode = m_mode;
+    exportConfig.overwriteTarget = overwriteTarget;
 
     if (m_mode == ExportMode::SourceCode) {
         exportConfig.targetDir = m_targetDir;

@@ -90,7 +90,8 @@ namespace doriax::editor {
         void drawPlatformSection();
         void drawProgress();
         void drawAddShaderDialog();
-        void startConfiguredExport();
+        void drawOverwriteConfirmDialog();
+        void startConfiguredExport(bool overwriteTarget);
 
     public:
         ExportWindow() = default;
