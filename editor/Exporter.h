@@ -104,6 +104,7 @@ namespace doriax::editor {
         static bool shouldSkipExportSupportFile(const fs::path& relativePath);
         static bool isCppHeaderFile(const fs::path& path);
         static bool isCppSourceFile(const fs::path& path);
+        static bool isLuaExportFile(const fs::path& path);
 
         std::string getAppName() const;
         fs::path getBuildCacheDir() const;

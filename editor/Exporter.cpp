@@ -330,6 +330,18 @@ bool editor::Exporter::isCppSourceFile(const fs::path& path) {
     return sourceExtensions.count(ext) > 0 || isCppHeaderFile(path);
 }
 
+bool editor::Exporter::isLuaExportFile(const fs::path& path) {
+    // The lua directory carries the scripts and the data files they can read
+    // at runtime; assets and C++ scripts ship through their own copy steps.
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    static const std::set<std::string> luaExtensions = {
+        ".lua", ".luac", ".json", ".txt", ".csv", ".tsv", ".xml", ".ini", ".cfg", ".conf", ".toml", ".dat"
+    };
+    return luaExtensions.count(ext) > 0;
+}
+
 bool editor::Exporter::checkTargetDir() {
     setProgress("Checking target directory...", 0.0f);
 
@@ -978,10 +990,8 @@ bool editor::Exporter::copyLua() {
         return true; // Lua directory doesn't exist, not an error
     }
 
+    // Created by the copy below, so a project without Lua scripts has no lua directory
     fs::path luaDst = getExportProjectRoot() / "lua";
-    fs::create_directories(luaDst, ec);
-
-    fs::path terrainMapsSrc = fs::weakly_canonical(project->getTerrainMapsDir(), ec);
 
     for (auto it = fs::recursive_directory_iterator(luaSrc, fs::directory_options::skip_permission_denied, ec);
          it != fs::recursive_directory_iterator(); ++it) {
@@ -996,22 +1006,12 @@ bool editor::Exporter::copyLua() {
         // Skip project support files that should not ship in the Lua directory
         if (shouldSkipExportSupportFile(relPath)) continue;
 
-        // Skip terrain_maps directory (handled by copyAssets)
-        if (entry.is_directory()) {
-            fs::path entryCanonical = fs::weakly_canonical(entry.path(), ec);
-            if (!ec && entryCanonical == terrainMapsSrc) { it.disable_recursion_pending(); continue; }
-        }
-
-        // Skip C++ source/header files; registered scripts ship via copyCppScripts
-        if (entry.is_regular_file() && isCppSourceFile(entry.path())) continue;
+        // Skip anything that is not a Lua script or a data file it can read
+        if (!entry.is_regular_file() || !isLuaExportFile(entry.path())) continue;
 
         fs::path destPath = luaDst / relPath;
-        if (entry.is_directory()) {
-            fs::create_directories(destPath, ec);
-        } else if (entry.is_regular_file()) {
-            fs::create_directories(destPath.parent_path(), ec);
-            fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-        }
+        fs::create_directories(destPath.parent_path(), ec);
+        fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
 
     return true;
