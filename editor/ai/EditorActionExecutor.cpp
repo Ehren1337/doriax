@@ -1183,13 +1183,31 @@ std::string propertyTypeName(PropertyType type) {
     return "unknown";
 }
 
-Json propertyValueToJson(const PropertyData& property) {
+// Paths the AI sends and receives are project-relative, like list_resources and the
+// file actions report them; asset references are stored relative to the assets root.
+std::string assetPathFromAi(Project* project, const fs::path& projectRelative) {
+    return project->normalizeToAssetsRelative(project->getProjectPath() / projectRelative).generic_string();
+}
+
+std::string assetPathToAi(Project* project, const std::string& stored) {
+    if (stored.empty()) return stored;
+    return project->normalizeToProjectRelative(project->resolveAssetPath(stored)).generic_string();
+}
+
+// String properties holding an asset reference instead of plain text
+bool isAssetPathProperty(const std::string& propertyName) {
+    return propertyName == "filename" || propertyName == "font";
+}
+
+Json propertyValueToJson(Project* project, const std::string& propertyName, const PropertyData& property) {
     if (!property.ref) return Json();
     switch (property.type) {
         case PropertyType::Bool:
             return *static_cast<bool*>(property.ref);
-        case PropertyType::String:
-            return *static_cast<std::string*>(property.ref);
+        case PropertyType::String: {
+            const std::string& value = *static_cast<std::string*>(property.ref);
+            return isAssetPathProperty(propertyName) ? assetPathToAi(project, value) : value;
+        }
         case PropertyType::Float:
             return *static_cast<float*>(property.ref);
         case PropertyType::Double:
@@ -1213,7 +1231,7 @@ Json propertyValueToJson(const PropertyData& property) {
             // Texture(path) absorbs the suffix, so the model can echo it back into
             // texture_path (and tweak the scale) without a dedicated field.
             const Texture* tex = static_cast<Texture*>(property.ref);
-            return TextureData::buildSvgScalePath(tex->getPath(), tex->getSvgScale());
+            return TextureData::buildSvgScalePath(assetPathToAi(project, tex->getPath()), tex->getSvgScale());
         }
         case PropertyType::Entity:
             return *static_cast<Entity*>(property.ref);
@@ -1229,7 +1247,7 @@ Json propertyValueToJson(const PropertyData& property) {
                         {"roughnessFactor", material.roughnessFactor},
                         {"emissiveFactor", vector3Json(material.emissiveFactor)},
                         {"baseColorTexture", TextureData::buildSvgScalePath(
-                            material.baseColorTexture.getPath(),
+                            assetPathToAi(project, material.baseColorTexture.getPath()),
                             material.baseColorTexture.getSvgScale())}};
         }
         case PropertyType::Custom:
@@ -1263,6 +1281,14 @@ std::string optionalString(const Json& args, const char* key, const char* fallba
     return (it == args.end() || !it->is_string()) ? std::string(fallback) : it->get<std::string>();
 }
 
+// Lua entries are stored relative to the Lua root, so they resolve through it first
+std::string scriptPathToAi(Project* project, const ScriptEntry& entry) {
+    if (entry.path.empty() || entry.type != ScriptType::SCRIPT_LUA) {
+        return entry.path;
+    }
+    return project->normalizeToProjectRelative(project->resolveLuaPath(entry.path)).generic_string();
+}
+
 // Script entries may store absolute paths, so compare them project-relative.
 std::string normalizeScriptPath(Project* project, const std::string& value) {
     fs::path path(value);
@@ -1275,13 +1301,13 @@ std::string normalizeScriptPath(Project* project, const std::string& value) {
 }
 
 // Catalog exposes scripts as an opaque Custom property, so entries are listed here instead.
-Json scriptEntriesJson(const std::vector<ScriptEntry>& scripts) {
+Json scriptEntriesJson(Project* project, const std::vector<ScriptEntry>& scripts) {
     Json entries = Json::array();
     for (size_t i = 0; i < scripts.size(); i++) {
         entries.push_back({{"index", i},
                            {"type", scriptTypeName(scripts[i].type)},
                            {"class_name", scripts[i].className},
-                           {"path", scripts[i].path},
+                           {"path", scriptPathToAi(project, scripts[i])},
                            {"header_path", scripts[i].headerPath},
                            {"enabled", scripts[i].enabled}});
     }
@@ -1312,7 +1338,7 @@ bool resolveScriptIndex(Project* project, const std::vector<ScriptEntry>& script
     std::vector<size_t> matches;
     for (size_t i = 0; i < scripts.size(); i++) {
         const bool match = className.empty()
-            ? (normalizeScriptPath(project, scripts[i].path) == path ||
+            ? (normalizeScriptPath(project, scriptPathToAi(project, scripts[i])) == path ||
                normalizeScriptPath(project, scripts[i].headerPath) == path)
             : scripts[i].className == className;
         if (match) matches.push_back(i);
@@ -1348,7 +1374,11 @@ Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity,
                 error = "Property requires string_value.";
                 return nullptr;
             }
-            return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, args["string_value"].get<std::string>(), onChanged);
+            {
+                const std::string value = args["string_value"].get<std::string>();
+                return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName,
+                    isAssetPathProperty(propertyName) ? assetPathFromAi(project, value) : value, onChanged);
+            }
         case PropertyType::Float: {
             if (!valueFieldPresent(args, "number_value") || !args["number_value"].is_number()) {
                 error = "Property requires number_value.";
@@ -1420,7 +1450,7 @@ Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity,
                 error = "texture_path must be a safe project-relative path.";
                 return nullptr;
             }
-            return new PropertyCmd<Texture>(project, sceneId, entity, component, propertyName, Texture(rel.generic_string()), onChanged);
+            return new PropertyCmd<Texture>(project, sceneId, entity, component, propertyName, Texture(assetPathFromAi(project, rel)), onChanged);
         }
         case PropertyType::Entity:
             if (!valueFieldPresent(args, "entity_value") || !args["entity_value"].is_number_integer()) {
@@ -1949,6 +1979,7 @@ ActionResult EditorActionExecutor::getProjectSummary() {
     data["selected_scene_id"] = project->getSelectedSceneId();
     data["start_scene_id"] = project->getStartSceneId();
     data["assets_dir"] = project->getAssetsDir().generic_string();
+    data["lua_dir"] = project->getLuaDir().generic_string();
     data["scenes"] = Json::array();
     for (const auto& scene : project->getScenes()) {
         data["scenes"].push_back({
@@ -2078,12 +2109,12 @@ ActionResult EditorActionExecutor::inspectEntity(const Json& arguments) {
         if (includeProperties) {
             Json props = Json::object();
             for (const auto& [propName, prop] : Catalog::findEntityProperties(sceneProject->scene, entity, type)) {
-                props[propName] = {{"type", propertyTypeName(prop.type)}, {"value", propertyValueToJson(prop)}};
+                props[propName] = {{"type", propertyTypeName(prop.type)}, {"value", propertyValueToJson(project, propName, prop)}};
             }
             comp["properties"] = props;
         }
         if (type == ComponentType::ScriptComponent) {
-            comp["scripts"] = scriptEntriesJson(sceneProject->scene->getComponent<ScriptComponent>(entity).scripts);
+            comp["scripts"] = scriptEntriesJson(project, sceneProject->scene->getComponent<ScriptComponent>(entity).scripts);
         }
         data["components"].push_back(comp);
     }
@@ -2116,7 +2147,7 @@ ActionResult EditorActionExecutor::inspectComponent(const Json& arguments) {
 
     Json props = Json::object();
     for (const auto& [propName, prop] : properties) {
-        props[propName] = {{"type", propertyTypeName(prop.type)}, {"value", propertyValueToJson(prop)}};
+        props[propName] = {{"type", propertyTypeName(prop.type)}, {"value", propertyValueToJson(project, propName, prop)}};
     }
 
     Json data = {{"scene_id", sceneId},
@@ -2128,7 +2159,7 @@ ActionResult EditorActionExecutor::inspectComponent(const Json& arguments) {
         addMeshBounds(data, sceneProject->scene, entity);
     }
     if (component == ComponentType::ScriptComponent) {
-        data["scripts"] = scriptEntriesJson(sceneProject->scene->getComponent<ScriptComponent>(entity).scripts);
+        data["scripts"] = scriptEntriesJson(project, sceneProject->scene->getComponent<ScriptComponent>(entity).scripts);
     }
 
     return okResult("Inspected component.", data);
@@ -3096,7 +3127,7 @@ ActionResult EditorActionExecutor::setTerrainTextures(const Json& arguments) {
             terrain->needUpdateTexture = true;
         };
         multiCmd->addPropertyCmd<Texture>(project, sceneId, entity, ComponentType::TerrainComponent,
-                                          field.property, Texture(rel.generic_string()), onChanged);
+                                          field.property, Texture(assetPathFromAi(project, rel)), onChanged);
         changed++;
     }
 
@@ -3332,7 +3363,10 @@ ActionResult EditorActionExecutor::attachScript(const Json& arguments) {
     ScriptEntry entry;
     entry.type = type;
     entry.enabled = true;
-    entry.path = sourceRel.generic_string();
+    // Lua entries resolve through "lua://", C++ entries are project-relative build inputs
+    entry.path = (type == ScriptType::SCRIPT_LUA)
+        ? project->normalizeToLuaRelative(project->getProjectPath() / sourceRel).generic_string()
+        : sourceRel.generic_string();
     entry.headerPath = headerRel.empty() ? "" : headerRel.generic_string();
     entry.className = sanitizeIdentifier(arguments.value("class_name", "NewScript"), "NewScript");
 
@@ -3346,7 +3380,7 @@ ActionResult EditorActionExecutor::attachScript(const Json& arguments) {
     // repoint its entry instead of leaving a stale duplicate behind.
     size_t index = scripts.size();
     for (size_t i = 0; i < scripts.size(); i++) {
-        if (normalizeScriptPath(project, scripts[i].path) == normalizeScriptPath(project, entry.path) ||
+        if (normalizeScriptPath(project, scriptPathToAi(project, scripts[i])) == normalizeScriptPath(project, scriptPathToAi(project, entry)) ||
             (scripts[i].type == entry.type && scripts[i].className == entry.className)) {
             index = i;
             break;
@@ -3406,7 +3440,9 @@ ActionResult EditorActionExecutor::updateScriptEntry(const Json& arguments) {
         const bool validSource = (entry.type == ScriptType::SCRIPT_LUA)
             ? Util::isLuaFile(sourceRel.string()) : Util::isSourceFile(sourceRel.string());
         if (!validSource) return failResult("new_path must be a .lua file for Lua entries and a .cpp file for C++ entries.");
-        entry.path = sourceRel.generic_string();
+        entry.path = (entry.type == ScriptType::SCRIPT_LUA)
+            ? project->normalizeToLuaRelative(project->getProjectPath() / sourceRel).generic_string()
+            : sourceRel.generic_string();
     }
     if (arguments.contains("new_header_path")) {
         if (entry.type == ScriptType::SCRIPT_LUA) return failResult("Lua script entries have no header file.");
@@ -3499,7 +3535,7 @@ ActionResult EditorActionExecutor::updateScriptFile(const Json& arguments) {
 
             bool matchesFile = false;
             for (const ScriptEntry& scriptEntry : scriptComponent->scripts) {
-                if (!scriptEntry.path.empty() && normalizeScriptPath(project, scriptEntry.path) == relString) {
+                if (!scriptEntry.path.empty() && normalizeScriptPath(project, scriptPathToAi(project, scriptEntry)) == relString) {
                     matchesFile = true;
                     break;
                 }
@@ -3644,8 +3680,9 @@ ActionResult EditorActionExecutor::exportProject(const Json& arguments, const st
     if (cancel && cancel->load()) return failResult("Export cancelled.");
     ExportConfig config;
     config.targetDir = arguments.value("target_dir", "");
-    config.assetsDir = arguments.value("assets_dir", project->getAssetsDir().generic_string());
-    config.luaDir = arguments.value("lua_dir", project->getLuaDir().generic_string());
+    // Stored references are relative to these roots, so they are not overridable
+    config.assetsDir = project->getAssetsPath();
+    config.luaDir = project->getLuaPath();
     config.startSceneId = static_cast<uint32_t>(arguments.value("start_scene_id", static_cast<int>(project->getStartSceneId())));
     std::string error;
     config.selectedPlatforms = parsePlatformList(arguments.value("platforms", "all"), error);
@@ -3977,7 +4014,7 @@ ActionResult EditorActionExecutor::importProjectModel(const Json& arguments) {
     if (entityName.empty()) entityName = "Model";
 
     CommandHandle::get(sceneId)->addCommandNoMerge(
-        new ModelLoadCmd(project, sceneId, entityName, position, relPath.generic_string()));
+        new ModelLoadCmd(project, sceneId, entityName, position, assetPathFromAi(project, relPath)));
 
     if (resourcesWindow) {
         resourcesWindow->requestThumbnailGeneration(fullPath, false);
@@ -4073,7 +4110,7 @@ ActionResult EditorActionExecutor::downloadCuratedAsset(const Json& arguments, c
     }
 
     fs::path stagingDir = project->getProjectInternalPath() / "ai" / "staging" / slug;
-    fs::path importDir = project->getProjectPath() / project->getAssetsDir() / "ai_imports" / slug;
+    fs::path importDir = project->getAssetsPath() / "ai_imports" / slug;
     fs::path stagingFile = stagingDir / filenamePath.filename();
     fs::path importedFile = PathUtils::uniqueChildPath(importDir, filenamePath.stem().string(), filenamePath.extension().string());
 

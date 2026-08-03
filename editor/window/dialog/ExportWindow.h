@@ -29,11 +29,7 @@ namespace doriax::editor {
 
         // UI state
         char m_targetDirBuffer[512] = "";
-        char m_assetsDirBuffer[512] = "";
-        char m_luaDirBuffer[512] = "";
         fs::path m_targetDir;
-        fs::path m_assetsDir;
-        fs::path m_luaDir;
 
         // Start scene
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
@@ -81,7 +77,6 @@ namespace doriax::editor {
                           const ImVec2& size, const char* disabledText = nullptr);
         void drawSettings();
         void drawOutputDirRow(const char* label);
-        void drawAssetsLuaRows();
         void drawStartSceneRow();
         void drawGraphicBackendRow();
         void drawDesktopKitRows();

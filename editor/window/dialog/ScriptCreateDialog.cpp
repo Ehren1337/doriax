@@ -27,6 +27,7 @@ int ScriptCreateDialog::classNameCharFilter(ImGuiInputTextCallbackData* data) {
 void ScriptCreateDialog::open(Scene* scene,
                               Entity entity,
                               const fs::path& projectPath,
+                              const fs::path& luaPath,
                               const std::string& defaultBaseName,
                               std::function<void(const fs::path&, const fs::path&, const std::string&, ScriptType)> onCreate,
                               std::function<void()> onCancel) {
@@ -34,6 +35,7 @@ void ScriptCreateDialog::open(Scene* scene,
     m_scene = scene;
     m_entity = entity;
     m_projectPath = projectPath;
+    m_luaPath = luaPath;
     m_selectedPath = projectPath.string();
     m_scriptType = ScriptType::SUBCLASS;
     m_onCreate = onCreate;
@@ -41,6 +43,11 @@ void ScriptCreateDialog::open(Scene* scene,
     std::string base = defaultBaseName.empty() ? "NewScript" : sanitizeClassName(defaultBaseName);
     strncpy(m_baseNameBuffer, base.c_str(), sizeof(m_baseNameBuffer) - 1);
     m_baseNameBuffer[sizeof(m_baseNameBuffer) - 1] = '\0';
+}
+
+static bool isInsidePath(const fs::path& path, const fs::path& root) {
+    const fs::path relative = path.lexically_relative(root);
+    return !relative.empty() && *relative.begin() != "..";
 }
 
 void ScriptCreateDialog::displayDirectoryTree(const fs::path& rootPath, const fs::path& currentPath) {
@@ -338,9 +345,12 @@ void ScriptCreateDialog::finalizeCreation(const fs::path& headerPath,
     writeFiles(useHeader, useSource, name, m_scriptType);
 
     if (m_onCreate) {
+        // Lua entries resolve through "lua://", C++ sources stay project-relative
+        const fs::path sourceRoot = (m_scriptType == ScriptType::SCRIPT_LUA) ? m_luaPath : m_projectPath;
+
         fs::path relHeader, relSource;
         if (!useHeader.empty()) relHeader = fs::relative(useHeader, m_projectPath);
-        if (!useSource.empty()) relSource = fs::relative(useSource, m_projectPath);
+        if (!useSource.empty()) relSource = fs::relative(useSource, sourceRoot);
 
         m_onCreate(relHeader, relSource, name, m_scriptType);
     }
@@ -383,6 +393,13 @@ void ScriptCreateDialog::show() {
     ImGui::Separator();
     ImGui::Spacing();
 
+    // Browsing is limited to the root the new script is stored relative to: a folder
+    // above it would be saved as an unresolvable "../" path.
+    const fs::path rootPath = (m_scriptType == ScriptType::SCRIPT_LUA) ? m_luaPath : m_projectPath;
+    if (!isInsidePath(fs::path(m_selectedPath), rootPath)) {
+        m_selectedPath = rootPath.string();
+    }
+
     if (ImGui::BeginChild("DirBrowser", ImVec2(300, 200), true)) {
         if (ImGui::BeginTable("DirTree", 1, ImGuiTableFlags_Resizable)) {
             ImGui::TableNextRow();
@@ -390,7 +407,7 @@ void ScriptCreateDialog::show() {
 
             bool rootOpen = true;
             ImGui::SetNextItemOpen(rootOpen, ImGuiCond_Always);
-            bool isRootSelected = (m_selectedPath == m_projectPath.string());
+            bool isRootSelected = (m_selectedPath == rootPath.string());
 
             if (ImGui::TreeNodeEx("##root",
                 ImGuiTreeNodeFlags_OpenOnArrow |
@@ -400,13 +417,13 @@ void ScriptCreateDialog::show() {
                 ImGui::SameLine(0, 0);
                 ImGui::TextColored(ImVec4(1.f, 0.8f, 0.f, 1.f), "%s", ICON_FA_FOLDER_OPEN);
                 ImGui::SameLine();
-                ImGui::Text("Project Root");
+                ImGui::Text("%s", rootPath == m_projectPath ? "Project Root" : rootPath.filename().string().c_str());
                 if (ImGui::IsItemClicked() ||
                     (ImGui::IsMouseClicked(0) && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
-                    m_selectedPath = m_projectPath.string();
+                    m_selectedPath = rootPath.string();
                 }
 
-                displayDirectoryTree(m_projectPath, m_projectPath);
+                displayDirectoryTree(rootPath, rootPath);
                 ImGui::TreePop();
             }
             ImGui::EndTable();

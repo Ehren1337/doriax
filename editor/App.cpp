@@ -1661,6 +1661,14 @@ void editor::App::registerAlert(std::string title, std::string message, std::str
     alert.onNo = nullptr;
 }
 
+void editor::App::registerOutsideAssetsAlert(const std::string& path) {
+    registerAlert(
+        "File outside the assets directory",
+        "Only files inside \"" + project.getAssetsDir().generic_string() + "\" can be used.\n"
+        "Move or copy it there and drop it again.",
+        project.normalizeToProjectRelative(path).generic_string());
+}
+
 void editor::App::registerConfirmAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo) {
     alert.needShow = true;
     alert.title = title;

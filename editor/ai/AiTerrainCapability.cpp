@@ -110,14 +110,14 @@ std::string makeTerrainHeightmapPath(Project* project, uint32_t sceneId, Entity 
                                         std::to_string(entity) + "_height_" +
                                         std::to_string(seed) + "_" + std::to_string(i) + ".png");
         if (!fs::exists(candidate, ec)) {
-            fs::path rel = fs::relative(candidate, project->getProjectPath(), ec);
+            fs::path rel = fs::relative(candidate, project->getAssetsPath(), ec);
             return ec ? candidate.generic_string() : rel.generic_string();
         }
     }
 
     fs::path fallback = baseDir / ("terrain_ai_" + std::to_string(sceneId) + "_" +
                                    std::to_string(entity) + "_height.png");
-    fs::path rel = fs::relative(fallback, project->getProjectPath(), ec);
+    fs::path rel = fs::relative(fallback, project->getAssetsPath(), ec);
     return ec ? fallback.generic_string() : rel.generic_string();
 }
 
@@ -131,10 +131,7 @@ bool setFileBackedHeightTexture(Project* project, Texture& texture, const std::s
         return false;
     }
 
-    fs::path outputPath(relativePath);
-    if (outputPath.is_relative()) {
-        outputPath = project->getProjectPath() / outputPath;
-    }
+    fs::path outputPath = project->resolveAssetPath(relativePath);
 
     std::error_code ec;
     fs::create_directories(outputPath.parent_path(), ec);
@@ -246,7 +243,7 @@ TerrainBlendmapResult AiTerrainCapability::createBlendmap(Project* project,
         return result;
     }
 
-    fs::path rel = fs::relative(result.fullPath, project->getProjectPath(), ec);
+    fs::path rel = fs::relative(result.fullPath, project->getAssetsPath(), ec);
     result.relativePath = (ec ? result.fullPath : rel).generic_string();
     result.success = true;
     return result;

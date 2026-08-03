@@ -76,6 +76,29 @@
 
 using namespace doriax;
 
+// Assets are stored relative to the assets root. A file outside it still previews from
+// its absolute path, but the drop is refused on delivery.
+static std::string droppedAssetPath(editor::Project* project, const std::string& path, bool insideAssets) {
+    return insideAssets ? project->normalizeToAssetsRelative(path).generic_string()
+                        : std::filesystem::path(path).generic_string();
+}
+
+// Redraws the component a dropped texture belongs to, used when a preview is undone.
+static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType componentType) {
+    if (componentType == editor::ComponentType::MeshComponent) {
+        MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
+            mesh.submeshes[i].needUpdateTexture = true;
+        }
+    }
+    if (componentType == editor::ComponentType::UIComponent) {
+        scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
+    }
+    if (componentType == editor::ComponentType::SkyComponent) {
+        scene->getComponent<SkyComponent>(entity).needUpdateTexture = true;
+    }
+}
+
 static std::vector<editor::EnumEntry> entriesPrimitiveType = {
     { (int)PrimitiveType::TRIANGLES, "Triangles" },
     { (int)PrimitiveType::TRIANGLE_STRIP, "Triangle Strip" },
@@ -570,11 +593,7 @@ void editor::Properties::stopSoundPreview(bool unload) {
 }
 
 std::filesystem::path editor::Properties::resolveSoundPreviewPath(const std::string& filename) {
-    std::filesystem::path audioPath(filename);
-    if (audioPath.is_relative()) {
-        audioPath = project->getProjectPath() / audioPath;
-    }
-    return audioPath.lexically_normal();
+    return project->resolveAssetPath(filename);
 }
 
 void editor::Properties::applySoundPreviewSettings(const SoundComponent& audio) {
@@ -880,13 +899,7 @@ void editor::Properties::helpMarker(std::string desc) {
 Texture* editor::Properties::findThumbnail(const std::string& path) {
     if (path.empty()) return nullptr;
 
-    std::filesystem::path texPath = path;
-    const std::filesystem::path projectPath = project->getProjectPath();
-
-    if (texPath.is_relative() && !projectPath.empty()) {
-        texPath = projectPath / texPath;
-    }
-    texPath = texPath.lexically_normal();
+    std::filesystem::path texPath = project->resolveAssetPath(path);
 
     if (!texPath.is_absolute()) return nullptr;
 
@@ -994,7 +1007,8 @@ void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
             std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
             if (receivedStrings.size() > 0){
-                const std::string droppedRelativePath = std::filesystem::relative(receivedStrings[0], project->getProjectPath()).generic_string();
+                const bool insideAssets = project->isInsideAssetsPath(receivedStrings[0]);
+                const std::string droppedRelativePath = droppedAssetPath(project, receivedStrings[0], insideAssets);
 
                 bool isFont = Util::isFontFile(droppedRelativePath);
 
@@ -1017,11 +1031,22 @@ void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string
                         for (Entity& entity : entities){
                             std::string* valueRef = Catalog::getPropertyRef<std::string>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalFont[id][entity];
+                            if (!insideAssets){
+                                if (componentType == ComponentType::TextComponent){
+                                    sceneProject->scene->getComponent<TextComponent>(entity).needReloadAtlas = true;
+                                    sceneProject->scene->getComponent<TextComponent>(entity).needUpdateText = true;
+                                }
+                                continue;
+                            }
                             cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, droppedRelativePath);
                             CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
                                 finishProperty = true;
                             }
+                        }
+
+                        if (!insideAssets){
+                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                         }
 
                         ImGui::SetWindowFocus(Properties::WINDOW_NAME);
@@ -1273,7 +1298,8 @@ void editor::Properties::dragDropResourcesTexture(ComponentType cpType, std::str
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
             std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
             if (receivedStrings.size() > 0){
-                const std::string droppedRelativePath = std::filesystem::relative(receivedStrings[0], project->getProjectPath()).generic_string();
+                const bool insideAssets = project->isInsideAssetsPath(receivedStrings[0]);
+                const std::string droppedRelativePath = droppedAssetPath(project, receivedStrings[0], insideAssets);
 
                 if (Util::isImageFile(droppedRelativePath)) {
                     if (!hasTextureDrag.count(id)){
@@ -1301,11 +1327,19 @@ void editor::Properties::dragDropResourcesTexture(ComponentType cpType, std::str
                         for (Entity& entity : entities){
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[id][entity];
+                            if (!insideAssets){
+                                markTextureUpdate(sceneProject->scene, entity, componentType);
+                                continue;
+                            }
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture);
                             CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
                                 finishProperty = true;
                             }
+                        }
+
+                        if (!insideAssets){
+                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                         }
 
                         ImGui::SetWindowFocus(Properties::WINDOW_NAME);
@@ -1365,7 +1399,8 @@ void editor::Properties::dragDropResourcesTextureCubeFace(ComponentType cpType, 
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
             std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
             if (!receivedStrings.empty()){
-                const std::string droppedRelativePath = std::filesystem::relative(receivedStrings[0], project->getProjectPath()).generic_string();
+                const bool insideAssets = project->isInsideAssetsPath(receivedStrings[0]);
+                const std::string droppedRelativePath = droppedAssetPath(project, receivedStrings[0], insideAssets);
 
                 if (Util::isImageFile(droppedRelativePath)) {
                     if (!hasTextureDrag.count(dragId)){
@@ -1398,6 +1433,10 @@ void editor::Properties::dragDropResourcesTextureCubeFace(ComponentType cpType, 
                         for (const Entity& entity : entities){
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[dragId][entity];
+                            if (!insideAssets){
+                                markTextureUpdate(sceneProject->scene, entity, componentType);
+                                continue;
+                            }
 
                             Texture updated = Texture(*valueRef);
                             updated.setCubePath(faceIndex, droppedRelativePath);
@@ -1406,6 +1445,10 @@ void editor::Properties::dragDropResourcesTextureCubeFace(ComponentType cpType, 
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
                                 finishProperty = true;
                             }
+                        }
+
+                        if (!insideAssets){
+                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                         }
 
                         ImGui::SetWindowFocus(Properties::WINDOW_NAME);
@@ -1456,7 +1499,8 @@ void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cp
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
             std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
             if (!receivedStrings.empty()){
-                const std::string droppedRelativePath = std::filesystem::relative(receivedStrings[0], project->getProjectPath()).generic_string();
+                const bool insideAssets = project->isInsideAssetsPath(receivedStrings[0]);
+                const std::string droppedRelativePath = droppedAssetPath(project, receivedStrings[0], insideAssets);
 
                 if (Util::isImageFile(droppedRelativePath)) {
                     if (!hasTextureDrag.count(dragId)){
@@ -1489,6 +1533,10 @@ void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cp
                         for (const Entity& entity : entities){
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[dragId][entity];
+                            if (!insideAssets){
+                                markTextureUpdate(sceneProject->scene, entity, componentType);
+                                continue;
+                            }
 
                             Texture updated = Texture(*valueRef);
                             updated.setCubeMap(droppedRelativePath);
@@ -1497,6 +1545,10 @@ void editor::Properties::dragDropResourcesTextureCubeSingleFile(ComponentType cp
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
                                 finishProperty = true;
                             }
+                        }
+
+                        if (!insideAssets){
+                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                         }
 
                         ImGui::SetWindowFocus(Properties::WINDOW_NAME);
@@ -3337,14 +3389,14 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         ImGui::SameLine();
 
         if (ImGui::Button(ICON_FA_FOLDER_OPEN)) {
-            std::string path = editor::FileDialogs::openFileDialog(project->getProjectPath().string(), FILE_DIALOG_FONT);
+            std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_FONT);
             if (!path.empty()) {
-                std::filesystem::path projectPath = project->getProjectPath();
+                std::filesystem::path assetsPath = project->getAssetsPath();
                 std::filesystem::path filePath = std::filesystem::absolute(path);
 
-                // Check if file path is within project directory
+                // References are stored relative to the assets root
                 std::error_code ec;
-                auto relative = std::filesystem::relative(filePath, projectPath, ec);
+                auto relative = std::filesystem::relative(filePath, assetsPath, ec);
                 if (ec || relative.string().find("..") != std::string::npos) {
                     ImGui::OpenPopup("File Import Error");
                 }else{
@@ -3360,7 +3412,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
         // Error popup modal
         if (ImGui::BeginPopupModal("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Selected file must be within the project directory.");
+            ImGui::Text("Selected file must be within the assets directory.");
             ImGui::Separator();
 
             float buttonWidth = 120;
@@ -3379,8 +3431,10 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                 std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
                 if (receivedStrings.size() > 0){
-                    if (payload->IsDelivery()){
-                        const std::string relativeFontPath = std::filesystem::relative(receivedStrings[0], project->getProjectPath()).generic_string();
+                    if (payload->IsDelivery() && !project->isInsideAssetsPath(receivedStrings[0])){
+                        Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                    }else if (payload->IsDelivery()){
+                        const std::string relativeFontPath = project->normalizeToAssetsRelative(receivedStrings[0]).generic_string();
 
                         for (Entity& entity : entities){
                             cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, relativeFontPath, settings.onValueChanged);
@@ -3503,14 +3557,14 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, ImGui::GetStyle().FramePadding.y));
 
         if (ImGui::Button(ICON_FA_FOLDER_OPEN, texButtonSize)) {
-            std::string path = editor::FileDialogs::openFileDialog(project->getProjectPath().string(), FILE_DIALOG_IMAGE);
+            std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
             if (!path.empty()) {
-                std::filesystem::path projectPath = project->getProjectPath();
+                std::filesystem::path assetsPath = project->getAssetsPath();
                 std::filesystem::path filePath = std::filesystem::absolute(path);
 
-                // Check if file path is within project directory
+                // References are stored relative to the assets root
                 std::error_code ec;
-                auto relative = std::filesystem::relative(filePath, projectPath, ec);
+                auto relative = std::filesystem::relative(filePath, assetsPath, ec);
                 if (ec || relative.string().find("..") != std::string::npos) {
                     ImGui::OpenPopup("File Import Error");
                 }else{
@@ -3571,7 +3625,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
         // Error popup modal
         if (ImGui::BeginPopupModal("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Selected file must be within the project directory.");
+            ImGui::Text("Selected file must be within the assets directory.");
             ImGui::Separator();
 
             float buttonWidth = 120;
@@ -3718,13 +3772,13 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             ImGui::SameLine();
 
             if (ImGui::Button(ICON_FA_FOLDER_OPEN)) {
-                std::string path = editor::FileDialogs::openFileDialog(project->getProjectPath().string(), FILE_DIALOG_IMAGE);
+                std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
                 if (!path.empty()) {
-                    std::filesystem::path projectPath = project->getProjectPath();
+                    std::filesystem::path assetsPath = project->getAssetsPath();
                     std::filesystem::path filePath = std::filesystem::absolute(path);
 
                     std::error_code ec;
-                    auto relative = std::filesystem::relative(filePath, projectPath, ec);
+                    auto relative = std::filesystem::relative(filePath, assetsPath, ec);
                     if (ec || relative.string().find("..") != std::string::npos) {
                         ImGui::OpenPopup("File Import Error##cube");
                     }else{
@@ -3745,7 +3799,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             dragDropResourcesTextureCubeSingleFile(cpType, id, dragMin, dragMax, sceneProject, entities, cpType);
 
             if (ImGui::BeginPopupModal("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-                ImGui::Text("Selected file must be within the project directory.");
+                ImGui::Text("Selected file must be within the assets directory.");
                 ImGui::Separator();
 
                 float buttonWidth = 120;
@@ -3832,14 +3886,14 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                 ImGui::SameLine();
 
                 if (ImGui::Button(ICON_FA_FOLDER_OPEN)) {
-                    std::string path = editor::FileDialogs::openFileDialog(project->getProjectPath().string(), FILE_DIALOG_IMAGE);
+                    std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
                     if (!path.empty()) {
-                        std::filesystem::path projectPath = project->getProjectPath();
+                        std::filesystem::path assetsPath = project->getAssetsPath();
                         std::filesystem::path filePath = std::filesystem::absolute(path);
 
-                        // Check if file path is within project directory
+                        // References are stored relative to the assets root
                         std::error_code ec;
-                        auto relative = std::filesystem::relative(filePath, projectPath, ec);
+                        auto relative = std::filesystem::relative(filePath, assetsPath, ec);
                         if (ec || relative.string().find("..") != std::string::npos) {
                             ImGui::OpenPopup("File Import Error##cube");
                         }else{
@@ -3861,7 +3915,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
                 // Error popup modal
                 if (ImGui::BeginPopupModal("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-                    ImGui::Text("Selected file must be within the project directory.");
+                    ImGui::Text("Selected file must be within the assets directory.");
                     ImGui::Separator();
 
                     float buttonWidth = 120;
@@ -4098,6 +4152,9 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                         }
                     } else {
                         std::string droppedRelativePath = relativePath.lexically_normal().generic_string();
+                        // Material files are project files; the image below is an asset
+                        const bool insideAssets = project->isInsideAssetsPath(receivedStrings[0]);
+                        const std::string droppedImagePath = droppedAssetPath(project, receivedStrings[0], insideAssets);
 
                         if (Util::isMaterialFile(droppedRelativePath)) {
                             try {
@@ -4177,8 +4234,8 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                                 for (Entity& entity : entities) {
                                     PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, cpType, id);
                                     Material* matRef = static_cast<Material*>(prop.ref);
-                                    if (matRef->baseColorTexture != Texture(droppedRelativePath)) {
-                                        matRef->baseColorTexture = Texture(droppedRelativePath);
+                                    if (matRef->baseColorTexture != Texture(droppedImagePath)) {
+                                        matRef->baseColorTexture = Texture(droppedImagePath);
                                         MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
                                         if (mesh) {
                                             auto pos = id.find('[');
@@ -4196,11 +4253,15 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                                 // Delivery: restore originals, then issue texture command
                                 restoreMatDropPreview();
 
-                                Texture texture(droppedRelativePath);
-                                for (Entity& entity : entities) {
-                                    cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, baseTexId, texture, settings.onValueChanged);
-                                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                                    finishProperty = true;
+                                if (insideAssets) {
+                                    Texture texture(droppedImagePath);
+                                    for (Entity& entity : entities) {
+                                        cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, baseTexId, texture, settings.onValueChanged);
+                                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                                        finishProperty = true;
+                                    }
+                                } else {
+                                    Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                                 }
 
                                 cachedMatDropPath.clear();
@@ -5598,13 +5659,13 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
         ImGui::SameLine();
 
         if (ImGui::Button(ICON_FA_FOLDER_OPEN "##model_load")) {
-            std::string path = editor::FileDialogs::openFileDialog(project->getProjectPath().string(), FILE_DIALOG_MODEL);
+            std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_MODEL);
             if (!path.empty()) {
-                std::filesystem::path projectPath = project->getProjectPath();
+                std::filesystem::path assetsPath = project->getAssetsPath();
                 std::filesystem::path filePath = std::filesystem::absolute(path);
 
                 std::error_code ec;
-                auto relative = std::filesystem::relative(filePath, projectPath, ec);
+                auto relative = std::filesystem::relative(filePath, assetsPath, ec);
                 if (ec || relative.string().find("..") != std::string::npos) {
                     ImGui::OpenPopup("Model Import Error");
                 }else{
@@ -5614,7 +5675,7 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
         }
 
         if (ImGui::BeginPopupModal("Model Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Selected file must be within the project directory.");
+            ImGui::Text("Selected file must be within the assets directory.");
             ImGui::Separator();
             float bw = 120;
             float ww = ImGui::GetWindowSize().x;
@@ -5633,9 +5694,14 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
                     std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
                     if (!receivedStrings.empty()) {
-                        const std::string droppedRelativePath = std::filesystem::relative(receivedStrings[0], project->getProjectPath()).generic_string();
+                        const bool insideAssets = project->isInsideAssetsPath(receivedStrings[0]);
+                        const std::string droppedRelativePath = droppedAssetPath(project, receivedStrings[0], insideAssets);
                         if (Util::isModelFile(droppedRelativePath)) {
-                            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, droppedRelativePath));
+                            if (insideAssets) {
+                                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, droppedRelativePath));
+                            } else {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                            }
                             ImGui::SetWindowFocus(Properties::WINDOW_NAME);
                         }
                     }
@@ -6597,15 +6663,12 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
         SoundComponent& audio = sceneProject->scene->getComponent<SoundComponent>(entity);
 
         auto setAudioFilename = [&](const std::filesystem::path& selectedPath) -> bool {
-            std::filesystem::path projectPath = std::filesystem::absolute(project->getProjectPath()).lexically_normal();
-            std::filesystem::path filePath = selectedPath;
-            if (filePath.is_relative()) {
-                filePath = projectPath / filePath;
-            }
+            std::filesystem::path assetsPath = std::filesystem::absolute(project->getAssetsPath()).lexically_normal();
+            std::filesystem::path filePath = project->resolveAssetPath(selectedPath);
             filePath = std::filesystem::absolute(filePath).lexically_normal();
 
             std::error_code errorCode;
-            std::filesystem::path relative = std::filesystem::relative(filePath, projectPath, errorCode);
+            std::filesystem::path relative = std::filesystem::relative(filePath, assetsPath, errorCode);
             std::string relativePath = relative.generic_string();
             if (errorCode || relativePath == ".." || relativePath.rfind("../", 0) == 0) {
                 ImGui::OpenPopup("Sound Import Error");
@@ -6658,7 +6721,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
         ImGui::SameLine();
 
         if (ImGui::Button(ICON_FA_FOLDER_OPEN "##audio_load")) {
-            std::string path = editor::FileDialogs::openFileDialog(project->getProjectPath().string(), FILE_DIALOG_AUDIO);
+            std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_AUDIO);
             if (!path.empty()) {
                 setAudioFilename(path);
             }
@@ -6672,9 +6735,9 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
                     std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
                     if (!receivedStrings.empty()) {
                         std::filesystem::path droppedPath(receivedStrings[0]);
-                        std::filesystem::path filePath = droppedPath.is_relative() ? project->getProjectPath() / droppedPath : droppedPath;
+                        std::filesystem::path filePath = project->resolveAssetPath(droppedPath);
                         std::error_code errorCode;
-                        std::filesystem::path relative = std::filesystem::relative(std::filesystem::absolute(filePath), std::filesystem::absolute(project->getProjectPath()), errorCode);
+                        std::filesystem::path relative = std::filesystem::relative(std::filesystem::absolute(filePath), std::filesystem::absolute(project->getAssetsPath()), errorCode);
                         if (!errorCode && Util::isAudioFile(relative.generic_string()) && payload->IsDelivery()) {
                             if (setAudioFilename(droppedPath)) {
                                 ImGui::SetWindowFocus(Properties::WINDOW_NAME);
@@ -8067,13 +8130,16 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
 
                 ImGui::SameLine();
                 if (ImGui::Button(ICON_FA_FOLDER_OPEN "##source_btn")) {
-                    fs::path fullSrcPath(script.path);
-                    if (fullSrcPath.is_relative()) fullSrcPath = projectPath / fullSrcPath;
+                    fs::path fullSrcPath = (script.type == ScriptType::SCRIPT_LUA)
+                        ? project->resolveLuaPath(script.path) : projectPath / fs::path(script.path);
                     std::string selected = FileDialogs::openFileDialog(fullSrcPath.parent_path().string());
                     if (!selected.empty()) {
                         std::filesystem::path p(selected);
                         std::error_code ec;
-                        std::filesystem::path rel = std::filesystem::relative(p, projectPath, ec);
+                        // Lua sources are stored relative to the Lua root ("lua://")
+                        const std::filesystem::path sourceRoot = (script.type == ScriptType::SCRIPT_LUA)
+                            ? project->getLuaPath() : projectPath;
+                        std::filesystem::path rel = std::filesystem::relative(p, sourceRoot, ec);
                         if (!ec && rel.string().find("..") == std::string::npos) {
                             srcPath = rel;
                             strncpy(sourceBuffer, rel.filename().string().c_str(), sizeof(sourceBuffer) - 1);
@@ -12523,6 +12589,7 @@ void editor::Properties::show(){
                 sceneProject->scene,
                 firstEntity,
                 project->getProjectPath(),
+                project->getLuaPath(),
                 defaultName,
                 [this, sceneProject, entities](const std::filesystem::path& headerPath,
                                             const std::filesystem::path& sourcePath,

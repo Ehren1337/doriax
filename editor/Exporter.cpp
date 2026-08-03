@@ -917,55 +917,27 @@ bool editor::Exporter::copyAssets() {
     fs::path assetsDst = getExportProjectRoot() / "assets";
     fs::create_directories(assetsDst, ec);
 
-    // Copies srcDir into assetsDst preserving hierarchy relative to srcDir.
-    auto copyDirMaintainingHierarchy = [&](const fs::path& srcDir) {
-        for (auto& entry : fs::recursive_directory_iterator(srcDir, fs::directory_options::skip_permission_denied, ec)) {
-            fs::path relPath = fs::relative(entry.path(), srcDir, ec);
-            if (ec || relPath.empty()) continue;
+    // References are relative to this directory, so its contents become the export root
+    for (auto& entry : fs::recursive_directory_iterator(assetsSrc, fs::directory_options::skip_permission_denied, ec)) {
+        fs::path relPath = fs::relative(entry.path(), assetsSrc, ec);
+        if (ec || relPath.empty()) continue;
 
-            // Skip hidden directories (starting with '.') and build directories
-            std::string firstComponent = relPath.begin()->string();
-            if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) continue;
+        // Skip hidden directories (starting with '.') and build directories
+        std::string firstComponent = relPath.begin()->string();
+        if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) continue;
 
-            // Skip project support files that should not ship as assets
-            if (shouldSkipExportSupportFile(relPath)) continue;
+        // Skip project support files that should not ship as assets
+        if (shouldSkipExportSupportFile(relPath)) continue;
 
-            // Skip C++ source/header files; registered scripts ship via copyCppScripts
-            if (entry.is_regular_file() && isCppSourceFile(entry.path())) continue;
+        // Skip C++ source/header files; registered scripts ship via copyCppScripts
+        if (entry.is_regular_file() && isCppSourceFile(entry.path())) continue;
 
-            fs::path destPath = assetsDst / relPath;
-            if (entry.is_directory()) {
-                fs::create_directories(destPath, ec);
-            } else if (entry.is_regular_file()) {
-                fs::create_directories(destPath.parent_path(), ec);
-                fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-            }
-        }
-    };
-
-    copyDirMaintainingHierarchy(assetsSrc);
-
-    // If terrain_maps is not inside the assets source directory, copy it separately into assetsDst/terrain_maps
-    fs::path terrainMapsDir = project->getTerrainMapsDir();
-    if (fs::exists(terrainMapsDir, ec)) {
-        terrainMapsDir = fs::weakly_canonical(terrainMapsDir, ec);
-        std::error_code relEc;
-        fs::path relToAssets = fs::relative(terrainMapsDir, assetsSrc, relEc);
-        bool insideAssets = !relEc && relToAssets.string().find("..") == std::string::npos;
-        if (!insideAssets) {
-            fs::path terrainDst = assetsDst / terrainMapsDir.filename();
-            fs::create_directories(terrainDst, ec);
-            for (auto& entry : fs::recursive_directory_iterator(terrainMapsDir, fs::directory_options::skip_permission_denied, ec)) {
-                fs::path relPath = fs::relative(entry.path(), terrainMapsDir, ec);
-                if (ec || relPath.empty()) continue;
-                fs::path destPath = terrainDst / relPath;
-                if (entry.is_directory()) {
-                    fs::create_directories(destPath, ec);
-                } else if (entry.is_regular_file()) {
-                    fs::create_directories(destPath.parent_path(), ec);
-                    fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-                }
-            }
+        fs::path destPath = assetsDst / relPath;
+        if (entry.is_directory()) {
+            fs::create_directories(destPath, ec);
+        } else if (entry.is_regular_file()) {
+            fs::create_directories(destPath.parent_path(), ec);
+            fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
         }
     }
 
@@ -993,6 +965,10 @@ bool editor::Exporter::copyLua() {
     // Created by the copy below, so a project without Lua scripts has no lua directory
     fs::path luaDst = getExportProjectRoot() / "lua";
 
+    // A directory of its own holds only what the scripts need, so all of it ships. With
+    // the default "." the Lua root is the project root, where the allowlist filters.
+    const bool luaRootIsProjectRoot = (luaSrc == fs::weakly_canonical(project->getProjectPath(), ec));
+
     for (auto it = fs::recursive_directory_iterator(luaSrc, fs::directory_options::skip_permission_denied, ec);
          it != fs::recursive_directory_iterator(); ++it) {
         auto& entry = *it;
@@ -1006,8 +982,10 @@ bool editor::Exporter::copyLua() {
         // Skip project support files that should not ship in the Lua directory
         if (shouldSkipExportSupportFile(relPath)) continue;
 
-        // Skip anything that is not a Lua script or a data file it can read
-        if (!entry.is_regular_file() || !isLuaExportFile(entry.path())) continue;
+        // Skip C++ source/header files; registered scripts ship via copyCppScripts
+        if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
+
+        if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) continue;
 
         fs::path destPath = luaDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);

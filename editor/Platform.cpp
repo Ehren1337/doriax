@@ -31,7 +31,16 @@ int editor::Platform::getScreenHeight(){
 }
 
 std::string editor::Platform::getAssetPath(){
-    return project->getProjectPath().string();
+    return project->getAssetsPath().string();
+}
+
+std::string editor::Platform::getLuaPath(){
+    return project->getLuaPath().string();
+}
+
+std::string editor::Platform::getShaderPath(){
+    // Compiled shaders are a build output, not a referenced asset
+    return (project->getProjectPath() / project->getShadersDir()).string();
 }
 
 void editor::Platform::setMouseMode(MouseMode mode){

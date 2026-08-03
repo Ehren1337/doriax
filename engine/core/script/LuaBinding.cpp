@@ -686,6 +686,8 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
 
         for (auto& scriptEntry : scriptComp.scripts) {
             if (scriptEntry.type != ScriptType::SCRIPT_LUA || !scriptEntry.enabled) continue;
+            // PASS 1 skips missing or broken files: indexing a nil instance panics Lua
+            if (!scriptEntry.instance) continue;
 
             int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
             lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
@@ -756,6 +758,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
         ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);
         for (auto& scriptEntry : scriptComp.scripts) {
             if (scriptEntry.type != ScriptType::SCRIPT_LUA || !scriptEntry.enabled) continue;
+            if (!scriptEntry.instance) continue;
 
             int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
             lua_rawgeti(L, LUA_REGISTRYINDEX, ref);

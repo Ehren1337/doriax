@@ -260,7 +260,6 @@ namespace doriax::editor{
 
         SceneProject* findSceneProjectByScene(Scene* scene);
 
-        fs::path normalizeToProjectRelative(const fs::path& path) const;
         static bool matchesRelativePath(const fs::path& relativeBase, const fs::path& currentPath);
         static bool matchesRelativeString(const fs::path& relativeBase, const std::string& currentPath);
         static std::vector<ChildSceneRef>::iterator findChildScene(std::vector<ChildSceneRef>& childScenes, uint32_t childSceneId);
@@ -272,9 +271,16 @@ namespace doriax::editor{
                         const std::string& currentPath, std::string& updatedPath);
         static bool remapScriptEntryPaths(ScriptEntry& scriptEntry, const fs::path& oldRelative,
                           const fs::path& newRelative);
-        bool remapScriptPathsInRegistry(EntityRegistry* registry, const fs::path& oldRelative,
-                        const fs::path& newRelative);
-        bool cleanupScriptPathsInRegistry(EntityRegistry* registry, const fs::path& deletedRelative);
+        // Absolute paths: Lua entries match against the Lua root, C++ entries against the project.
+        bool remapScriptPathsInRegistry(EntityRegistry* registry, const fs::path& oldPath,
+                        const fs::path& newPath);
+        bool cleanupScriptPathsInRegistry(EntityRegistry* registry, const fs::path& deletedPath);
+        // Runs transform over every stored asset reference (component textures and cubemap
+        // faces, model and sound filenames, text fonts), rewriting the value in place.
+        static bool visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
+        // Same for Lua script entries; C++ ones are build inputs kept project-relative.
+        static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
+        bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform);
         // Applies a transform to the customShader of every renderable component (Mesh/UI/
         // Points/Lines/Sky) across all scenes and entity bundles, flagging shader reloads
         // and marking affected scenes/bundles modified. The transform mutates the value in
@@ -351,6 +357,23 @@ namespace doriax::editor{
 
         void setLuaDir(const std::filesystem::path& luaDir);
         std::filesystem::path getLuaDir() const;
+
+        // Absolute roots stored references are relative to: assets for textures, models,
+        // sounds and fonts ("asset://"), Lua for script entries ("lua://").
+        std::filesystem::path getAssetsPath() const;
+        std::filesystem::path getLuaPath() const;
+
+        std::filesystem::path normalizeToProjectRelative(const std::filesystem::path& path) const;
+        std::filesystem::path resolveAssetPath(const std::filesystem::path& assetRelative) const;
+        std::filesystem::path normalizeToAssetsRelative(const std::filesystem::path& path) const;
+        // False for files the assets root only reaches with "..", which the runtime cannot resolve.
+        bool isInsideAssetsPath(const std::filesystem::path& path) const;
+        std::filesystem::path resolveLuaPath(const std::filesystem::path& luaRelative) const;
+        std::filesystem::path normalizeToLuaRelative(const std::filesystem::path& path) const;
+
+        // Applies new roots: referenced files outside them are moved in keeping their
+        // layout, then every stored reference is rewritten and saved.
+        void changeAssetRoots(const std::filesystem::path& newAssetsDir, const std::filesystem::path& newLuaDir);
 
         // Directory (project-relative) where compiled .sdat shaders are written/loaded.
         // This is the engine/build-facing location. Defaults to "shaders".

@@ -435,11 +435,16 @@ bool editor::Project::remapScriptEntryPaths(ScriptEntry& scriptEntry, const fs::
     return changed;
 }
 
-bool editor::Project::remapScriptPathsInRegistry(EntityRegistry* registry, const fs::path& oldRelative,
-                                                 const fs::path& newRelative) {
+bool editor::Project::remapScriptPathsInRegistry(EntityRegistry* registry, const fs::path& oldPath,
+                                                 const fs::path& newPath) {
     if (!registry) {
         return false;
     }
+
+    const fs::path oldRelative = normalizeToProjectRelative(oldPath);
+    const fs::path newRelative = normalizeToProjectRelative(newPath);
+    const fs::path oldLuaRelative = normalizeToLuaRelative(oldPath);
+    const fs::path newLuaRelative = normalizeToLuaRelative(newPath);
 
     auto scriptsArray = registry->getComponentArray<ScriptComponent>();
     bool changed = false;
@@ -447,17 +452,23 @@ bool editor::Project::remapScriptPathsInRegistry(EntityRegistry* registry, const
     for (size_t i = 0; i < scriptsArray->size(); ++i) {
         ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
         for (auto& scriptEntry : scriptComponent.scripts) {
-            changed |= remapScriptEntryPaths(scriptEntry, oldRelative, newRelative);
+            const bool isLua = scriptEntry.type == ScriptType::SCRIPT_LUA;
+            changed |= remapScriptEntryPaths(scriptEntry,
+                                             isLua ? oldLuaRelative : oldRelative,
+                                             isLua ? newLuaRelative : newRelative);
         }
     }
 
     return changed;
 }
 
-bool editor::Project::cleanupScriptPathsInRegistry(EntityRegistry* registry, const fs::path& deletedRelative) {
+bool editor::Project::cleanupScriptPathsInRegistry(EntityRegistry* registry, const fs::path& deletedPath) {
     if (!registry) {
         return false;
     }
+
+    const fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
+    const fs::path deletedLuaRelative = normalizeToLuaRelative(deletedPath);
 
     auto scriptsArray = registry->getComponentArray<ScriptComponent>();
     bool changed = false;
@@ -468,13 +479,198 @@ bool editor::Project::cleanupScriptPathsInRegistry(EntityRegistry* registry, con
 
         scriptComponent.scripts.erase(
             std::remove_if(scriptComponent.scripts.begin(), scriptComponent.scripts.end(),
-                [&deletedRelative](const ScriptEntry& scriptEntry) {
+                [&deletedRelative, &deletedLuaRelative](const ScriptEntry& scriptEntry) {
+                    if (scriptEntry.type == ScriptType::SCRIPT_LUA) {
+                        return matchesRelativeString(deletedLuaRelative, scriptEntry.path);
+                    }
                     return matchesRelativeString(deletedRelative, scriptEntry.path) ||
                            matchesRelativeString(deletedRelative, scriptEntry.headerPath);
                 }),
             scriptComponent.scripts.end());
 
         changed |= (scriptComponent.scripts.size() != originalSize);
+    }
+
+    return changed;
+}
+
+static bool visitTexturePaths(Texture& texture, const std::function<bool(std::string&)>& transform) {
+    // Framebuffer and camera-linked textures carry an id instead of a file path.
+    if (texture.isFramebuffer()) {
+        return false;
+    }
+
+    // Per-face paths only exist on cubemaps, incomplete ones included
+    bool hasFacePaths = false;
+    for (size_t face = 1; face < 6; face++) {
+        if (!texture.getPath(face).empty()) {
+            hasFacePaths = true;
+            break;
+        }
+    }
+
+    if (hasFacePaths) {
+        bool changed = false;
+        for (size_t face = 0; face < 6; face++) {
+            std::string path = texture.getPath(face);
+            if (path.empty() || !transform(path)) {
+                continue;
+            }
+            texture.setCubePath(face, path);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    std::string path = texture.getPath(0);
+    if (path.empty() || !transform(path)) {
+        return false;
+    }
+
+    if (texture.isCubeMap()) {
+        // Single-file cubemap: setPath() would turn it into a 2D texture.
+        texture.setCubeMap(path);
+        return true;
+    }
+
+    const float svgScale = texture.getSvgScale();
+    texture.setPath(path);
+    texture.setSvgScale(svgScale);
+
+    return true;
+}
+
+bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform) {
+    if (!registry) {
+        return false;
+    }
+
+    bool changed = false;
+
+    auto visitComponents = [&](auto* componentArray, auto&& visitComponent) {
+        for (size_t i = 0; i < componentArray->size(); i++) {
+            visitComponent(componentArray->getComponentFromIndex(i));
+        }
+    };
+
+    visitComponents(registry->getComponentArray<MeshComponent>(), [&](MeshComponent& mesh) {
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+            Material& material = mesh.submeshes[s].material;
+            bool submeshChanged = visitTexturePaths(material.baseColorTexture, transform);
+            submeshChanged |= visitTexturePaths(material.emissiveTexture, transform);
+            submeshChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
+            submeshChanged |= visitTexturePaths(material.occlusionTexture, transform);
+            submeshChanged |= visitTexturePaths(material.normalTexture, transform);
+
+            if (submeshChanged) {
+                mesh.submeshes[s].needUpdateTexture = true;
+                changed = true;
+            }
+        }
+    });
+
+    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
+        if (visitTexturePaths(ui.texture, transform)) {
+            ui.needUpdateTexture = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<ButtonComponent>(), [&](ButtonComponent& button) {
+        bool buttonChanged = visitTexturePaths(button.textureNormal, transform);
+        buttonChanged |= visitTexturePaths(button.textureHovered, transform);
+        buttonChanged |= visitTexturePaths(button.texturePressed, transform);
+        buttonChanged |= visitTexturePaths(button.textureDisabled, transform);
+
+        if (buttonChanged) {
+            button.needUpdateButton = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<SkyComponent>(), [&](SkyComponent& sky) {
+        if (visitTexturePaths(sky.texture, transform)) {
+            sky.needUpdateTexture = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<TerrainComponent>(), [&](TerrainComponent& terrain) {
+        bool terrainChanged = visitTexturePaths(terrain.heightMap, transform);
+        terrainChanged |= visitTexturePaths(terrain.blendMap, transform);
+        terrainChanged |= visitTexturePaths(terrain.textureDetailRed, transform);
+        terrainChanged |= visitTexturePaths(terrain.textureDetailGreen, transform);
+        terrainChanged |= visitTexturePaths(terrain.textureDetailBlue, transform);
+
+        if (terrainChanged) {
+            terrain.needUpdateTexture = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<LightComponent>(), [&](LightComponent& light) {
+        if (visitTexturePaths(light.spotMask, transform)) {
+            light.needUpdateShadowCamera = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) {
+        if (visitTexturePaths(points.texture, transform)) {
+            points.needUpdateTexture = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<ReflectionProbeComponent>(), [&](ReflectionProbeComponent& probe) {
+        if (visitTexturePaths(probe.texture, transform)) {
+            probe.needUpdate = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<ModelComponent>(), [&](ModelComponent& model) {
+        if (!model.filename.empty() && transform(model.filename)) {
+            model.needUpdateModel = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<SoundComponent>(), [&](SoundComponent& sound) {
+        if (!sound.filename.empty() && transform(sound.filename)) {
+            sound.loaded = false;
+            sound.needUpdate = true;
+            changed = true;
+        }
+    });
+
+    visitComponents(registry->getComponentArray<TextComponent>(), [&](TextComponent& text) {
+        if (!text.font.empty() && transform(text.font)) {
+            text.needReloadAtlas = true;
+            changed = true;
+        }
+    });
+
+    return changed;
+}
+
+bool editor::Project::visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform) {
+    if (!registry) {
+        return false;
+    }
+
+    auto scriptsArray = registry->getComponentArray<ScriptComponent>();
+    bool changed = false;
+
+    for (size_t i = 0; i < scriptsArray->size(); i++) {
+        ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
+        for (auto& scriptEntry : scriptComponent.scripts) {
+            if (scriptEntry.type != ScriptType::SCRIPT_LUA) {
+                continue;
+            }
+            changed |= transform(scriptEntry.path);
+        }
     }
 
     return changed;
@@ -738,14 +934,7 @@ void editor::Project::remapEntityBundleFilePath(const std::filesystem::path& old
 }
 
 void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    fs::path newRelative = normalizeToProjectRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
+    if (projectPath.empty() || oldPath.empty() || newPath.empty()) {
         return;
     }
 
@@ -754,7 +943,7 @@ void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, 
             continue;
         }
 
-        if (remapScriptPathsInRegistry(sceneProject.scene, oldRelative, newRelative)) {
+        if (remapScriptPathsInRegistry(sceneProject.scene, oldPath, newPath)) {
             sceneProject.isModified = true;
             updateSceneCppScripts(&sceneProject);
         }
@@ -766,8 +955,8 @@ void editor::Project::remapModelFilePath(const std::filesystem::path& oldPath, c
         return;
     }
 
-    fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    fs::path newRelative = normalizeToProjectRelative(newPath);
+    fs::path oldRelative = normalizeToAssetsRelative(oldPath);
+    fs::path newRelative = normalizeToAssetsRelative(newPath);
 
     if (oldRelative.empty() || newRelative.empty()) {
         return;
@@ -996,12 +1185,7 @@ void editor::Project::cleanupEntityBundleFilePath(const std::filesystem::path& d
 }
 
 void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    if (deletedRelative.empty()) {
+    if (projectPath.empty() || deletedPath.empty()) {
         return;
     }
 
@@ -1010,7 +1194,7 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
             continue;
         }
 
-        if (cleanupScriptPathsInRegistry(sceneProject.scene, deletedRelative)) {
+        if (cleanupScriptPathsInRegistry(sceneProject.scene, deletedPath)) {
             sceneProject.isModified = true;
             updateSceneCppScripts(&sceneProject);
         }
@@ -1022,7 +1206,7 @@ void editor::Project::cleanupModelFilePath(const std::filesystem::path& deletedP
         return;
     }
 
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
+    fs::path deletedRelative = normalizeToAssetsRelative(deletedPath);
     if (deletedRelative.empty()) {
         return;
     }
@@ -1543,6 +1727,368 @@ void editor::Project::setLuaDir(const std::filesystem::path& luaDir){
 
 std::filesystem::path editor::Project::getLuaDir() const{
     return luaDir;
+}
+
+static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
+    std::error_code ec;
+    std::filesystem::path relativePath = std::filesystem::relative(path, root, ec);
+    if (ec || relativePath.empty()){
+        return false;
+    }
+
+    return *relativePath.begin() != "..";
+}
+
+static std::filesystem::path resolveRootDir(const std::filesystem::path& projectPath, const std::filesystem::path& dir){
+    if (dir.empty() || dir == "."){
+        return projectPath;
+    }
+    if (dir.is_absolute()){
+        return dir.lexically_normal();
+    }
+    return (projectPath / dir).lexically_normal();
+}
+
+static std::filesystem::path resolveAgainstRoot(const std::filesystem::path& root, const std::filesystem::path& relative){
+    if (relative.empty()){
+        return {};
+    }
+    if (relative.is_absolute()){
+        return relative.lexically_normal();
+    }
+    return (root / relative).lexically_normal();
+}
+
+static std::filesystem::path normalizeAgainstRoot(const std::filesystem::path& root, const std::filesystem::path& path){
+    if (path.empty()){
+        return {};
+    }
+
+    std::filesystem::path normalizedPath = path.lexically_normal();
+    if (!normalizedPath.is_absolute()){
+        return normalizedPath;
+    }
+
+    std::error_code ec;
+    std::filesystem::path relativePath = std::filesystem::relative(normalizedPath, root, ec);
+    if (ec || relativePath.empty()){
+        return normalizedPath;
+    }
+
+    return relativePath.lexically_normal();
+}
+
+std::filesystem::path editor::Project::getAssetsPath() const{
+    return resolveRootDir(projectPath, assetsDir);
+}
+
+std::filesystem::path editor::Project::getLuaPath() const{
+    return resolveRootDir(projectPath, luaDir);
+}
+
+std::filesystem::path editor::Project::resolveAssetPath(const std::filesystem::path& assetRelative) const{
+    return resolveAgainstRoot(getAssetsPath(), assetRelative);
+}
+
+std::filesystem::path editor::Project::normalizeToAssetsRelative(const std::filesystem::path& path) const{
+    return normalizeAgainstRoot(getAssetsPath(), path);
+}
+
+bool editor::Project::isInsideAssetsPath(const std::filesystem::path& path) const{
+    return isInsideRoot(resolveAssetPath(path), getAssetsPath());
+}
+
+std::filesystem::path editor::Project::resolveLuaPath(const std::filesystem::path& luaRelative) const{
+    return resolveAgainstRoot(getLuaPath(), luaRelative);
+}
+
+std::filesystem::path editor::Project::normalizeToLuaRelative(const std::filesystem::path& path) const{
+    return normalizeAgainstRoot(getLuaPath(), path);
+}
+
+// Only a directory without project files can be moved as a whole: those are referenced
+// from the project root and would need their own remap.
+static bool holdsOnlyAssets(const std::filesystem::path& directory){
+    std::error_code ec;
+    for (auto it = std::filesystem::recursive_directory_iterator(directory, std::filesystem::directory_options::skip_permission_denied, ec);
+         it != std::filesystem::recursive_directory_iterator(); ++it){
+        const auto& entry = *it;
+        if (!entry.is_regular_file()){
+            continue;
+        }
+
+        const std::string path = entry.path().string();
+        if (editor::Util::isSceneFile(path) || editor::Util::isBundleFile(path) || editor::Util::isMaterialFile(path) ||
+            editor::Util::isScriptFile(path) || editor::Util::isShaderFile(path)){
+            return false;
+        }
+    }
+
+    return !ec;
+}
+
+bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform){
+    if (projectPath.empty()){
+        return false;
+    }
+
+    std::error_code ec;
+    bool changed = false;
+
+    for (auto it = fs::recursive_directory_iterator(projectPath, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); ++it){
+        const auto& entry = *it;
+
+        const std::string name = entry.path().filename().string();
+        if (entry.is_directory() && !name.empty() && (name[0] == '.' || name == "build")){
+            it.disable_recursion_pending();
+            continue;
+        }
+
+        if (!entry.is_regular_file() || !Util::isMaterialFile(entry.path().string())){
+            continue;
+        }
+
+        Material material;
+        try {
+            material = Stream::decodeMaterial(YAML::LoadFile(entry.path().string()));
+        } catch (const std::exception& e) {
+            Out::warning("Could not read material %s: %s", entry.path().string().c_str(), e.what());
+            continue;
+        }
+
+        bool materialChanged = visitTexturePaths(material.baseColorTexture, transform);
+        materialChanged |= visitTexturePaths(material.emissiveTexture, transform);
+        materialChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
+        materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
+        materialChanged |= visitTexturePaths(material.normalTexture, transform);
+
+        if (!materialChanged){
+            continue;
+        }
+
+        std::ofstream file(entry.path());
+        if (!file){
+            Out::error("Failed to write material: %s", entry.path().string().c_str());
+            continue;
+        }
+        file << YAML::Dump(Stream::encodeMaterial(material));
+        changed = true;
+    }
+
+    return changed;
+}
+
+void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir, const std::filesystem::path& newLuaDir){
+    const fs::path oldAssetsRoot = getAssetsPath();
+    const fs::path oldLuaRoot = getLuaPath();
+    const fs::path newAssetsRoot = resolveRootDir(projectPath, newAssetsDir);
+    const fs::path newLuaRoot = resolveRootDir(projectPath, newLuaDir);
+
+    assetsDir = newAssetsDir;
+    luaDir = newLuaDir;
+
+    if (projectPath.empty() || (oldAssetsRoot == newAssetsRoot && oldLuaRoot == newLuaRoot)){
+        return;
+    }
+
+    std::error_code ec;
+    fs::create_directories(newAssetsRoot, ec);
+    fs::create_directories(newLuaRoot, ec);
+
+    // Scenes that are not open still hold references, so they are loaded and unloaded again
+    std::vector<uint32_t> temporarilyLoaded;
+    for (size_t i = 0; i < scenes.size(); i++){
+        if (scenes[i].filepath.empty() || scenes[i].scene){
+            continue;
+        }
+        const uint32_t sceneId = scenes[i].id;
+        loadScene(scenes[i].filepath, false, false, true);
+        temporarilyLoaded.push_back(sceneId);
+    }
+
+    // Generated maps follow the assets root, moved before references resolve against it
+    const fs::path oldTerrainMaps = oldAssetsRoot / "terrain_maps";
+    if (fs::is_directory(oldTerrainMaps, ec) && !isInsideRoot(oldTerrainMaps, newAssetsRoot)){
+        const fs::path newTerrainMaps = newAssetsRoot / "terrain_maps";
+        fs::create_directories(newTerrainMaps.parent_path(), ec);
+        if (!fs::exists(newTerrainMaps, ec)){
+            fs::rename(oldTerrainMaps, newTerrainMaps, ec);
+            if (ec){
+                Out::warning("Could not move terrain maps to %s: %s", newTerrainMaps.string().c_str(), ec.message().c_str());
+            }
+        }
+    }
+
+    std::map<fs::path, fs::path> relocations;
+
+    // Merges into an existing destination, so a folder whose files were relocated one
+    // by one still ends up whole.
+    std::function<bool(const fs::path&, const fs::path&)> moveEntry =
+        [&](const fs::path& source, const fs::path& destination) {
+        std::error_code moveEc;
+        if (!fs::exists(source, moveEc)){
+            return false;
+        }
+
+        if (fs::is_directory(source, moveEc)){
+            fs::create_directories(destination, moveEc);
+            bool moved = false;
+            for (const auto& entry : fs::directory_iterator(source, moveEc)){
+                moved |= moveEntry(entry.path(), destination / entry.path().filename());
+            }
+            // Only removes the source when everything left it.
+            fs::remove(source, moveEc);
+            return moved;
+        }
+
+        if (fs::exists(destination, moveEc)){
+            Out::warning("Kept the existing %s: the reference now points at it", destination.string().c_str());
+            return false;
+        }
+
+        fs::create_directories(destination.parent_path(), moveEc);
+        fs::rename(source, destination, moveEc);
+        if (moveEc){
+            Out::error("Failed to move %s: %s", source.string().c_str(), moveEc.message().c_str());
+            return false;
+        }
+
+        return true;
+    };
+
+    // Files outside the new root are moved into it, keeping their layout relative to
+    // the old root so references between them (a model and its textures) still match.
+    auto relocate = [&](const fs::path& absolutePath, const fs::path& oldRoot, const fs::path& newRoot) {
+        if (isInsideRoot(absolutePath, newRoot)){
+            return absolutePath;
+        }
+
+        auto cached = relocations.find(absolutePath);
+        if (cached != relocations.end()){
+            return cached->second;
+        }
+
+        std::error_code relocateEc;
+        const fs::path relativeToOld = fs::relative(absolutePath, oldRoot, relocateEc);
+        if (relocateEc || relativeToOld.empty() || *relativeToOld.begin() == ".."){
+            Out::warning("Reference outside both asset directories was kept as is: %s", absolutePath.string().c_str());
+            relocations[absolutePath] = absolutePath;
+            return absolutePath;
+        }
+
+        const fs::path destination = (newRoot / relativeToOld).lexically_normal();
+        relocations[absolutePath] = destination;
+
+        // Models carry sidecar files referenced from inside the model, so their folder
+        // moves along when it holds nothing else.
+        fs::path source = absolutePath;
+        fs::path sourceDestination = destination;
+        if (Util::isModelFile(absolutePath.string()) && relativeToOld.has_parent_path()){
+            const fs::path modelDir = (oldRoot / relativeToOld.parent_path()).lexically_normal();
+            if (!isInsideRoot(newRoot, modelDir) && holdsOnlyAssets(modelDir)){
+                source = modelDir;
+                sourceDestination = (newRoot / relativeToOld.parent_path()).lexically_normal();
+            }
+        }
+
+        if (moveEntry(source, sourceDestination)){
+            Out::info("Moved %s to %s", source.string().c_str(), sourceDestination.string().c_str());
+            return destination;
+        }
+
+        // Nothing moved: the reference only follows when the file is already there.
+        if (fs::exists(destination, relocateEc)){
+            return destination;
+        }
+
+        relocations[absolutePath] = absolutePath;
+        return absolutePath;
+    };
+
+    auto rebase = [&](std::string& stored, const fs::path& oldRoot, const fs::path& newRoot) {
+        if (stored.empty()){
+            return false;
+        }
+
+        const fs::path absolutePath = relocate(resolveAgainstRoot(oldRoot, fs::path(stored)), oldRoot, newRoot);
+
+        // A file left outside the new root keeps its stored path: re-basing it would
+        // only turn it into a "../" reference the runtime cannot resolve.
+        if (!isInsideRoot(absolutePath, newRoot)){
+            return false;
+        }
+
+        std::error_code rebaseEc;
+        const fs::path updated = fs::relative(absolutePath, newRoot, rebaseEc);
+        if (rebaseEc || updated.empty()){
+            return false;
+        }
+
+        const std::string updatedPath = updated.lexically_normal().generic_string();
+        if (updatedPath == stored){
+            return false;
+        }
+
+        stored = updatedPath;
+        return true;
+    };
+
+    const std::function<bool(std::string&)> assetTransform = [&](std::string& stored) {
+        return rebase(stored, oldAssetsRoot, newAssetsRoot);
+    };
+    const std::function<bool(std::string&)> luaTransform = [&](std::string& stored) {
+        return rebase(stored, oldLuaRoot, newLuaRoot);
+    };
+    const bool assetsChanged = oldAssetsRoot != newAssetsRoot;
+    const bool luaChanged = oldLuaRoot != newLuaRoot;
+
+    for (auto& sceneProject : scenes){
+        if (!sceneProject.scene){
+            continue;
+        }
+
+        bool sceneChanged = assetsChanged && visitAssetPathsInRegistry(sceneProject.scene, assetTransform);
+        sceneChanged |= luaChanged && visitLuaPathsInRegistry(sceneProject.scene, luaTransform);
+
+        if (!sceneChanged){
+            continue;
+        }
+
+        sceneProject.isModified = true;
+        sceneProject.needUpdateRender = true;
+        if (!sceneProject.filepath.empty()){
+            saveSceneToPath(sceneProject.id, sceneProject.filepath);
+        }
+    }
+
+    for (auto& [bundlePath, bundle] : entityBundles){
+        if (!bundle.registry){
+            continue;
+        }
+
+        bool bundleChanged = assetsChanged && visitAssetPathsInRegistry(bundle.registry.get(), assetTransform);
+        bundleChanged |= luaChanged && visitLuaPathsInRegistry(bundle.registry.get(), luaTransform);
+
+        if (!bundleChanged){
+            continue;
+        }
+
+        bundle.isModified = true;
+        saveEntityBundleToDisk(bundlePath);
+    }
+
+    if (assetsChanged){
+        visitAssetPathsInMaterialFiles(assetTransform);
+    }
+
+    for (uint32_t sceneId : temporarilyLoaded){
+        if (SceneProject* sceneProject = getScene(sceneId)){
+            deleteSceneProject(sceneProject);
+        }
+    }
+
+    saveProjectFile();
 }
 
 void editor::Project::setShadersDir(const std::filesystem::path& shadersDir){
@@ -3490,7 +4036,7 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
 
     Out::info("Scene saved to: \"%s\"", fullPath.string().c_str());
 
@@ -4039,7 +4585,9 @@ std::filesystem::path editor::Project::getProjectInternalPath() const{
 }
 
 fs::path editor::Project::getTerrainMapsDir() const{
-    return projectPath / "terrain_maps";
+    // Painted maps are referenced like any other texture, so they live under the
+    // assets root and ship with it.
+    return getAssetsPath() / "terrain_maps";
 }
 
 fs::path editor::Project::getThumbsDir() const{
@@ -4306,10 +4854,7 @@ bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity 
         if (scriptEntry.type == ScriptType::SCRIPT_LUA) {
             if (scriptEntry.path.empty()) continue;
 
-            fs::path fullPath = scriptEntry.path;
-            if (fullPath.is_relative()) {
-                fullPath = getProjectPath() / fullPath;
-            }
+            fs::path fullPath = resolveLuaPath(scriptEntry.path);
 
             ScriptEntry parsedEntry = scriptEntry;
 
@@ -6555,7 +7100,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
         const unsigned int requestedBuildJobs = cmakeBuildJobs.load();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
 
         const bool hasCppScripts = !mergedCppScripts.empty();
 

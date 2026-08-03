@@ -17,6 +17,7 @@ class ScriptCreateDialog {
 private:
     bool m_isOpen = false;
     fs::path m_projectPath;
+    fs::path m_luaPath;
     std::string m_selectedPath;
     char m_baseNameBuffer[128] = "";
     ScriptType m_scriptType = ScriptType::SUBCLASS;
@@ -49,6 +50,7 @@ public:
     void open(Scene* scene,
               Entity entity,
               const fs::path& projectPath,
+              const fs::path& luaPath,
               const std::string& defaultBaseName,
               std::function<void(const fs::path&, const fs::path&, const std::string&, ScriptType)> onCreate,
               std::function<void()> onCancel = nullptr);

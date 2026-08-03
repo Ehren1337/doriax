@@ -279,6 +279,12 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
             std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(peekPayload);
             if (receivedStrings.size() > 0) {
                 const std::string droppedRelativePath = std::filesystem::relative(receivedStrings[0], project->getProjectPath()).generic_string();
+                // Fonts, images and models are stored relative to the assets root, material
+                // files stay project-relative. Outside the root a drop previews but is refused.
+                const bool insideAssets = project->isInsideAssetsPath(receivedStrings[0]);
+                const std::string droppedAssetPath = insideAssets
+                    ? project->normalizeToAssetsRelative(receivedStrings[0]).generic_string()
+                    : std::filesystem::path(receivedStrings[0]).generic_string();
                 bool isFont = Util::isFontFile(droppedRelativePath);
                 bool isImage = Util::isImageFile(droppedRelativePath);
                 bool isMaterial = Util::isMaterialFile(droppedRelativePath);
@@ -323,15 +329,18 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
 
                 if (isModel && sceneProject->sceneType == SceneType::SCENE_3D) {
                     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
-                        if (payload->IsDelivery()) {
-                            std::string modelEntityName = std::filesystem::path(droppedRelativePath).stem().string();
+                        if (payload->IsDelivery() && !insideAssets) {
+                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                            focusSceneWindow(*sceneProject);
+                        } else if (payload->IsDelivery()) {
+                            std::string modelEntityName = std::filesystem::path(droppedAssetPath).stem().string();
                             if (modelEntityName.empty()) {
                                 modelEntityName = "Model";
                             }
 
                             Vector3 dropPosition = getModelDropPosition(sceneProject, x, y, selEntity);
                             CommandHandle::get(sceneProject->id)->addCommandNoMerge(
-                                new ModelLoadCmd(project, sceneProject->id, modelEntityName, dropPosition, droppedRelativePath));
+                                new ModelLoadCmd(project, sceneProject->id, modelEntityName, dropPosition, droppedAssetPath));
 
                             focusSceneWindow(*sceneProject);
                         }
@@ -363,8 +372,8 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         selText = text;
                                         originalFont = text->font;
                                     }
-                                    if (text->font != droppedRelativePath) {
-                                        text->font = droppedRelativePath;
+                                    if (text->font != droppedAssetPath) {
+                                        text->font = droppedAssetPath;
                                         text->needReloadAtlas = true;
                                         text->needUpdateText = true;
                                     }
@@ -374,8 +383,12 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         text->needReloadAtlas = true;
                                         text->needUpdateText = true;
 
-                                        PropertyCmd<std::string>* cmd = new PropertyCmd<std::string>(project, sceneProject->id, selEntity, ComponentType::TextComponent, propName, droppedRelativePath);
-                                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
+                                        if (insideAssets) {
+                                            PropertyCmd<std::string>* cmd = new PropertyCmd<std::string>(project, sceneProject->id, selEntity, ComponentType::TextComponent, propName, droppedAssetPath);
+                                            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
+                                        } else {
+                                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                                        }
 
                                         selText = nullptr;
 
@@ -393,7 +406,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         }
                                         originalTex = mesh->submeshes[0].material.baseColorTexture;
                                     }
-                                    Texture newTex(droppedRelativePath);
+                                    Texture newTex(droppedAssetPath);
                                     if (mesh->submeshes[0].material.baseColorTexture != newTex) {
                                         mesh->submeshes[0].material.baseColorTexture = newTex;
                                         mesh->submeshes[0].needUpdateTexture = true;
@@ -405,8 +418,12 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                             selMesh->submeshes[s].needUpdateTexture = true;
                                         }
 
-                                        PropertyCmd<Texture>* cmd = new PropertyCmd<Texture>(project, sceneProject->id, selEntity, ComponentType::MeshComponent, propName, newTex);
-                                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
+                                        if (insideAssets) {
+                                            PropertyCmd<Texture>* cmd = new PropertyCmd<Texture>(project, sceneProject->id, selEntity, ComponentType::MeshComponent, propName, newTex);
+                                            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
+                                        } else {
+                                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                                        }
 
                                         selMesh = nullptr;
                                         originalMeshMaterials.clear();
@@ -418,7 +435,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         selUI = ui;
                                         originalTex = ui->texture;
                                     }
-                                    Texture newTex(droppedRelativePath);
+                                    Texture newTex(droppedAssetPath);
                                     if (ui->texture != newTex) {
                                         ui->texture = newTex;
                                         ui->needUpdateTexture = true;
@@ -427,8 +444,13 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         std::string propName = "texture";
                                         selUI->texture = originalTex;
 
-                                        PropertyCmd<Texture>* cmd = new PropertyCmd<Texture>(project, sceneProject->id, selEntity, ComponentType::UIComponent, propName, newTex);
-                                        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
+                                        if (insideAssets) {
+                                            PropertyCmd<Texture>* cmd = new PropertyCmd<Texture>(project, sceneProject->id, selEntity, ComponentType::UIComponent, propName, newTex);
+                                            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
+                                        } else {
+                                            selUI->needUpdateTexture = true;
+                                            Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                                        }
 
                                         selUI = nullptr;
 
@@ -499,7 +521,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
 
                             if (!tempImage) {
                                 tempImage = new Image(sceneProject->scene);
-                                tempImage->setTexture(droppedRelativePath);
+                                tempImage->setTexture(droppedAssetPath);
                                 tempImage->setAlpha(0.5f);
                             }
                             Ray ray = sceneProject->sceneRender->getCamera()->screenToRay(x, y);
@@ -507,21 +529,28 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                             if (rreturn) {
                                 tempImage->setPosition(rreturn.point);
                             }
-                            if (payload->IsDelivery()) {
+                            if (payload->IsDelivery() && !insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+
+                                delete tempImage;
+                                tempImage = nullptr;
+
+                                focusSceneWindow(*sceneProject);
+                            } else if (payload->IsDelivery()) {
                                 CreateEntityCmd* cmd = nullptr;
 
                                 if (sceneProject->sceneType == SceneType::SCENE_2D) {
                                     cmd = new CreateEntityCmd(project, sceneProject->id, "Sprite", EntityCreationType::SPRITE);
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
-                                    cmd->addProperty<Texture>(ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture", Texture(droppedRelativePath));
+                                    cmd->addProperty<Texture>(ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture", Texture(droppedAssetPath));
                                     cmd->addProperty<unsigned int>(ComponentType::SpriteComponent, "width", tempImage->getWidth());
                                     cmd->addProperty<unsigned int>(ComponentType::SpriteComponent, "height", tempImage->getHeight());
                                 } else {
                                     cmd = new CreateEntityCmd(project, sceneProject->id, "Image", EntityCreationType::IMAGE);
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
-                                    cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", Texture(droppedRelativePath));
+                                    cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", Texture(droppedAssetPath));
                                     cmd->addProperty<unsigned int>(ComponentType::UILayoutComponent, "width", tempImage->getWidth());
                                     cmd->addProperty<unsigned int>(ComponentType::UILayoutComponent, "height", tempImage->getHeight());
                                 }

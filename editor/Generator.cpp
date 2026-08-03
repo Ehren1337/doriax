@@ -923,7 +923,7 @@ void editor::Generator::clearSceneSource(const std::string& sceneName, const fs:
     }
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // Build main.cpp content
@@ -1080,7 +1080,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     FileUtils::writeIfChanged(platformHeaderFile, getPlatformEditorHeader());
 
     const fs::path platformSourceFile = generatedPath / "PlatformEditor.cpp";
-    FileUtils::writeIfChanged(platformSourceFile, getPlatformEditorSource(projectPath, vsyncEnabled, windowSettings));
+    FileUtils::writeIfChanged(platformSourceFile, getPlatformEditorSource(assetsPath, luaPath, vsyncEnabled, windowSettings));
 
     writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, windowSettings);
 }
@@ -1139,7 +1139,7 @@ std::string editor::Generator::getPlatformEditorHeader() {
     return content;
 }
 
-std::string editor::Generator::getPlatformEditorSource(const fs::path& projectPath, bool vsyncEnabled, const WindowSettings& windowSettings) {
+std::string editor::Generator::getPlatformEditorSource(const fs::path& assetsPath, const fs::path& luaPath, bool vsyncEnabled, const WindowSettings& windowSettings) {
     // Escape the title for embedding in a generated C++ string literal.
     // Control characters are sanitized upstream in Project::getWindowSettings().
     std::string windowTitle;
@@ -1459,13 +1459,13 @@ std::string editor::Generator::getPlatformEditorSource(const fs::path& projectPa
     content += "    glfwSetCursorPos(window, x / xscale, y / yscale);\n";
     content += "}\n\n";
     content += "std::string PlatformEditor::getAssetPath(){\n";
-    content += "    return \"" + projectPath.generic_string() + "\";\n";
+    content += "    return \"" + assetsPath.generic_string() + "\";\n";
     content += "}\n\n";
     content += "std::string PlatformEditor::getUserDataPath(){\n";
     content += "    return \".\";\n";
     content += "}\n\n";
     content += "std::string PlatformEditor::getLuaPath(){\n";
-    content += "    return \"" + projectPath.generic_string() + "\";\n";
+    content += "    return \"" + luaPath.generic_string() + "\";\n";
     content += "}\n\n";
     content += "std::string PlatformEditor::getShaderPath(){\n";
     content += "    return \"" + App::getUserShaderCacheDir().string() + "\";\n";

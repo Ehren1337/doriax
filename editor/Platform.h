@@ -23,6 +23,8 @@ namespace doriax::editor{
         int getScreenHeight() override;
 
         std::string getAssetPath() override;
+        std::string getLuaPath() override;
+        std::string getShaderPath() override;
 
         void setMouseMode(MouseMode mode) override;
 

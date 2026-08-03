@@ -437,7 +437,8 @@ void editor::CodeEditor::checkExternalScriptChanges() {
                     !scriptEntry.headerPath.empty()) {
                     referenced.insert(scriptEntry.headerPath);
                 } else if (scriptEntry.type == ScriptType::SCRIPT_LUA && !scriptEntry.path.empty()) {
-                    referenced.insert(scriptEntry.path);
+                    // Stored relative to the Lua root; the watch list is project-relative.
+                    referenced.insert(toRelativePath(project->resolveLuaPath(scriptEntry.path).string()));
                 }
             }
         }
@@ -832,7 +833,7 @@ void editor::CodeEditor::insertLuaEntityProperty(EditorInstance& instance, Entit
         for (size_t si = 0; si < scriptComp->scripts.size(); si++) {
             auto& scriptEntry = scriptComp->scripts[si];
             if (scriptEntry.type != ScriptType::SCRIPT_LUA) continue;
-            if (scriptEntry.path != instance.filepath.string()) continue;
+            if (project->resolveLuaPath(scriptEntry.path) != resolveFilepath(instance.filepath)) continue;
 
             // Find the newly added property by name
             for (size_t pi = 0; pi < scriptEntry.properties.size(); pi++) {

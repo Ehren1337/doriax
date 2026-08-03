@@ -62,13 +62,7 @@ void ExportWindow::open(Project* project) {
     m_step = Step::ModeSelect;
     m_project = project;
     m_targetDir.clear();
-    m_assetsDir = project->getAssetsDir();
-    m_luaDir = project->getLuaDir();
     m_targetDirBuffer[0] = '\0';
-    strncpy(m_assetsDirBuffer, m_assetsDir.string().c_str(), sizeof(m_assetsDirBuffer) - 1);
-    m_assetsDirBuffer[sizeof(m_assetsDirBuffer) - 1] = '\0';
-    strncpy(m_luaDirBuffer, m_luaDir.string().c_str(), sizeof(m_luaDirBuffer) - 1);
-    m_luaDirBuffer[sizeof(m_luaDirBuffer) - 1] = '\0';
     m_startSceneId = project->getStartSceneId();
     const SceneProject* startScene = project->getScene(m_startSceneId);
     if (!startScene || startScene->filepath.empty()) {
@@ -332,56 +326,6 @@ void ExportWindow::drawOutputDirRow(const char* label) {
     }
 }
 
-void ExportWindow::drawAssetsLuaRows() {
-    // Assets directory row
-    beginSettingsRow("Assets Directory");
-    {
-        float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
-        float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
-
-        Vector2 pathSize = Vector2(inputWidth, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2);
-        fs::path assetsDisplay = (m_assetsDir.empty() || m_assetsDir == ".") ? fs::path("<Project root>") : m_assetsDir;
-        Widgets::pathDisplay("##AssetsPath", assetsDisplay, pathSize);
-
-        ImGui::SameLine();
-        if (ImGui::Button("Browse##assets")) {
-            std::string defaultPath = m_project ? m_project->getProjectPath().string() : "";
-            std::string selectedPath = FileDialogs::openFileDialog(defaultPath, FILE_DIALOG_ALL, true);
-            if (!selectedPath.empty()) {
-                std::error_code ec;
-                fs::path relPath = fs::relative(fs::path(selectedPath), m_project->getProjectPath(), ec);
-                m_assetsDir = (ec || relPath.empty()) ? fs::path(".") : relPath;
-                strncpy(m_assetsDirBuffer, m_assetsDir.string().c_str(), sizeof(m_assetsDirBuffer) - 1);
-                m_assetsDirBuffer[sizeof(m_assetsDirBuffer) - 1] = '\0';
-            }
-        }
-    }
-
-    // Lua directory row
-    beginSettingsRow("Lua Directory");
-    {
-        float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
-        float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
-
-        Vector2 pathSize = Vector2(inputWidth, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2);
-        fs::path luaDisplay = (m_luaDir.empty() || m_luaDir == ".") ? fs::path("<Project root>") : m_luaDir;
-        Widgets::pathDisplay("##LuaPath", luaDisplay, pathSize);
-
-        ImGui::SameLine();
-        if (ImGui::Button("Browse##lua")) {
-            std::string defaultPath = m_project ? m_project->getProjectPath().string() : "";
-            std::string selectedPath = FileDialogs::openFileDialog(defaultPath, FILE_DIALOG_ALL, true);
-            if (!selectedPath.empty()) {
-                std::error_code ec;
-                fs::path relPath = fs::relative(fs::path(selectedPath), m_project->getProjectPath(), ec);
-                m_luaDir = (ec || relPath.empty()) ? fs::path(selectedPath) : relPath;
-                strncpy(m_luaDirBuffer, m_luaDir.string().c_str(), sizeof(m_luaDirBuffer) - 1);
-                m_luaDirBuffer[sizeof(m_luaDirBuffer) - 1] = '\0';
-            }
-        }
-    }
-}
-
 void ExportWindow::drawStartSceneRow() {
     beginSettingsRow("Start Scene");
     {
@@ -616,7 +560,6 @@ void ExportWindow::drawSettings() {
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
     drawOutputDirRow(m_mode == ExportMode::SourceCode ? "Target Directory" : "Destination Directory");
-    drawAssetsLuaRows();
     drawStartSceneRow();
     if (m_mode == ExportMode::Desktop) {
         drawGraphicBackendRow();
@@ -797,10 +740,9 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
         }
     }
 
-    exportConfig.assetsDir = m_project->getProjectPath() / m_assetsDir;
-    if (!m_luaDir.empty()) {
-        exportConfig.luaDir = m_project->getProjectPath() / m_luaDir;
-    }
+    // Stored references are relative to these roots, set in the project settings
+    exportConfig.assetsDir = m_project->getAssetsPath();
+    exportConfig.luaDir = m_project->getLuaPath();
 
     // Set start scene
     const SceneProject* startScene = m_project->getScene(m_startSceneId);

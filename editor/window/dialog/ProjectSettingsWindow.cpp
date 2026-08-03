@@ -703,8 +703,8 @@ void ProjectSettingsWindow::applySettings() {
     }
     m_project->setWindowIcon(m_windowIcon);
 
-    m_project->setAssetsDir(m_assetsDir);
-    m_project->setLuaDir(m_luaDir);
+    // Moves the referenced files in and rewrites every reference to the new roots
+    m_project->changeAssetRoots(m_assetsDir, m_luaDir);
     m_project->setShadersDir(m_shadersDir);
     m_project->setShaderSourcesDir(m_shaderSourcesDir);
 

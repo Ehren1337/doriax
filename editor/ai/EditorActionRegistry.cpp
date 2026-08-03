@@ -769,8 +769,6 @@ const std::vector<ToolDefinition>& cachedTools() {
             objectSchema({
                 {"target_dir", stringSchema("Output directory. Must be outside or separate from project source")},
                 {"platforms", stringSchema("Comma-separated platforms: linux, windows, macos, ios, android, web, all")},
-                {"assets_dir", stringSchema("Optional asset directory, project-relative or absolute")},
-                {"lua_dir", stringSchema("Optional Lua directory, project-relative or absolute")},
                 {"start_scene_id", integerSchema("Optional startup scene id override")}
             }, {"target_dir"}),
             false
@@ -942,7 +940,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "update_material_file",
-            "Validate and replace an existing .material file with complete YAML content through project command history.",
+            "Validate and replace an existing .material file with complete YAML content through project command history. Texture paths inside the file are stored relative to the project assets directory, so keep the form read_resource_file returned.",
             objectSchema({
                 {"path", stringSchema("Existing safe project-relative .material path")},
                 {"content", stringSchema("Complete replacement file contents")},

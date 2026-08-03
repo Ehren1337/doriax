@@ -34,10 +34,7 @@ bool editor::TerrainEditWindow::loadTerrainTextureDataFromPath(Project* project,
         return false;
     }
 
-    fs::path texturePath(path);
-    if (texturePath.is_relative() && project && !project->getProjectPath().empty()){
-        texturePath = project->getProjectPath() / texturePath;
-    }
+    fs::path texturePath = project ? project->resolveAssetPath(path) : fs::path(path);
 
     // A background write for this map may still be in flight; the disk read below
     // must observe it.
@@ -110,7 +107,7 @@ std::string editor::TerrainEditWindow::makeEditableTexturePath(Project* project,
         std::error_code ec;
         if (!fs::exists(candidatePath, ec)){
             std::error_code ec2;
-            fs::path relPath = fs::relative(candidatePath, project->getProjectPath(), ec2);
+            fs::path relPath = fs::relative(candidatePath, project->getAssetsPath(), ec2);
             return (!ec2 && !relPath.empty()) ? relPath.generic_string() : candidatePath.generic_string();
         }
     }
@@ -118,7 +115,7 @@ std::string editor::TerrainEditWindow::makeEditableTexturePath(Project* project,
     fs::path fallbackPath = baseDir / ("terrain_edit_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_" + suffix + ".png");
     if (project && !project->getProjectPath().empty()){
         std::error_code ec;
-        fs::path relPath = fs::relative(fallbackPath, project->getProjectPath(), ec);
+        fs::path relPath = fs::relative(fallbackPath, project->getAssetsPath(), ec);
         if (!ec && !relPath.empty()) return relPath.generic_string();
     }
     return fallbackPath.generic_string();
@@ -205,10 +202,7 @@ bool editor::TerrainEditWindow::writeTextureFile(Project* project, const std::st
         return false;
     }
 
-    fs::path outputPath(relativePath);
-    if (outputPath.is_relative()){
-        outputPath = project->getProjectPath() / outputPath;
-    }
+    fs::path outputPath = project->resolveAssetPath(relativePath);
 
     std::error_code ec;
     fs::create_directories(outputPath.parent_path(), ec);

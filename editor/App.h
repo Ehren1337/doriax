@@ -198,6 +198,8 @@ namespace doriax::editor{
 
         void registerAlert(std::string title, std::string message) override;
         void registerAlert(std::string title, std::string message, std::string note); // note is rendered highlighted below the message
+        // A file is only referenceable from inside the assets root
+        void registerOutsideAssetsAlert(const std::string& path);
         void registerConfirmAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo = nullptr) override;
         void registerThreeButtonAlert(std::string title, std::string message, std::function<void()> onYes, std::function<void()> onNo = nullptr, std::function<void()> onCancel = nullptr) override;
         void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr) override;
