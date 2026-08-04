@@ -55,8 +55,8 @@ bool editor::RenameFileCmd::execute(){
                 if (isDir || Util::isScriptFile(extension)) {
                     project->remapScriptFilePath(sourceFs, destFs);
                 }
-                if (isDir || Util::isModelFile(extension)) {
-                    project->remapModelFilePath(sourceFs, destFs);
+                if (isDir || Util::isAssetFile(extension)) {
+                    project->remapAssetFilePath(sourceFs, destFs);
                 }
                 if (isDir || Util::isShaderFile(extension)) {
                     project->remapShaderFilePath(sourceFs, destFs);
@@ -95,8 +95,8 @@ void editor::RenameFileCmd::undo(){
                 if (isDir || Util::isScriptFile(extension)) {
                     project->remapScriptFilePath(sourceFs, destFs);
                 }
-                if (isDir || Util::isModelFile(extension)) {
-                    project->remapModelFilePath(sourceFs, destFs);
+                if (isDir || Util::isAssetFile(extension)) {
+                    project->remapAssetFilePath(sourceFs, destFs);
                 }
                 if (isDir || Util::isShaderFile(extension)) {
                     project->remapShaderFilePath(sourceFs, destFs);

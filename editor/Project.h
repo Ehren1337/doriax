@@ -281,6 +281,9 @@ namespace doriax::editor{
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
         static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform);
+        // Runs an asset transform over every scene, entity bundle and material file,
+        // marking what changed.
+        void applyAssetPathChange(const std::function<bool(std::string&)>& transform);
         // Applies a transform to the customShader of every renderable component (Mesh/UI/
         // Points/Lines/Sky) across all scenes and entity bundles, flagging shader reloads
         // and marking affected scenes/bundles modified. The transform mutates the value in
@@ -430,13 +433,13 @@ namespace doriax::editor{
         void remapSceneFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void remapEntityBundleFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void remapScriptFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapModelFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        void remapAssetFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void cleanupMaterialFilePath(const std::filesystem::path& deletedPath);
         void cleanupSceneFilePath(const std::filesystem::path& deletedPath);
         void cleanupEntityBundleFilePath(const std::filesystem::path& deletedPath);
         void cleanupScriptFilePath(const std::filesystem::path& deletedPath);
-        void cleanupModelFilePath(const std::filesystem::path& deletedPath);
+        void cleanupAssetFilePath(const std::filesystem::path& deletedPath);
         void cleanupShaderFilePath(const std::filesystem::path& deletedPath);
 
         //=== end File path remapping ===

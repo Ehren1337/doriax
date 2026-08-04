@@ -46,7 +46,7 @@ bool editor::CopyFileCmd::execute(){
                             project->remapSceneFilePath(sourceFs, destFs);
                             project->remapEntityBundleFilePath(sourceFs, destFs);
                             project->remapScriptFilePath(sourceFs, destFs);
-                            project->remapModelFilePath(sourceFs, destFs);
+                            project->remapAssetFilePath(sourceFs, destFs);
                         }
                     }
                 } else {
@@ -68,8 +68,8 @@ bool editor::CopyFileCmd::execute(){
                             if (Util::isScriptFile(extension)) {
                                 project->remapScriptFilePath(sourceFs, destFs);
                             }
-                            if (Util::isModelFile(extension)) {
-                                project->remapModelFilePath(sourceFs, destFs);
+                            if (Util::isAssetFile(extension)) {
+                                project->remapAssetFilePath(sourceFs, destFs);
                             }
                         }
                     }
@@ -100,7 +100,7 @@ void editor::CopyFileCmd::undo(){
                             project->remapSceneFilePath(sourceFs, destFs);
                             project->remapEntityBundleFilePath(sourceFs, destFs);
                             project->remapScriptFilePath(sourceFs, destFs);
-                            project->remapModelFilePath(sourceFs, destFs);
+                            project->remapAssetFilePath(sourceFs, destFs);
                         }
                     }
                 } else {
@@ -122,8 +122,8 @@ void editor::CopyFileCmd::undo(){
                             if (Util::isScriptFile(extension)) {
                                 project->remapScriptFilePath(sourceFs, destFs);
                             }
-                            if (Util::isModelFile(extension)) {
-                                project->remapModelFilePath(sourceFs, destFs);
+                            if (Util::isAssetFile(extension)) {
+                                project->remapAssetFilePath(sourceFs, destFs);
                             }
                         }
                     }

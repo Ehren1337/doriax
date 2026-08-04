@@ -518,6 +518,11 @@ static bool visitTexturePaths(Texture& texture, const std::function<bool(std::st
             if (path.empty() || !transform(path)) {
                 continue;
             }
+            // One missing face leaves the whole cubemap unloadable
+            if (path.empty()) {
+                texture = Texture();
+                return true;
+            }
             texture.setCubePath(face, path);
             changed = true;
         }
@@ -528,6 +533,12 @@ static bool visitTexturePaths(Texture& texture, const std::function<bool(std::st
     std::string path = texture.getPath(0);
     if (path.empty() || !transform(path)) {
         return false;
+    }
+
+    // setPath("") would instead leave the texture waiting for a load that cannot happen
+    if (path.empty()) {
+        texture = Texture();
+        return true;
     }
 
     if (texture.isCubeMap()) {
@@ -599,11 +610,18 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
     });
 
     visitComponents(registry->getComponentArray<TerrainComponent>(), [&](TerrainComponent& terrain) {
-        bool terrainChanged = visitTexturePaths(terrain.heightMap, transform);
+        bool heightMapChanged = visitTexturePaths(terrain.heightMap, transform);
+        bool terrainChanged = heightMapChanged;
         terrainChanged |= visitTexturePaths(terrain.blendMap, transform);
         terrainChanged |= visitTexturePaths(terrain.textureDetailRed, transform);
         terrainChanged |= visitTexturePaths(terrain.textureDetailGreen, transform);
         terrainChanged |= visitTexturePaths(terrain.textureDetailBlue, transform);
+
+        // The node tree and the physics heightfield are built from the map, so they follow it
+        if (heightMapChanged) {
+            terrain.heightMapLoaded = false;
+            terrain.needUpdateTerrain = true;
+        }
 
         if (terrainChanged) {
             terrain.needUpdateTexture = true;
@@ -952,71 +970,6 @@ void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, 
     }
 }
 
-void editor::Project::remapModelFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path oldRelative = normalizeToAssetsRelative(oldPath);
-    fs::path newRelative = normalizeToAssetsRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
-        return;
-    }
-
-    for (auto& sceneProject : scenes) {
-        if (!sceneProject.scene) {
-            continue;
-        }
-
-        auto models = sceneProject.scene->getComponentArray<ModelComponent>();
-        bool sceneChanged = false;
-
-        for (size_t i = 0; i < models->size(); ++i) {
-            ModelComponent& model = models->getComponentFromIndex(i);
-            std::string updatedPath;
-            if (!remapRelativeString(oldRelative, newRelative, model.filename, updatedPath)) {
-                continue;
-            }
-
-            model.filename = updatedPath;
-            model.needUpdateModel = true;
-            sceneProject.isModified = true;
-            sceneChanged = true;
-        }
-
-        if (sceneChanged) {
-            sceneProject.needUpdateRender = true;
-        }
-    }
-
-    for (auto& [bundlePath, bundle] : entityBundles) {
-        if (!bundle.registry) {
-            continue;
-        }
-
-        auto models = bundle.registry->getComponentArray<ModelComponent>();
-        bool bundleChanged = false;
-
-        for (size_t i = 0; i < models->size(); ++i) {
-            ModelComponent& model = models->getComponentFromIndex(i);
-            std::string updatedPath;
-            if (!remapRelativeString(oldRelative, newRelative, model.filename, updatedPath)) {
-                continue;
-            }
-
-            model.filename = updatedPath;
-            model.needUpdateModel = true;
-            bundle.isModified = true;
-            bundleChanged = true;
-        }
-
-        if (bundleChanged) {
-            saveEntityBundleToDisk(bundlePath);
-        }
-    }
-}
-
 void editor::Project::cleanupMaterialFilePath(const std::filesystem::path& deletedPath) {
     if (projectPath.empty()) {
         return;
@@ -1203,7 +1156,57 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
     }
 }
 
-void editor::Project::cleanupModelFilePath(const std::filesystem::path& deletedPath) {
+void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
+    for (auto& sceneProject : scenes) {
+        if (!sceneProject.scene || !visitAssetPathsInRegistry(sceneProject.scene, transform)) {
+            continue;
+        }
+
+        sceneProject.isModified = true;
+        sceneProject.needUpdateRender = true;
+    }
+
+    for (auto& [bundlePath, bundle] : entityBundles) {
+        if (!bundle.registry || !visitAssetPathsInRegistry(bundle.registry.get(), transform)) {
+            continue;
+        }
+
+        bundle.isModified = true;
+        saveEntityBundleToDisk(bundlePath);
+    }
+
+    visitAssetPathsInMaterialFiles(transform);
+}
+
+void editor::Project::remapAssetFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
+    if (projectPath.empty()) {
+        return;
+    }
+
+    // A file that left the assets directory cannot be referenced, so it counts as deleted
+    if (!isInsideAssetsPath(newPath)) {
+        cleanupAssetFilePath(oldPath);
+        return;
+    }
+
+    fs::path oldRelative = normalizeToAssetsRelative(oldPath);
+    fs::path newRelative = normalizeToAssetsRelative(newPath);
+
+    if (oldRelative.empty() || newRelative.empty()) {
+        return;
+    }
+
+    applyAssetPathChange([&](std::string& assetPath) -> bool {
+        std::string updated;
+        if (!remapRelativeString(oldRelative, newRelative, assetPath, updated)) {
+            return false;
+        }
+        assetPath = updated;
+        return true;
+    });
+}
+
+void editor::Project::cleanupAssetFilePath(const std::filesystem::path& deletedPath) {
     if (projectPath.empty()) {
         return;
     }
@@ -1213,55 +1216,13 @@ void editor::Project::cleanupModelFilePath(const std::filesystem::path& deletedP
         return;
     }
 
-    for (auto& sceneProject : scenes) {
-        if (!sceneProject.scene) {
-            continue;
+    applyAssetPathChange([&](std::string& assetPath) -> bool {
+        if (!matchesRelativeString(deletedRelative, assetPath)) {
+            return false;
         }
-
-        auto models = sceneProject.scene->getComponentArray<ModelComponent>();
-        bool sceneChanged = false;
-
-        for (size_t i = 0; i < models->size(); ++i) {
-            ModelComponent& model = models->getComponentFromIndex(i);
-            if (!matchesRelativeString(deletedRelative, model.filename)) {
-                continue;
-            }
-
-            model.filename.clear();
-            model.needUpdateModel = true;
-            sceneProject.isModified = true;
-            sceneChanged = true;
-        }
-
-        if (sceneChanged) {
-            sceneProject.needUpdateRender = true;
-        }
-    }
-
-    for (auto& [bundlePath, bundle] : entityBundles) {
-        if (!bundle.registry) {
-            continue;
-        }
-
-        auto models = bundle.registry->getComponentArray<ModelComponent>();
-        bool bundleChanged = false;
-
-        for (size_t i = 0; i < models->size(); ++i) {
-            ModelComponent& model = models->getComponentFromIndex(i);
-            if (!matchesRelativeString(deletedRelative, model.filename)) {
-                continue;
-            }
-
-            model.filename.clear();
-            model.needUpdateModel = true;
-            bundle.isModified = true;
-            bundleChanged = true;
-        }
-
-        if (bundleChanged) {
-            saveEntityBundleToDisk(bundlePath);
-        }
-    }
+        assetPath.clear();
+        return true;
+    });
 }
 
 void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::string&)>& transform) {

@@ -197,6 +197,11 @@ namespace doriax::editor{
             return audioExtensions.find(ext) != audioExtensions.end();
         }
 
+        // Files referenced relative to the assets directory
+        inline static bool isAssetFile(const std::string& path) {
+            return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path);
+        }
+
         inline static bool isScriptFile(const std::string& path) {
              static const std::unordered_set<std::string> scriptExtensions = {
                 ".lua", ".cpp", ".cc", ".cxx", ".h", ".hh", ".hpp", ".hxx"
