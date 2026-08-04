@@ -856,6 +856,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
             if (!showDirectories && file.isDirectory) continue;
 
             bool deferredDirectoryChange = false;
+            fs::path dropTarget;
 
             ImGui::TableNextColumn();
             ImGui::PushID(file.name.c_str());
@@ -1020,7 +1021,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
             if (file.isDirectory){
                 if (ImGui::BeginDragDropTarget()){
                     if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
-                        handleInternalDragAndDrop(currentPath / file.name);
+                        dropTarget = currentPath / file.name;
                     }
                     ImGui::EndDragDropTarget();
                 }
@@ -1271,6 +1272,12 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
             if (deferredDirectoryChange){
                 scanDirectory(currentPath / file.name);
                 selectedFiles.clear();
+                break;
+            }
+
+            // Rebuilds files, so the entry this iteration holds is gone from here on
+            if (!dropTarget.empty()){
+                handleInternalDragAndDrop(dropTarget);
                 break;
             }
         }
