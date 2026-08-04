@@ -77,8 +77,6 @@ namespace doriax{
 		static float maxScaleXZ(const Vector3& scale);
 		static float maxScaleXYZ(const Vector3& scale);
 
-		JPH::Quat toValidatedJoltRotation(const Quaternion& rotation, Entity entity, int shapeIndex);
-
 	public:
 		PhysicsSystem(Scene* scene);
 		virtual ~PhysicsSystem();
@@ -138,6 +136,13 @@ namespace doriax{
 
 		bool loadBody3D(Entity entity);
 		void destroyBody3D(Body3DComponent& body);
+
+		// Writes a body pose back into its entity, so the transform sync of the next
+		// step does not undo a pose written straight to the body.
+		void updateTransformFromBody2D(Entity entity, Vector2 position, float angle);
+		void updateTransformFromBody3D(Entity entity, Vector3 position, Quaternion rotation);
+
+		JPH::Quat toValidatedJoltRotation(const Quaternion& rotation, Entity entity, int shapeIndex);
 
 		int loadShape2D(Body2DComponent& body, void* shape, Shape2DType type);
 		void destroyShape2D(Body2DComponent& body, size_t index);

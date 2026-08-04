@@ -303,6 +303,40 @@ bool PhysicsSystem::isLock3DBodies() const{
     return this->lock3DBodies;
 }
 
+void PhysicsSystem::updateTransformFromBody2D(Entity entity, Vector2 position, float angle){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform){
+        return;
+    }
+
+    // Box2D does not own Z, it is kept from the current world position
+    Vector3 worldPosition = Vector3(position.x, position.y, transform->worldPosition.z);
+
+    updateTransformFromBody3D(entity, worldPosition, Quaternion(angle, Vector3(0, 0, 1)));
+}
+
+void PhysicsSystem::updateTransformFromBody3D(Entity entity, Vector3 position, Quaternion rotation){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform){
+        return;
+    }
+
+    transform->worldPosition = position;
+    transform->worldRotation = rotation;
+
+    if (transform->parent != NULL_ENTITY){
+        Transform& transformParent = scene->getComponent<Transform>(transform->parent);
+
+        transform->position = transformParent.modelMatrix.inverse() * position;
+        transform->rotation = transformParent.worldRotation.inverse() * rotation;
+    }else{
+        transform->position = position;
+        transform->rotation = rotation;
+    }
+
+    transform->needUpdate = true;
+}
+
 void PhysicsSystem::updateBody2DPosition(Signature signature, Entity entity, Body2DComponent& body){
     if (signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);

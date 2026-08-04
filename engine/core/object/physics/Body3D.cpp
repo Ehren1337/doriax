@@ -656,6 +656,43 @@ void Body3D::setRestitution(float restitution){
     getBodyInterface().SetRestitution(body.body, restitution);
 }
 
+Vector3 Body3D::getPosition() const{
+    Body3DComponent& body = getComponent<Body3DComponent>();
+
+    checkBody(body);
+    JPH::RVec3 position = getBodyInterface().GetPosition(body.body);
+
+    return Vector3(position.GetX(), position.GetY(), position.GetZ());
+}
+
+void Body3D::setPosition(Vector3 position){
+    Body3DComponent& body = getComponent<Body3DComponent>();
+
+    checkBody(body);
+    getBodyInterface().SetPosition(body.body, JPH::Vec3(position.x, position.y, position.z), JPH::EActivation::Activate);
+
+    scene->getSystem<PhysicsSystem>()->updateTransformFromBody3D(entity, position, getRotation());
+}
+
+Quaternion Body3D::getRotation() const{
+    Body3DComponent& body = getComponent<Body3DComponent>();
+
+    checkBody(body);
+    JPH::Quat rotation = getBodyInterface().GetRotation(body.body);
+
+    return Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
+}
+
+void Body3D::setRotation(Quaternion rotation){
+    Body3DComponent& body = getComponent<Body3DComponent>();
+    std::shared_ptr<PhysicsSystem> physicsSystem = scene->getSystem<PhysicsSystem>();
+
+    checkBody(body);
+    getBodyInterface().SetRotation(body.body, physicsSystem->toValidatedJoltRotation(rotation, entity, -1), JPH::EActivation::Activate);
+
+    physicsSystem->updateTransformFromBody3D(entity, getPosition(), getRotation());
+}
+
 Vector3 Body3D::getLinearVelocity() const{
     Body3DComponent& body = getComponent<Body3DComponent>();
 

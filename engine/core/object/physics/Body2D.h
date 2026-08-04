@@ -90,6 +90,10 @@ namespace doriax{
         bool isShapePreSolveEvents(size_t index) const;
         bool isShapeSensorEvents(size_t index) const;
 
+        // Body pose in world space. The transform only reaches the body between fixed
+        // steps, so place a body from onFixedUpdate with these instead of Object.
+        void setPosition(Vector2 position);
+        void setAngle(float angle);
         void setLinearVelocity(Vector2 linearVelocity);
         void setAngularVelocity(float angularVelocity);
         void setLinearDamping(float linearDamping);
@@ -102,6 +106,8 @@ namespace doriax{
         void setEnabled(bool enabled);
         void setGravityScale(float gravityScale);
 
+        Vector2 getPosition() const;
+        float getAngle() const;
         Vector2 getLinearVelocity() const;
         float getAngularVelocity() const;
         float getLinearDamping() const;

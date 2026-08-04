@@ -120,6 +120,14 @@ namespace doriax{
         float getRestitution() const;
         void setRestitution(float restitution);
 
+        // Body pose in world space. The transform only reaches the body between fixed
+        // steps, so place a body from onFixedUpdate with these instead of Object.
+        Vector3 getPosition() const;
+        void setPosition(Vector3 position);
+
+        Quaternion getRotation() const;
+        void setRotation(Quaternion rotation);
+
         Vector3 getLinearVelocity() const;
         void setLinearVelocity(Vector3 linearVelocity);
         void setLinearVelocityClamped(Vector3 linearVelocity);

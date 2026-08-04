@@ -592,6 +592,46 @@ bool Body2D::isShapeSensorEvents(size_t index) const{
     return false;
 }
 
+Vector2 Body2D::getPosition() const{
+    Body2DComponent& body = getComponent<Body2DComponent>();
+    float pointsToMeterScale = getPointsToMeterScale();
+
+    checkBody(body);
+    b2Vec2 position = b2Body_GetPosition(body.body);
+
+    return Vector2(position.x * pointsToMeterScale, position.y * pointsToMeterScale);
+}
+
+void Body2D::setPosition(Vector2 position){
+    Body2DComponent& body = getComponent<Body2DComponent>();
+    float pointsToMeterScale = getPointsToMeterScale();
+
+    checkBody(body);
+    b2Transform bTransform = b2Body_GetTransform(body.body);
+    b2Body_SetTransform(body.body, {position.x / pointsToMeterScale, position.y / pointsToMeterScale}, bTransform.q);
+    b2Body_SetAwake(body.body, true);
+
+    scene->getSystem<PhysicsSystem>()->updateTransformFromBody2D(entity, position, getAngle());
+}
+
+float Body2D::getAngle() const{
+    Body2DComponent& body = getComponent<Body2DComponent>();
+
+    checkBody(body);
+    return Angle::radToDefault(b2Rot_GetAngle(b2Body_GetRotation(body.body)));
+}
+
+void Body2D::setAngle(float angle){
+    Body2DComponent& body = getComponent<Body2DComponent>();
+
+    checkBody(body);
+    b2Transform bTransform = b2Body_GetTransform(body.body);
+    b2Body_SetTransform(body.body, bTransform.p, b2MakeRot(Angle::defaultToRad(angle)));
+    b2Body_SetAwake(body.body, true);
+
+    scene->getSystem<PhysicsSystem>()->updateTransformFromBody2D(entity, getPosition(), angle);
+}
+
 void Body2D::setLinearVelocity(Vector2 linearVelocity){
     Body2DComponent& body = getComponent<Body2DComponent>();
     float pointsToMeterScale = getPointsToMeterScale();

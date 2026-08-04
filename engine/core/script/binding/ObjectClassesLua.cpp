@@ -1070,6 +1070,8 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("isShapeSensorEvents", 
             luabridge::overload<>(&Body2D::isShapeSensorEvents),
             luabridge::overload<size_t>(&Body2D::isShapeSensorEvents))
+        .addProperty("position", &Body2D::getPosition, &Body2D::setPosition)
+        .addProperty("angle", &Body2D::getAngle, &Body2D::setAngle)
         .addProperty("linearVelocity", &Body2D::getLinearVelocity, &Body2D::setLinearVelocity)
         .addProperty("angularVelocity", &Body2D::getAngularVelocity, &Body2D::setAngularVelocity)
         .addProperty("linearDamping", &Body2D::getLinearDamping, &Body2D::setLinearDamping)
@@ -1218,6 +1220,8 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addProperty("sllowSleeping", &Body3D::isAllowSleeping, &Body3D::setAllowSleeping)
         .addProperty("friction", &Body3D::getFriction, &Body3D::setFriction)
         .addProperty("restitution", &Body3D::getRestitution, &Body3D::setRestitution)
+        .addProperty("position", &Body3D::getPosition, &Body3D::setPosition)
+        .addProperty("rotation", &Body3D::getRotation, &Body3D::setRotation)
         .addProperty("linearVelocity", &Body3D::getLinearVelocity, &Body3D::setLinearVelocity)
         .addFunction("setLinearVelocityClamped", &Body3D::setLinearVelocityClamped)
         .addProperty("angularVelocity", &Body3D::getAngularVelocity, &Body3D::setAngularVelocity)
