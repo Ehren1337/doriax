@@ -31,12 +31,20 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
 }
 
 bool editor::CopyFileCmd::execute(){
+    bool touchedShaderSource = false;
+
     for (const auto& fdata : files) {
         fs::path sourceFs = fdata.sourceDirectory / fdata.filename;
         fs::path destFs = fdata.targetDirectory / fdata.filename;
         try {
             if (fs::exists(sourceFs)) {
-                if (fs::is_directory(sourceFs)) {
+                bool isDir = fs::is_directory(sourceFs);
+                std::string extension = sourceFs.extension().string();
+                // Copies count too: a .glsl arriving in a directory a fork resolves
+                // against changes which file wins for it.
+                touchedShaderSource |= isDir || Util::isShaderFile(extension);
+
+                if (isDir) {
                     if (copy){
                         fs::copy(sourceFs, destFs, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
                     }else{
@@ -47,6 +55,7 @@ bool editor::CopyFileCmd::execute(){
                             project->remapEntityBundleFilePath(sourceFs, destFs);
                             project->remapScriptFilePath(sourceFs, destFs);
                             project->remapAssetFilePath(sourceFs, destFs);
+                            project->remapShaderFilePath(sourceFs, destFs);
                         }
                     }
                 } else {
@@ -55,7 +64,6 @@ bool editor::CopyFileCmd::execute(){
                     }else{
                         fs::rename(sourceFs, destFs);
                         if (project) {
-                            std::string extension = sourceFs.extension().string();
                             if (Util::isMaterialFile(extension)) {
                                 project->remapMaterialFilePath(sourceFs, destFs);
                             }
@@ -71,26 +79,42 @@ bool editor::CopyFileCmd::execute(){
                             if (Util::isAssetFile(extension)) {
                                 project->remapAssetFilePath(sourceFs, destFs);
                             }
+                            if (Util::isShaderFile(extension)) {
+                                project->remapShaderFilePath(sourceFs, destFs);
+                            }
                         }
                     }
                 }
             }
         } catch (const fs::filesystem_error& e) {
             printf("Error: Moving/Copying %s: %s\n", sourceFs.string().c_str(), e.what());
+            if (project && touchedShaderSource)
+                project->invalidateCustomShaders();
             return false;
         }
     }
+
+    if (project && touchedShaderSource)
+        project->invalidateCustomShaders();
 
     return true;
 }
 
 void editor::CopyFileCmd::undo(){
+    bool touchedShaderSource = false;
+
     for (const auto& fdata : files) {
         fs::path sourceFs = fdata.targetDirectory / fdata.filename;
         fs::path destFs = fdata.sourceDirectory / fdata.filename;
         try {
             if (fs::exists(sourceFs)) {
-                if (fs::is_directory(sourceFs)) {
+                bool isDir = fs::is_directory(sourceFs);
+                std::string extension = sourceFs.extension().string();
+                // Copies count too: a .glsl arriving in a directory a fork resolves
+                // against changes which file wins for it.
+                touchedShaderSource |= isDir || Util::isShaderFile(extension);
+
+                if (isDir) {
                     if (copy) {
                         fs::remove_all(sourceFs);
                     }else{
@@ -101,6 +125,7 @@ void editor::CopyFileCmd::undo(){
                             project->remapEntityBundleFilePath(sourceFs, destFs);
                             project->remapScriptFilePath(sourceFs, destFs);
                             project->remapAssetFilePath(sourceFs, destFs);
+                            project->remapShaderFilePath(sourceFs, destFs);
                         }
                     }
                 } else {
@@ -109,7 +134,6 @@ void editor::CopyFileCmd::undo(){
                     }else{
                         fs::rename(sourceFs, destFs);
                         if (project) {
-                            std::string extension = sourceFs.extension().string();
                             if (Util::isMaterialFile(extension)) {
                                 project->remapMaterialFilePath(sourceFs, destFs);
                             }
@@ -125,6 +149,9 @@ void editor::CopyFileCmd::undo(){
                             if (Util::isAssetFile(extension)) {
                                 project->remapAssetFilePath(sourceFs, destFs);
                             }
+                            if (Util::isShaderFile(extension)) {
+                                project->remapShaderFilePath(sourceFs, destFs);
+                            }
                         }
                     }
                 }
@@ -133,6 +160,9 @@ void editor::CopyFileCmd::undo(){
             printf("Error: Undo moving/Copying %s: %s\n", sourceFs.string().c_str(), e.what());
         }
     }
+
+    if (project && touchedShaderSource)
+        project->invalidateCustomShaders();
 }
 
 bool editor::CopyFileCmd::mergeWith(editor::Command* otherCommand){

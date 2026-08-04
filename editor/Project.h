@@ -169,7 +169,6 @@ namespace doriax::editor{
         std::filesystem::path assetsDir;
         std::filesystem::path luaDir;
         std::filesystem::path shadersDir;        // compiled .sdat output dir (engine/build-facing)
-        std::filesystem::path shaderSourcesDir;  // forkable shader sources (editor-only)
         std::string cmakeCCompiler;
         std::string cmakeCxxCompiler;
         std::string cmakeGenerator;
@@ -382,12 +381,6 @@ namespace doriax::editor{
         // This is the engine/build-facing location. Defaults to "shaders".
         void setShadersDir(const std::filesystem::path& shadersDir);
         std::filesystem::path getShadersDir() const;
-
-        // Directory (project-relative, EDITOR-ONLY) holding forkable shader SOURCES
-        // (.vert/.frag/.glsl), mirroring the engine shaderlib root. The engine never
-        // reads it (it only consumes compiled .sdat). Defaults to "shaders".
-        void setShaderSourcesDir(const std::filesystem::path& shaderSourcesDir);
-        std::filesystem::path getShaderSourcesDir() const;
 
         void setCMakeKit(const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator = "");
         std::string getCMakeCCompiler() const;

@@ -2,6 +2,8 @@
 #include "external/IconsFontAwesome6.h"
 #include "Scene.h"
 #include "Factory.h"
+#include "util/UIUtils.h"
+#include "util/Util.h"
 #include <fstream>
 
 namespace doriax {
@@ -43,66 +45,6 @@ void ScriptCreateDialog::open(Scene* scene,
     std::string base = defaultBaseName.empty() ? "NewScript" : sanitizeClassName(defaultBaseName);
     strncpy(m_baseNameBuffer, base.c_str(), sizeof(m_baseNameBuffer) - 1);
     m_baseNameBuffer[sizeof(m_baseNameBuffer) - 1] = '\0';
-}
-
-static bool isInsidePath(const fs::path& path, const fs::path& root) {
-    const fs::path relative = path.lexically_relative(root);
-    return !relative.empty() && *relative.begin() != "..";
-}
-
-void ScriptCreateDialog::displayDirectoryTree(const fs::path& rootPath, const fs::path& currentPath) {
-    try {
-        std::vector<fs::path> subDirs;
-        for (const auto& entry : fs::directory_iterator(currentPath)) {
-            if (entry.is_directory()) {
-                subDirs.push_back(entry.path());
-            }
-        }
-        std::sort(subDirs.begin(), subDirs.end());
-
-        for (const auto& dirPath : subDirs) {
-            std::string fname = dirPath.filename().string();
-            if (!fname.empty() && fname[0] == '.')
-                continue;
-
-            ImGui::PushID(dirPath.string().c_str());
-            ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanFullWidth;
-            bool isSelected = (m_selectedPath == dirPath.string());
-            if (isSelected)
-                nodeFlags |= ImGuiTreeNodeFlags_Selected;
-
-            bool hasSub = false;
-            try {
-                for (const auto& subEntry : fs::directory_iterator(dirPath)) {
-                    if (subEntry.is_directory()) { hasSub = true; break; }
-                }
-            } catch (...) {}
-
-            if (!hasSub) nodeFlags |= ImGuiTreeNodeFlags_Leaf;
-
-            bool open = ImGui::TreeNodeEx("##dir", nodeFlags);
-            ImGui::SameLine(0, 0);
-            ImGui::TextColored(ImVec4(1.f, 0.8f, 0.f, 1.f), "%s", open ? ICON_FA_FOLDER_OPEN : ICON_FA_FOLDER);
-            ImGui::SameLine();
-            ImGui::Text("%s", fname.c_str());
-
-            if (ImGui::IsItemClicked() ||
-                (ImGui::IsMouseClicked(0) && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
-                m_selectedPath = dirPath.string();
-            }
-
-            if (open) {
-                if (hasSub) {
-                    displayDirectoryTree(rootPath, dirPath);
-                }
-                ImGui::TreePop();
-            }
-
-            ImGui::PopID();
-        }
-    } catch (...) {
-        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Error reading directory");
-    }
 }
 
 std::string ScriptCreateDialog::sanitizeClassName(const std::string& in) const {
@@ -396,7 +338,7 @@ void ScriptCreateDialog::show() {
     // Browsing is limited to the root the new script is stored relative to: a folder
     // above it would be saved as an unresolvable "../" path.
     const fs::path rootPath = (m_scriptType == ScriptType::SCRIPT_LUA) ? m_luaPath : m_projectPath;
-    if (!isInsidePath(fs::path(m_selectedPath), rootPath)) {
+    if (!Util::isInsidePath(fs::path(m_selectedPath), rootPath)) {
         m_selectedPath = rootPath.string();
     }
 
@@ -423,7 +365,7 @@ void ScriptCreateDialog::show() {
                     m_selectedPath = rootPath.string();
                 }
 
-                displayDirectoryTree(rootPath, rootPath);
+                UIUtils::directoryTreeBrowser(rootPath, m_selectedPath);
                 ImGui::TreePop();
             }
             ImGui::EndTable();

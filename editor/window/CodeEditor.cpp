@@ -372,6 +372,18 @@ void editor::CodeEditor::applyParsedProjectSymbols() {
     }
 }
 
+// A shader source changed on disk (saved here, or reloaded after an external edit):
+// drop the compiled forks that depend on it so the viewport recompiles. The build
+// cache resolves sources through an in-memory snapshot, so without this an external
+// edit would never reach the renderer.
+void editor::CodeEditor::invalidateShadersForFile(const EditorInstance& instance) {
+    std::string ext = instance.filepath.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    if (ext == ".vert" || ext == ".frag" || ext == ".glsl") {
+        project->invalidateCustomShaders();
+    }
+}
+
 void editor::CodeEditor::checkFileChanges(EditorInstance& instance) {
     try {
         fs::path fullPath = resolveFilepath(instance.filepath);
@@ -404,6 +416,7 @@ void editor::CodeEditor::checkFileChanges(EditorInstance& instance) {
                 // If no unsaved changes, silently reload the file
                 loadFileContent(instance);
                 updateScriptProperties(instance);
+                invalidateShadersForFile(instance);
             }
         }
     } catch (const std::exception& e) {
@@ -534,6 +547,7 @@ void editor::CodeEditor::handleFileChangePopup() {
                 if (it != editors.end()) {
                     loadFileContent(it->second);
                     updateScriptProperties(it->second);
+                    invalidateShadersForFile(it->second);
                 }
             }
             changedFilesQueue.clear();
@@ -1144,15 +1158,7 @@ bool editor::CodeEditor::save(EditorInstance& instance) {
 
         updateAllProjectSymbols();
 
-        // Editing a shader source (or shared include) invalidates compiled forked
-        // shaders so the viewport reflects the change.
-        {
-            std::string ext = instance.filepath.extension().string();
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-            if (ext == ".vert" || ext == ".frag" || ext == ".glsl") {
-                project->invalidateCustomShaders();
-            }
-        }
+        invalidateShadersForFile(instance);
 
         return true;
     } catch (const std::exception& e) {

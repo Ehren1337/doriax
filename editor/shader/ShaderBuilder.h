@@ -54,9 +54,9 @@ namespace doriax::editor {
         bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32_t properties);
         std::string getLangSuffix(shadercompiler::lang_type_t lang, int version, bool es, shadercompiler::platform_t platform);
 
-        // Sets entry-point files + defines for the key, and (when the key carries a
-        // customId) overlays the project's forked .vert/.frag onto args.fileBuffers so
-        // includes still resolve from the engine sources. Throws on failure.
+        // Sets entry-point files + defines for the key. For custom shaders, resolves only
+        // the exact transitive dependency graph from the fork's .vert/.frag entrypoints.
+        // Throws on failure.
         void setupBuildArgs(shadercompiler::args_t& args, ShaderKey shaderKey, Project* project);
 
         ShaderData buildShaderInternal(ShaderKey shaderKey, Project* project, bool trackProgress);
@@ -64,8 +64,8 @@ namespace doriax::editor {
 
         static std::filesystem::path getShaderCachePath(ShaderKey shaderKey, Project* project);
 
-        // True when a forked shader's cached .sdat is missing or older than its source
-        // .vert/.frag, so the next build recompiles instead of serving a stale cache.
+        // Compares the cached source signature with the entry points and the exact
+        // transitive include graph used by this fork. No directory walk is required.
         static bool isCustomCacheStale(ShaderKey shaderKey, Project* project, const std::filesystem::path& cachePath);
 
     public:
@@ -75,9 +75,8 @@ namespace doriax::editor {
         ShaderBuildResult buildShader(ShaderKey shaderKey, Project* project);
         ShaderData buildShaderForExport(ShaderKey shaderKey, Project* project, shadercompiler::lang_type_t lang, int version, bool es, shadercompiler::platform_t platform = shadercompiler::SHADER_DEFAULT);
 
-        // Drops cached (in-memory + pending) builds for every variant of a forked
-        // shader so the next get() recompiles from the edited source. Called when a
-        // shader source file is saved in the editor.
+        // Drops cached builds and dependency snapshots for all custom variants so the
+        // next get() recompiles. Called after source mutations and project switches.
         static void invalidateCustomShaders();
 
         static void requestShutdown();

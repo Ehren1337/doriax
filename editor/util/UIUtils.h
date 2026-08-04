@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include "imgui.h"
 
@@ -16,5 +17,10 @@ namespace doriax::editor {
         // so values beyond the slider range can be entered. Drag to adjust; a plain click does not
         // seek the value (this keeps double-click from nudging it). Returns true while it is changing.
         static bool sliderFloatInput(const char* id, float* value, float minValue, float maxValue, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
+
+        // Draws the folders below currentPath as a tree, writing the clicked one
+        // into selectedPath. Shared by the creation dialogs.
+        static void directoryTreeBrowser(const std::filesystem::path& currentPath,
+                                         std::string& selectedPath);
     };
 }

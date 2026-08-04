@@ -785,19 +785,21 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "fork_shader",
-            "Fork a built-in shader into the project's shaders folder as one undoable step. Give entity_id/entity_name to fork a single component's shader (points its customShader at the fork); omit both and give shader_type instead to fork a scene-wide default shader for that type (points the scene's default_<type>_shader at the fork, used by every component of that type without its own customShader - see set_scene_property). Creates <name>.vert and <name>.frag (their #include \"includes/...\" still resolve against the engine library) which you then edit with write_shader_file. This is the correct way to start a custom shader; do not set customShader or a scene default_*_shader to files that do not exist.",
+            "Fork a built-in shader into a project-relative directory as one undoable step. Give entity_id/entity_name to fork a single component's shader (points its customShader at the fork); omit both and give shader_type instead to fork a scene-wide default shader for that type (points the scene's default_<type>_shader at the fork, used by every component of that type without its own customShader - see set_scene_property). Creates <name>.vert and <name>.frag directly in that directory. With fork_includes the fork is placed in its own <directory>/<name>/ folder together with an includes/ copy of the engine .glsl files it uses, so those edits override the engine library only for this fork. This is the correct way to start a custom shader; do not set customShader or a scene default_*_shader to files that do not exist.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Entity id. Omit both this and entity_name, and give shader_type, to fork a scene default instead")},
                 {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
                 {"component", stringSchema("Renderable component name (MeshComponent, UIComponent, PointsComponent, LinesComponent, SkyComponent). Omit to auto-detect the entity's renderable component. Ignored when forking a scene default")},
-                {"shader_type", stringSchema("mesh, ui, sky, points, or lines. Required (and only used) when entity_id/entity_name are omitted, to fork a scene-wide default shader for that type")}
+                {"shader_type", stringSchema("mesh, ui, sky, points, or lines. Required (and only used) when entity_id/entity_name are omitted, to fork a scene-wide default shader for that type")},
+                {"directory", stringSchema("Optional safe project-relative destination directory; defaults to shaders")},
+                {"fork_includes", boolSchema("Also copy the built-in transitive .glsl includes so they can be edited; this moves the fork into its own <name>/ directory")}
             }),
             false
         },
         {
             "write_shader_file",
-            "Write a custom shader source file (.vert, .frag, or a shared .glsl include) under the project shaders folder. Use after fork_shader to edit the forked entry points, or to add a .glsl include. Read the file first and keep ALL original texture and sampler declarations (uniform sampler2D/samplerCube/etc. and their #ifdef guards) plus the uniform blocks, #version, #include lines and output variable - the engine binds textures by fixed slot, so removing or renaming a declaration breaks the bindings. #include \"includes/...\" still resolves against the engine shader library.",
+            "Write a project-relative custom shader source file (.vert, .frag, or .glsl). Use after fork_shader to edit entry points, private copied includes, or project-root-relative shared includes. Read the file first and keep ALL original texture and sampler declarations (uniform sampler2D/samplerCube/etc. and their #ifdef guards) plus the uniform blocks, #version, #include lines and output variable - the engine binds textures by fixed slot, so removing or renaming a declaration breaks the bindings. Unmodified #include \"includes/...\" resolves private fork copies first, then project-root overrides, then the engine library.",
             objectSchema({
                 {"path", stringSchema("Existing or new safe project-relative path. Allowed extensions: .vert, .frag, .glsl")},
                 {"content", stringSchema("Complete replacement file contents")},
@@ -1387,6 +1389,18 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         return hasString(arguments, "target_dir") ? ok() : fail(name + " requires target_dir.");
     }
     if (name == "fork_shader") {
+        if (arguments.contains("directory")) {
+            if (!arguments["directory"].is_string()) {
+                return fail("fork_shader directory must be a string.");
+            }
+            fs::path directory = fs::path(arguments["directory"].get<std::string>()).lexically_normal();
+            if (directory != "." && !PathUtils::isSafeRelativePath(directory)) {
+                return fail("fork_shader directory must be a safe project-relative path.");
+            }
+        }
+        if (arguments.contains("fork_includes") && !arguments["fork_includes"].is_boolean()) {
+            return fail("fork_shader fork_includes must be a boolean.");
+        }
         if (hasEntitySelector(arguments) || hasString(arguments, "shader_type")) return ok();
         return fail("fork_shader requires entity_id/entity_name, or shader_type to fork a scene default.");
     }

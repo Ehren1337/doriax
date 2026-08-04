@@ -1521,10 +1521,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (project->getShadersDir() != "shaders") {
         root["shadersDir"] = project->getShadersDir().string();
     }
-    if (project->getShaderSourcesDir() != "shaders") {
-        root["shaderSourcesDir"] = project->getShaderSourcesDir().string();
-    }
-
     if (!project->getCMakeCCompiler().empty()) {
         root["cmakeCCompiler"] = project->getCMakeCCompiler();
     }
@@ -1696,10 +1692,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node) {
 
     if (node["shadersDir"]) {
         project->setShadersDir(node["shadersDir"].as<std::string>());
-    }
-
-    if (node["shaderSourcesDir"]) {
-        project->setShaderSourcesDir(node["shaderSourcesDir"].as<std::string>());
     }
 
     if (node["cmakeCCompiler"] || node["cmakeCxxCompiler"] || node["cmakeGenerator"]) {

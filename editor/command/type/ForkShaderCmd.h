@@ -12,24 +12,29 @@ namespace doriax::editor {
 
     // Forks a built-in shader and points a component's customShader (or a scene's default
     // shader property) at the new fork as a single undoable step: execute() writes the
-    // .vert/.frag files and sets the property; undo() restores the property and deletes
-    // the forked files.
+    // .vert/.frag (and optional private include) files and sets the property; undo()
+    // restores the property and deletes the forked files.
     class ForkShaderCmd : public Command {
     private:
         Project* project;
         ProjectUtils::ShaderForkPlan plan;
         std::unique_ptr<Command> propertyCmd;  // sets customShader (or scene property) to plan.base
+        bool executed = false;
 
     public:
         ForkShaderCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType cpType,
-                      ShaderType shaderType, const std::string& desiredName);
+                      ShaderType shaderType, const std::filesystem::path& targetDirRel,
+                      const std::string& baseName, bool forkIncludes = false);
 
         // scene-level variant: sets a scene default shader property (e.g. "default_mesh_shader")
         ForkShaderCmd(Project* project, SceneProject* sceneProject, ShaderType shaderType,
-                      const std::string& scenePropertyName, const std::string& desiredName);
+                      const std::string& scenePropertyName,
+                      const std::filesystem::path& targetDirRel,
+                      const std::string& baseName, bool forkIncludes = false);
 
         bool isValid() const { return plan.valid; }
         const std::string& getBase() const { return plan.base; }
+        const std::string& getError() const { return plan.error; }
 
         bool execute() override;
         void undo() override;

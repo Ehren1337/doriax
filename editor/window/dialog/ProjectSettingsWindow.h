@@ -39,7 +39,6 @@ namespace doriax::editor {
         fs::path m_assetsDir;
         fs::path m_luaDir;
         fs::path m_shadersDir;
-        fs::path m_shaderSourcesDir;
         std::vector<CMakeKit> m_availableKits;
         int m_cmakeKitIndex = 0;
         int m_cmakeBuildJobs = 0;

@@ -27,7 +27,6 @@ private:
     std::function<void(const fs::path&, const fs::path&, const std::string&, ScriptType)> m_onCreate;
     std::function<void()> m_onCancel;
 
-    void displayDirectoryTree(const fs::path& rootPath, const fs::path& currentPath);
     std::string sanitizeClassName(const std::string& in) const;
 
     fs::path makeHeaderPath(const std::string& className) const;

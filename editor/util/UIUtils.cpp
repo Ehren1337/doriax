@@ -4,7 +4,71 @@
 #include "window/widget/InputTextContextMenu.h"
 #include "imgui_internal.h"
 
+#include <algorithm>
+#include <vector>
+
 namespace doriax::editor {
+
+// Symlinks are skipped so browsing cannot leave the tree it started in.
+static bool isBrowsableDir(const std::filesystem::directory_entry& entry) {
+    std::string name = entry.path().filename().string();
+    return !name.empty() && name[0] != '.' && entry.is_directory() && !entry.is_symlink();
+}
+
+void UIUtils::directoryTreeBrowser(const std::filesystem::path& currentPath,
+                                   std::string& selectedPath) {
+    try {
+        std::vector<std::filesystem::path> subDirs;
+        for (const auto& entry : std::filesystem::directory_iterator(currentPath)) {
+            if (isBrowsableDir(entry))
+                subDirs.push_back(entry.path());
+        }
+        std::sort(subDirs.begin(), subDirs.end());
+
+        for (const auto& dirPath : subDirs) {
+            std::string name = dirPath.filename().string();
+
+            ImGui::PushID(dirPath.string().c_str());
+            ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow |
+                                       ImGuiTreeNodeFlags_SpanFullWidth;
+            if (std::filesystem::path(selectedPath).lexically_normal() == dirPath.lexically_normal())
+                flags |= ImGuiTreeNodeFlags_Selected;
+
+            bool hasSubdirectory = false;
+            try {
+                for (const auto& child : std::filesystem::directory_iterator(dirPath)) {
+                    if (isBrowsableDir(child)) {
+                        hasSubdirectory = true;
+                        break;
+                    }
+                }
+            } catch (...) {}
+            if (!hasSubdirectory)
+                flags |= ImGuiTreeNodeFlags_Leaf;
+
+            bool open = ImGui::TreeNodeEx("##dir", flags);
+            ImGui::SameLine(0, 0);
+            ImGui::TextColored(ImVec4(1.f, 0.8f, 0.f, 1.f), "%s",
+                               open ? ICON_FA_FOLDER_OPEN : ICON_FA_FOLDER);
+            ImGui::SameLine();
+            ImGui::TextUnformatted(name.c_str());
+            if (ImGui::IsItemClicked() ||
+                    (ImGui::IsMouseClicked(0) &&
+                     ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
+                selectedPath = dirPath.lexically_normal().string();
+            }
+
+            if (open) {
+                if (hasSubdirectory)
+                    directoryTreeBrowser(dirPath, selectedPath);
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+    } catch (...) {
+        ImGui::TextColored(ImVec4(1, 0, 0, 1), "Error reading directory");
+    }
+}
 
 bool UIUtils::searchInput(const char* id, std::string hint, char* buffer, size_t bufferSize, bool autoFocus, bool* matchCase, float fixedWidth) {
     ImGui::BeginGroup();

@@ -3,6 +3,7 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include <string_view>
 #include <sstream>
 #include <algorithm>
 #include <filesystem>
@@ -139,6 +140,64 @@ namespace doriax::editor{
 
         inline static bool isSeparateCustomShader(const std::string& customShader) {
             return customShader.find(customShaderSeparator) != std::string::npos;
+        }
+
+        // True for a relative path that cannot escape the directory it is resolved
+        // against. Guards every project-relative path that reaches the filesystem.
+        inline static bool isSafeRelativePath(const std::filesystem::path& path) {
+            if (path.empty() || path.is_absolute())
+                return false;
+
+            std::filesystem::path normalized = path.lexically_normal();
+            return !normalized.empty() && *normalized.begin() != "..";
+        }
+
+        // True when path is root itself or sits below it. Lexical: it runs per folder
+        // per frame in the creation dialogs.
+        inline static bool isInsidePath(const std::filesystem::path& path, const std::filesystem::path& root) {
+            std::filesystem::path relative = path.lexically_normal().lexically_relative(root.lexically_normal());
+            return !relative.empty() && *relative.begin() != "..";
+        }
+
+        // The paths quoted by every '#include "..."' in a GLSL source, in order.
+        inline static std::vector<std::string> getShaderIncludeKeys(const std::string& source) {
+            auto skipBlanks = [](std::string_view line, size_t i) {
+                while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) i++;
+                return i;
+            };
+
+            std::vector<std::string> keys;
+            for (size_t lineStart = 0; lineStart <= source.size(); ) {
+                size_t lineEnd = source.find('\n', lineStart);
+                if (lineEnd == std::string::npos)
+                    lineEnd = source.size();
+
+                std::string_view line(source.data() + lineStart, lineEnd - lineStart);
+                lineStart = lineEnd + 1;
+
+                size_t i = skipBlanks(line, 0);
+                if (i >= line.size() || line[i] != '#') continue;
+                i = skipBlanks(line, i + 1);
+                if (i + 7 > line.size() || line.compare(i, 7, "include") != 0) continue;
+                i = skipBlanks(line, i + 7);
+                if (i >= line.size() || line[i] != '"') continue;
+
+                size_t close = line.find('"', ++i);
+                if (close != std::string_view::npos && close > i)
+                    keys.push_back(std::string(line.substr(i, close - i)));
+            }
+            return keys;
+        }
+
+        // Directory an #include key resolves against before the project root and the
+        // engine library, so a fork directory mirrors the engine shaderlib layout.
+        // Derived from the entry point, never stored: moving a fork cannot break it.
+        inline static std::filesystem::path getCustomShaderIncludeRoot(const std::string& customShader) {
+            CustomShaderPaths paths = resolveCustomShaderPaths(customShader);
+            if (paths.vert.empty())
+                return {};
+
+            return std::filesystem::path(paths.vert).parent_path();
         }
 
         // Builds a customShader value from two project-relative entry-point paths (with

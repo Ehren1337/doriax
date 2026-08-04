@@ -2184,14 +2184,6 @@ std::filesystem::path editor::Project::getShadersDir() const{
     return shadersDir.empty() ? std::filesystem::path("shaders") : shadersDir;
 }
 
-void editor::Project::setShaderSourcesDir(const std::filesystem::path& shaderSourcesDir){
-    this->shaderSourcesDir = shaderSourcesDir;
-}
-
-std::filesystem::path editor::Project::getShaderSourcesDir() const{
-    return shaderSourcesDir.empty() ? std::filesystem::path("shaders") : shaderSourcesDir;
-}
-
 void editor::Project::setCMakeKit(const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator){
     this->cmakeCCompiler = cCompiler;
     this->cmakeCxxCompiler = cxxCompiler;
@@ -2608,7 +2600,7 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
 
 void editor::Project::invalidateCustomShaders() {
     // Drop the editor's compiled cache for forked shaders, free their GPU handles, and
-    // flag every renderable that uses one so RenderSystem reloads (recompiles) it next frame.
+    // flag every renderable that uses one so RenderSystem recompiles it on the next draw.
     editor::ShaderBuilder::invalidateCustomShaders();
     ShaderPool::destroyCustomShaders();
 
@@ -2622,17 +2614,28 @@ void editor::Project::invalidateCustomShaders() {
         bool scenePoints = !scene->getDefaultPointsShader().empty();
         bool sceneLines = !scene->getDefaultLinesShader().empty();
         bool sceneSky = !scene->getDefaultSkyShader().empty();
+
+        // needReload is only consumed while the scene draws, and the idle loop skips
+        // scenes that are not flagged, so the redraw has to be requested here. Saving a
+        // shader file is not a command, so nothing else would request it.
+        auto flagReload = [&sceneProject](bool& needReload, bool usesFork) {
+            if (!usesFork)
+                return;
+            needReload = true;
+            sceneProject.needUpdateRender = true;
+        };
+
         for (Entity entity : sceneProject.entities) {
             if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity))
-                if (sceneMesh || !mesh->customShader.empty()) mesh->needReload = true;
+                flagReload(mesh->needReload, sceneMesh || !mesh->customShader.empty());
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
-                if (sceneUI || !ui->customShader.empty()) ui->needReload = true;
+                flagReload(ui->needReload, sceneUI || !ui->customShader.empty());
             if (PointsComponent* pts = scene->findComponent<PointsComponent>(entity))
-                if (scenePoints || !pts->customShader.empty()) pts->needReload = true;
+                flagReload(pts->needReload, scenePoints || !pts->customShader.empty());
             if (LinesComponent* ln = scene->findComponent<LinesComponent>(entity))
-                if (sceneLines || !ln->customShader.empty()) ln->needReload = true;
+                flagReload(ln->needReload, sceneLines || !ln->customShader.empty());
             if (SkyComponent* sky = scene->findComponent<SkyComponent>(entity))
-                if (sceneSky || !sky->customShader.empty()) sky->needReload = true;
+                flagReload(sky->needReload, sceneSky || !sky->customShader.empty());
         }
     }
 }
@@ -3302,6 +3305,11 @@ void editor::Project::resetConfigs() {
     entityBundles.clear();
     editor::getEditorHost().resetLastActivatedScene();
 
+    // A project may be closed, edited externally, then reopened in the same editor
+    // process. Do not carry its dependency snapshots or compiled custom data across
+    // that boundary.
+    editor::ShaderBuilder::invalidateCustomShaders();
+
     // Scenes are gone: drop unreferenced pool assets from the previous project.
     // Keep entries still held by the editor/engine (fonts, active shaders, etc.).
     Engine::clearUnusedPools();
@@ -3322,7 +3330,6 @@ void editor::Project::resetConfigs() {
     assetsDir = ".";
     luaDir = ".";
     shadersDir = "shaders";
-    shaderSourcesDir = "shaders";
     cmakeCCompiler = "";
     cmakeCxxCompiler = "";
     cmakeGenerator = "";

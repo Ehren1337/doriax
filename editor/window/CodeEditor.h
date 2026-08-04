@@ -53,6 +53,9 @@ namespace doriax::editor {
         std::atomic<bool> newSymbolsReady{false};
 
         void checkFileChanges(EditorInstance& instance);
+        // Drops compiled forks when instance is a shader source, after it is written or
+        // reloaded from disk.
+        void invalidateShadersForFile(const EditorInstance& instance);
         // Polls script files referenced by entities but not open in the editor, and
         // re-parses their properties when they change on disk (e.g. edited in nano).
         void checkExternalScriptChanges();

@@ -6,6 +6,7 @@
 #include "render/preview/DirectionRender.h"
 #include "util/ShapeParameters.h"
 #include "window/dialog/ScriptCreateDialog.h"
+#include "window/dialog/ShaderForkDialog.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
 
@@ -227,6 +228,7 @@ namespace doriax::editor{
 
         // Dialogs
         ScriptCreateDialog scriptCreateDialog;
+        ShaderForkDialog shaderForkDialog;
         ComponentAddDialog componentAddDialog;
         TextureSlicerToolDialog textureSlicerToolDialog;
 
@@ -293,24 +295,18 @@ namespace doriax::editor{
         // Scene-level variant: edits a scene default shader property (e.g. "default_mesh_shader"),
         // used by every component of that type whose customShader is empty.
         void drawSceneShaderRow(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label);
-        struct ShaderForkAction {
-            std::string base;
-            std::function<void()> confirm;
-            std::function<void()> cancel;
-        };
 
-        // Wraps a pending ForkShaderCmd into a confirm/cancel action for drawShaderRowContents:
-        // confirm commits the fork as one undoable step, cancel discards it. Returns an empty
-        // action if the fork command is invalid.
-        static ShaderForkAction makeForkAction(std::unique_ptr<ForkShaderCmd> forkCmd, uint32_t sceneId);
+        // Commits a planned fork as one undoable step and opens the new .vert/.frag in the
+        // code editor. Alerts instead when the plan is invalid or the files cannot be written.
+        void commitShaderFork(uint32_t sceneId, std::unique_ptr<ForkShaderCmd> forkCmd);
 
         // Interaction core shared by the entity and scene shader rows; draws into the current
-        // table value cell. setShader issues the undoable command; prepareFork creates a pending
-        // fork action so the user can confirm the new shader name before files are written.
+        // table value cell. setShader issues the undoable command; onFork opens the modal
+        // that selects the destination and exact shader name before files are written.
         // idSuffix uniquifies ImGui IDs and the edit-files popup within the window.
         void drawShaderRowContents(ShaderType shaderType, const std::string& currentShader,
                                    const std::function<void(const std::string&)>& setShader,
-                                   const std::function<ShaderForkAction()>& prepareFork,
+                                   const std::function<void()>& onFork,
                                    const std::string& idSuffix);
         void drawShaderFilesPopup(const std::string& popupName, const std::function<void(const std::string&)>& setShader, const std::string& currentVert, const std::string& currentFrag);
         void drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

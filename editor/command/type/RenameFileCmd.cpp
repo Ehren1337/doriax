@@ -60,6 +60,7 @@ bool editor::RenameFileCmd::execute(){
                 }
                 if (isDir || Util::isShaderFile(extension)) {
                     project->remapShaderFilePath(sourceFs, destFs);
+                    project->invalidateCustomShaders();
                 }
             }
         }
@@ -100,6 +101,7 @@ void editor::RenameFileCmd::undo(){
                 }
                 if (isDir || Util::isShaderFile(extension)) {
                     project->remapShaderFilePath(sourceFs, destFs);
+                    project->invalidateCustomShaders();
                 }
             }
         }

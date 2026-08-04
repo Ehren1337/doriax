@@ -26,6 +26,7 @@
 #include "command/type/ForkShaderCmd.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "render/SceneRender2D.h"
+#include "window/ResourcesWindow.h"
 #include "window/Structure.h"
 #include "App.h"
 #include "Backend.h"
@@ -4899,29 +4900,35 @@ void editor::Properties::drawTransform(ComponentType cpType, SceneProject* scene
     endTable();
 }
 
-editor::Properties::ShaderForkAction editor::Properties::makeForkAction(std::unique_ptr<ForkShaderCmd> forkCmd, uint32_t sceneId){
-    if (!forkCmd->isValid())
-        return ShaderForkAction();
+void editor::Properties::commitShaderFork(uint32_t sceneId, std::unique_ptr<ForkShaderCmd> forkCmd){
+    if (!forkCmd->isValid()) {
+        std::string error = forkCmd->getError();
+        Backend::getApp().registerAlert("Error", error.empty() ? "Could not prepare the shader fork." : error);
+        return;
+    }
 
-    ShaderForkAction action;
-    action.base = forkCmd->getBase();
+    std::filesystem::path vert = project->getProjectPath() / (forkCmd->getBase() + ".vert");
+    std::filesystem::path frag = project->getProjectPath() / (forkCmd->getBase() + ".frag");
+    CommandHandle::get(sceneId)->addCommandNoMerge(forkCmd.release());
 
-    auto pendingFork = std::make_shared<std::unique_ptr<ForkShaderCmd>>(std::move(forkCmd));
-    action.confirm = [pendingFork, sceneId]() {
-        if (*pendingFork)
-            CommandHandle::get(sceneId)->addCommand(pendingFork->release());
-    };
-    action.cancel = [pendingFork]() {
-        pendingFork->reset();
-    };
-    return action;
+    // execute() runs inside addCommandNoMerge; a failed write leaves nothing behind.
+    if (!std::filesystem::exists(vert) || !std::filesystem::exists(frag)) {
+        Backend::getApp().registerAlert("Error", "The shader files could not be created.");
+        return;
+    }
+
+    if (CodeEditor* codeEditor = Backend::getApp().getCodeEditor()) {
+        codeEditor->openFile(vert.string(), true);
+        codeEditor->openFile(frag.string(), true);
+    }
+    if (ResourcesWindow* resources = Backend::getApp().getResourcesWindow())
+        resources->refreshCurrentDirectory();
 }
 
 void editor::Properties::drawCustomShaderRow(ComponentType cpType, ShaderType shaderType, SceneProject* sceneProject, std::vector<Entity> entities){
-    // The custom shader is per-component. Forking copies the built-in <type>.vert/.frag
-    // into the project's shaders/ folder; #includes still resolve to the engine sources
-    // and the variant/#define system is unchanged. Shown only for a single selection
-    // (the path is per-entity).
+    // The custom shader is per-component. The fork dialog chooses its project-relative
+    // destination; engine includes still resolve through the embedded library unless the
+    // user creates private copies. Shown only for a single selection.
     if (entities.size() != 1)
         return;
 
@@ -4935,16 +4942,34 @@ void editor::Properties::drawCustomShaderRow(ComponentType cpType, ShaderType sh
         Command* shaderCmd = new PropertyCmd<std::string>(project, sceneProject->id, shaderEntity, cpType, "customShader", value);
         CommandHandle::get(sceneProject->id)->addCommand(shaderCmd);
     };
-    auto prepareFork = [&]() -> ShaderForkAction {
-        // Fork is a single undoable step (writes .vert/.frag + sets customShader);
-        // undo deletes the forked files.
-        return makeForkAction(std::make_unique<ForkShaderCmd>(project, sceneProject->id, shaderEntity, cpType, shaderType, sceneProject->scene->getEntityName(shaderEntity)), sceneProject->id);
+    const uint32_t sceneId = sceneProject->id;
+    const std::string defaultName = sceneProject->scene->getEntityName(shaderEntity);
+    auto onFork = [this, sceneId, shaderEntity, cpType, shaderType, defaultName]() {
+        shaderForkDialog.open(project, shaderType, defaultName,
+            [this, sceneId, shaderEntity, cpType, shaderType](const std::filesystem::path& directory,
+                                                             const std::string& name,
+                                                             bool forkIncludes) {
+                // The dialog answers frames later, so the scene is resolved again here.
+                SceneProject* currentScene = project->getScene(sceneId);
+                if (!currentScene || !currentScene->scene) {
+                    Backend::getApp().registerAlert("Error", "The scene is no longer available.");
+                    return;
+                }
+                std::string* current = Catalog::getPropertyRef<std::string>(
+                    currentScene->scene, shaderEntity, cpType, "customShader");
+                if (!current || !current->empty()) {
+                    Backend::getApp().registerAlert("Error", "The component no longer uses the built-in shader.");
+                    return;
+                }
+                commitShaderFork(sceneId, std::make_unique<ForkShaderCmd>(
+                    project, sceneId, shaderEntity, cpType, shaderType, directory, name, forkIncludes));
+            });
     };
 
     beginTable(cpType, getLabelSize("Shader"), "custom_shader_table");
     propertyHeader("Shader");
 
-    drawShaderRowContents(shaderType, currentShader, setShader, prepareFork, "custom_shader");
+    drawShaderRowContents(shaderType, currentShader, setShader, onFork, "custom_shader");
 
     endTable();
 }
@@ -4958,10 +4983,26 @@ void editor::Properties::drawSceneShaderRow(SceneProject* sceneProject, ShaderTy
         Command* shaderCmd = new ScenePropertyCmd<std::string>(project, sceneProject->id, scenePropertyName, value);
         CommandHandle::get(sceneProject->id)->addCommand(shaderCmd);
     };
-    auto prepareFork = [&]() -> ShaderForkAction {
-        // Single undoable step (writes .vert/.frag + sets the scene property);
-        // undo deletes the forked files.
-        return makeForkAction(std::make_unique<ForkShaderCmd>(project, sceneProject, shaderType, scenePropertyName, sceneProject->name + " " + label), sceneProject->id);
+    const uint32_t sceneId = sceneProject->id;
+    const std::string propertyName = scenePropertyName;
+    const std::string defaultName = sceneProject->name + " " + label;
+    auto onFork = [this, sceneId, shaderType, propertyName, defaultName]() {
+        shaderForkDialog.open(project, shaderType, defaultName,
+            [this, sceneId, shaderType, propertyName](const std::filesystem::path& directory,
+                                                      const std::string& name,
+                                                      bool forkIncludes) {
+                SceneProject* currentScene = project->getScene(sceneId);
+                if (!currentScene || !currentScene->scene) {
+                    Backend::getApp().registerAlert("Error", "The scene is no longer available.");
+                    return;
+                }
+                if (!Catalog::getSceneProperty<std::string>(currentScene->scene, propertyName).empty()) {
+                    Backend::getApp().registerAlert("Error", "The scene no longer uses the built-in shader for this type.");
+                    return;
+                }
+                commitShaderFork(sceneId, std::make_unique<ForkShaderCmd>(
+                    project, currentScene, shaderType, propertyName, directory, name, forkIncludes));
+            });
     };
 
     ImGui::TableNextRow();
@@ -4969,12 +5010,12 @@ void editor::Properties::drawSceneShaderRow(SceneProject* sceneProject, ShaderTy
     ImGui::Text("%s", label);
     ImGui::TableSetColumnIndex(1);
 
-    drawShaderRowContents(shaderType, currentShader, setShader, prepareFork, scenePropertyName);
+    drawShaderRowContents(shaderType, currentShader, setShader, onFork, scenePropertyName);
 }
 
 void editor::Properties::drawShaderRowContents(ShaderType shaderType, const std::string& currentShader,
                                                const std::function<void(const std::string&)>& setShader,
-                                               const std::function<Properties::ShaderForkAction()>& prepareFork,
+                                               const std::function<void()>& onFork,
                                                const std::string& idSuffix){
     const std::filesystem::path projectPath = project->getProjectPath();
 
@@ -5014,28 +5055,8 @@ void editor::Properties::drawShaderRowContents(ShaderType shaderType, const std:
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x / 3.0, ImGui::GetStyle().FramePadding.y / 2.0));
 
     ImGui::BeginDisabled(hasCustom);
-    if (ImGui::Button((std::string(ICON_FA_CODE_FORK "##fork_") + idSuffix).c_str())) {
-        ShaderForkAction fork = prepareFork();
-        if (!fork.base.empty() && fork.confirm) {
-            const std::string base = fork.base;
-            const std::filesystem::path openProjectPath = projectPath;
-            Backend::getApp().registerConfirmAlert(
-                "Fork Shader",
-                "Do you want to fork the built-in shader into \"" + base + "\"?",
-                [fork, base, openProjectPath]() {
-                    fork.confirm();
-                    if (CodeEditor* codeEditor = Backend::getApp().getCodeEditor()) {
-                        codeEditor->openFile((openProjectPath / (base + ".vert")).string(), true);
-                        codeEditor->openFile((openProjectPath / (base + ".frag")).string(), true);
-                    }
-                },
-                [fork]() {
-                    if (fork.cancel)
-                        fork.cancel();
-                }
-            );
-        }
-    }
+    if (ImGui::Button((std::string(ICON_FA_CODE_FORK "##fork_") + idSuffix).c_str()) && onFork)
+        onFork();
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Fork the built-in shader into this project");
     ImGui::EndDisabled();
@@ -5127,11 +5148,19 @@ void editor::Properties::drawShaderFilesPopup(const std::string& popupName, cons
     float clearBtnWidth = ImGui::CalcTextSize(ICON_FA_XMARK).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     float btnSpacing = ImGui::GetStyle().ItemSpacing.x;
 
+    bool changed = false;
+
     // Picks a shader file of the required extension into the given slot.
     auto pickSlot = [&](std::string& slotRel, const char* requiredExt) {
-        std::filesystem::path shadersDir = projectPath / project->getShaderSourcesDir();
-        std::string startDir = (std::filesystem::exists(shadersDir) ? shadersDir : projectPath).string();
-        std::string selected = FileDialogs::openFileDialog(startDir, FILE_DIALOG_SHADER);
+        std::filesystem::path startDir = projectPath;
+        const std::string nearby = !slotRel.empty() ? slotRel
+                                  : (!currentVert.empty() ? currentVert : currentFrag);
+        if (!nearby.empty()) {
+            const std::filesystem::path parent = (projectPath / nearby).parent_path();
+            if (std::filesystem::is_directory(parent))
+                startDir = parent;
+        }
+        std::string selected = FileDialogs::openFileDialog(startDir.string(), FILE_DIALOG_SHADER);
         if (selected.empty())
             return;
 
@@ -5148,6 +5177,7 @@ void editor::Properties::drawShaderFilesPopup(const std::string& popupName, cons
             return;
         }
         slotRel = rel.generic_string();
+        changed = true;
     };
 
     auto slotRow = [&](const char* label, std::string& slotRel, const char* requiredExt, const char* idSuffix) {
@@ -5168,8 +5198,10 @@ void editor::Properties::drawShaderFilesPopup(const std::string& popupName, cons
             pickSlot(slotRel, requiredExt);
         ImGui::SameLine();
         ImGui::BeginDisabled(slotRel.empty());
-        if (ImGui::Button((std::string(ICON_FA_XMARK "##clear_") + idSuffix).c_str()))
+        if (ImGui::Button((std::string(ICON_FA_XMARK "##clear_") + idSuffix).c_str())) {
             slotRel.clear();
+            changed = true;
+        }
         ImGui::EndDisabled();
     };
 
@@ -5182,26 +5214,19 @@ void editor::Properties::drawShaderFilesPopup(const std::string& popupName, cons
     slotRow("Fragment File", fragEdit, ".frag", "frag");
     endTable();
 
-    ImGui::Separator();
-
-    const bool bothEmpty = vertEdit.empty() && fragEdit.empty();
-    const bool bothSet = !vertEdit.empty() && !fragEdit.empty();
+    bool bothEmpty = vertEdit.empty() && fragEdit.empty();
+    bool bothSet = !vertEdit.empty() && !fragEdit.empty();
     if (!bothEmpty && !bothSet)
         ImGui::TextDisabled("Set both a vertex and a fragment file.");
 
-    ImGui::BeginDisabled(!bothEmpty && !bothSet);
-    if (ImGui::Button("Apply##apply_shader_files")) {
+    // A shader needs both entry points, so a half-filled pair waits for the other slot.
+    if (changed && (bothEmpty || bothSet)) {
         std::string newValue = bothEmpty ? std::string() : Util::makeCustomShader(vertEdit, fragEdit);
         std::string currentValue = (currentVert.empty() || currentFrag.empty()) ? std::string() : Util::makeCustomShader(currentVert, currentFrag);
         if (newValue != currentValue) {
             setShader(newValue);
         }
-        ImGui::CloseCurrentPopup();
     }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel##cancel_shader_files"))
-        ImGui::CloseCurrentPopup();
 
     ImGui::EndPopup();
 }
@@ -13093,6 +13118,7 @@ void editor::Properties::show(){
     usedPreviewIds.clear();
 
     scriptCreateDialog.show();
+    shaderForkDialog.show();
     textureSlicerToolDialog.show();
 
     ImGui::End();

@@ -1,5 +1,7 @@
 #include "DeleteFileCmd.h"
 
+#include "util/Util.h"
+
 #include <filesystem>
 #include <string>
 
@@ -38,10 +40,13 @@ bool editor::DeleteFileCmd::execute(){
     }
 
     std::vector<fs::path> deletedPaths;
+    bool deletedShaderSource = false;
 
     for (DeleteFilesData& file : files){
         try {
             if (fs::exists(file.originalFile)) {
+                const bool isDirectory = fs::is_directory(file.originalFile);
+                deletedShaderSource |= isDirectory || Util::isShaderFile(file.originalFile.string());
                 // Check if file is inside .trash directory or is .trash directory
                 if (file.originalFile == trash || 
                     fs::relative(file.originalFile, trash).string().find("..") == std::string::npos) {
@@ -76,22 +81,29 @@ bool editor::DeleteFileCmd::execute(){
             project->cleanupAssetFilePath(deletedPath);
             project->cleanupShaderFilePath(deletedPath);
         }
+        if (deletedShaderSource)
+            project->invalidateCustomShaders();
     }
 
     return true;
 }
 
 void editor::DeleteFileCmd::undo(){
+    bool restoredShaderSource = false;
     for (DeleteFilesData& file : files){
         try {
             // Only attempt to restore if the file was moved to trash (not permanently deleted)
             if (!file.trashFile.empty() && fs::exists(file.trashFile)) {
                 fs::rename(file.trashFile, file.originalFile);
+                restoredShaderSource |= fs::is_directory(file.originalFile) ||
+                                        Util::isShaderFile(file.originalFile.string());
             }
         } catch (const fs::filesystem_error& e) {
             printf("Error: Restoring %s: %s\n", file.originalFile.string().c_str(), e.what());
         }
     }
+    if (project && restoredShaderSource)
+        project->invalidateCustomShaders();
 }
 
 bool editor::DeleteFileCmd::mergeWith(editor::Command* otherCommand){

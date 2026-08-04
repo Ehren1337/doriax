@@ -72,26 +72,51 @@ public:
     static void setDefaultSkyTexture(Texture& outTexture);
 
     // Resolved plan for a built-in shader fork: the project-relative base path (no
-    // extension), the absolute .vert/.frag target paths, and the source contents to
-    // write. Computed without touching the filesystem so it can drive an undoable command.
+    // extension), the absolute target paths, and the source contents to write. Computed
+    // without touching the filesystem so it can drive an undoable command.
     struct ShaderForkPlan {
         bool valid = false;
+        std::string error;
         std::string base;                  // e.g. "shaders/myMesh"
         std::filesystem::path vertPath;    // absolute
         std::filesystem::path fragPath;    // absolute
+        // Empty unless includes were forked, in which case the fork owns this directory
+        // and holds its entry points plus the copied includes/ tree inside it.
+        std::filesystem::path forkDirPath;      // absolute
         std::string vertContent;
         std::string fragContent;
+        struct IncludeFile {
+            std::filesystem::path path;    // absolute
+            std::string content;
+        };
+        std::vector<IncludeFile> includeFiles;
     };
 
-    // Plans a built-in shader fork (Mesh/UI/Points/Lines/Sky) without writing anything:
-    // resolves a unique base name from desiredName and the .vert/.frag targets + engine
-    // sources (their #includes still resolve to the engine). Returns plan.valid == false
-    // on failure.
-    static ShaderForkPlan prepareShaderFork(Project* project, ShaderType shaderType, const std::string& desiredName);
+    // Default used only by non-interactive callers. The editor dialog lets the user
+    // select any directory inside the project for each individual fork.
+    static std::filesystem::path defaultShaderForkDir();
 
-    // Writes the planned fork's .vert/.frag files to disk (creating the shaders dir).
-    // Returns false on failure.
+    // Converts an entity/scene label to a safe filename and adds a numeric suffix until
+    // neither fork layout (loose .vert/.frag pair, or a directory of that name) is taken.
+    static std::string makeUniqueShaderName(const std::filesystem::path& absDir,
+                                            ShaderType shaderType,
+                                            const std::string& desiredName);
+
+    // Plans a built-in shader fork without writing anything. targetDirRel must be a safe
+    // project-relative directory and baseName the exact filename stem. Without includes
+    // the entry points stay loose in it; with them the fork takes <targetDirRel>/<base>/,
+    // so its copies override the engine library for no other shader.
+    static ShaderForkPlan prepareShaderFork(Project* project, ShaderType shaderType,
+                                            const std::filesystem::path& targetDirRel,
+                                            const std::string& baseName,
+                                            bool forkIncludes = false);
+
+    // Writes all planned files. It refuses collisions and removes partial output when a
+    // later write fails, so a failed command never truncates or strands source files.
     static bool writeShaderFork(const ShaderForkPlan& plan);
+
+    // Removes only files owned by the plan, then prunes the directories it created.
+    static void removeShaderFork(const ShaderForkPlan& plan);
 
     // Builds a MultiPropertyCmd that removes tile at tileIndex from a TilemapComponent.
     // Returns the command (caller must add it to CommandHandle) or nullptr if invalid.

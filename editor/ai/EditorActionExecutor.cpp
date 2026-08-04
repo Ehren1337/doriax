@@ -3785,6 +3785,12 @@ ActionResult EditorActionExecutor::forkShader(const Json& arguments) {
     const bool hasEntity = arguments.contains("entity_id") ||
                            (arguments.contains("entity_name") && arguments["entity_name"].is_string());
     const std::string shaderTypeArg = arguments.value("shader_type", "");
+    const bool forkIncludes = arguments.value("fork_includes", false);
+    const fs::path targetDirectory = fs::path(arguments.value(
+        "directory", ProjectUtils::defaultShaderForkDir().generic_string())).lexically_normal();
+    if (targetDirectory != "." && !PathUtils::isSafeRelativePath(targetDirectory)) {
+        return failResult("directory must be a safe project-relative path.");
+    }
 
     // No entity selector: fork a scene-wide default shader for the given type instead of a
     // specific component (priority: component customShader > scene default > built-in).
@@ -3805,10 +3811,14 @@ ActionResult EditorActionExecutor::forkShader(const Json& arguments) {
         }
 
         const std::string desiredName = sceneProject->name + " " + shaderTypeArg;
-        auto* forkCmd = new ForkShaderCmd(project, sceneProject, shaderType, scenePropertyName, desiredName);
+        const std::string forkName = ProjectUtils::makeUniqueShaderName(
+            project->getProjectPath() / targetDirectory, shaderType, desiredName);
+        auto* forkCmd = new ForkShaderCmd(project, sceneProject, shaderType, scenePropertyName,
+                                          targetDirectory, forkName, forkIncludes);
         if (!forkCmd->isValid()) {
+            const std::string error = forkCmd->getError();
             delete forkCmd;
-            return failResult("Failed to plan the shader fork (built-in source unavailable?).");
+            return failResult(error.empty() ? "Failed to plan the shader fork." : error);
         }
 
         const std::string base = forkCmd->getBase();
@@ -3860,10 +3870,14 @@ ActionResult EditorActionExecutor::forkShader(const Json& arguments) {
     }
 
     const std::string desiredName = sceneProject->scene->getEntityName(entity);
-    auto* forkCmd = new ForkShaderCmd(project, sceneId, entity, component, shaderType, desiredName);
+    const std::string forkName = ProjectUtils::makeUniqueShaderName(
+        project->getProjectPath() / targetDirectory, shaderType, desiredName);
+    auto* forkCmd = new ForkShaderCmd(project, sceneId, entity, component, shaderType,
+                                      targetDirectory, forkName, forkIncludes);
     if (!forkCmd->isValid()) {
+        const std::string error = forkCmd->getError();
         delete forkCmd;
-        return failResult("Failed to plan the shader fork (built-in source unavailable?).");
+        return failResult(error.empty() ? "Failed to plan the shader fork." : error);
     }
 
     const std::string base = forkCmd->getBase();
