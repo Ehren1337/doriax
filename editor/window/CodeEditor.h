@@ -101,6 +101,7 @@ namespace doriax::editor {
         void openFile(const std::string& filepath, bool dockToCentral = false);
         void closeFile(const std::string& filepath);
         bool isFileOpen(const std::string& filepath) const;
+        bool isFileModified(const std::string& filepath) const;
         void setText(const std::string& filepath, const std::string& text);
         std::string getText(const std::string& filepath) const;
         bool handleFileRename(const fs::path& oldPath, const fs::path& newPath);

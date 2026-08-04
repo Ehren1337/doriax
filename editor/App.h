@@ -236,6 +236,7 @@ namespace doriax::editor{
 
         Properties* getPropertiesWindow() const override;
         CodeEditor* getCodeEditor() const override;
+        ImageViewerWindow* getImageViewerWindow() const override;
         ResourcesWindow* getResourcesWindow() const;
         AnimationWindow* getAnimationWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;

@@ -1309,6 +1309,12 @@ bool editor::CodeEditor::isFileOpen(const std::string& filepath) const {
     return editors.find(key) != editors.end();
 }
 
+bool editor::CodeEditor::isFileModified(const std::string& filepath) const {
+    std::string key = toRelativePath(filepath);
+    auto it = editors.find(key);
+    return it != editors.end() && it->second.isModified;
+}
+
 void editor::CodeEditor::setText(const std::string& filepath, const std::string& text) {
     std::string key = toRelativePath(filepath);
     if (auto it = editors.find(key); it != editors.end()) {

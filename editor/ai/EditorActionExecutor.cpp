@@ -1189,6 +1189,16 @@ std::string assetPathFromAi(Project* project, const fs::path& projectRelative) {
     return project->normalizeToAssetsRelative(project->getProjectPath() / projectRelative).generic_string();
 }
 
+// Drag and drop refuses files outside the assets root: the exporter never copies them.
+bool isInsideAssets(Project* project, const fs::path& projectRelative) {
+    return project->isInsideAssetsPath(project->getProjectPath() / projectRelative);
+}
+
+std::string outsideAssetsError(Project* project, const std::string& argument) {
+    return argument + " must be inside the assets directory (\"" +
+           project->getAssetsDir().generic_string() + "\").";
+}
+
 std::string assetPathToAi(Project* project, const std::string& stored) {
     if (stored.empty()) return stored;
     return project->normalizeToProjectRelative(project->resolveAssetPath(stored)).generic_string();
@@ -1375,9 +1385,19 @@ Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity,
                 return nullptr;
             }
             {
-                const std::string value = args["string_value"].get<std::string>();
-                return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName,
-                    isAssetPathProperty(propertyName) ? assetPathFromAi(project, value) : value, onChanged);
+                std::string value = args["string_value"].get<std::string>();
+                if (isAssetPathProperty(propertyName) && !value.empty()) {
+                    if (!PathUtils::isSafeRelativePath(value)) {
+                        error = propertyName + " must be a safe project-relative path.";
+                        return nullptr;
+                    }
+                    if (!isInsideAssets(project, value)) {
+                        error = outsideAssetsError(project, propertyName);
+                        return nullptr;
+                    }
+                    value = assetPathFromAi(project, value);
+                }
+                return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, value, onChanged);
             }
         case PropertyType::Float: {
             if (!valueFieldPresent(args, "number_value") || !args["number_value"].is_number()) {
@@ -1448,6 +1468,10 @@ Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity,
             fs::path rel(args["texture_path"].get<std::string>());
             if (!PathUtils::isSafeRelativePath(rel)) {
                 error = "texture_path must be a safe project-relative path.";
+                return nullptr;
+            }
+            if (!isInsideAssets(project, rel)) {
+                error = outsideAssetsError(project, "texture_path");
                 return nullptr;
             }
             return new PropertyCmd<Texture>(project, sceneId, entity, component, propertyName, Texture(assetPathFromAi(project, rel)), onChanged);
@@ -3118,6 +3142,10 @@ ActionResult EditorActionExecutor::setTerrainTextures(const Json& arguments) {
             delete multiCmd;
             return failResult(std::string(field.arg) + " must be an existing safe project-relative path.");
         }
+        if (!isInsideAssets(project, rel)) {
+            delete multiCmd;
+            return failResult(outsideAssetsError(project, field.arg));
+        }
         auto onChanged = [project = this->project, sceneId, entity, height = field.height]() {
             SceneProject* sp = project ? project->getScene(sceneId) : nullptr;
             TerrainComponent* terrain = sp && sp->scene ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr;
@@ -4006,6 +4034,9 @@ ActionResult EditorActionExecutor::importProjectModel(const Json& arguments) {
     fs::path fullPath = project->getProjectPath() / relPath;
     if (!fs::exists(fullPath)) {
         return failResult("Model file does not exist in the project.");
+    }
+    if (!isInsideAssets(project, relPath)) {
+        return failResult(outsideAssetsError(project, "model_path"));
     }
 
     Vector3 position = Vector3::ZERO;

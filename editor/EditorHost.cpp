@@ -88,6 +88,10 @@ CodeEditor* EditorHost::getCodeEditor() const {
     return nullptr;
 }
 
+ImageViewerWindow* EditorHost::getImageViewerWindow() const {
+    return nullptr;
+}
+
 static EditorHost s_defaultHost;
 static EditorHost* s_activeHost = &s_defaultHost;
 

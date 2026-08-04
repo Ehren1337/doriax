@@ -1819,6 +1819,10 @@ editor::CodeEditor* editor::App::getCodeEditor() const{
     return codeEditor;
 }
 
+editor::ImageViewerWindow* editor::App::getImageViewerWindow() const{
+    return imageViewerWindow;
+}
+
 editor::ResourcesWindow* editor::App::getResourcesWindow() const{
     return resourcesWindow;
 }

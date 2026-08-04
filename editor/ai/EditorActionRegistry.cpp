@@ -117,12 +117,12 @@ Json propertyValueFields(std::initializer_list<std::pair<const char*, Json>> ext
         {"bool_value", boolSchema("Boolean property value")},
         {"int_value", integerSchema("Integer/enum property value")},
         {"number_value", numberSchema("Float/double property value")},
-        {"string_value", stringSchema("String property value")},
+        {"string_value", stringSchema("String property value. The asset-path properties filename and font take a project-relative path inside the assets directory (get_project_summary reports it as assets_dir), or an empty string to clear it")},
         {"vector2_value", vector2Schema("Vector2 property value")},
         {"vector3_value", vector3Schema("Vector3 or Color3 property value")},
         {"vector4_value", vector4Schema("Vector4 or Color4 property value")},
         {"quat_value", quaternionSchema("Quaternion property value")},
-        {"texture_path", stringSchema("Project-relative texture/resource path for Texture properties. For .svg sources an optional '?svgScale=N' suffix sets the rasterization scale (e.g. 'ui/icon.svg?svgScale=2')")},
+        {"texture_path", stringSchema("Project-relative texture/resource path for Texture properties, inside the assets directory reported by get_project_summary as assets_dir. For .svg sources an optional '?svgScale=N' suffix sets the rasterization scale (e.g. 'ui/icon.svg?svgScale=2')")},
         {"entity_value", integerSchema("Entity id for Entity or EntityReference properties")},
         {"entity_scene_id", integerSchema("Scene id for EntityReference properties. Omit to use scene_id")}
     });
@@ -518,7 +518,7 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Import an existing project-relative glTF/GLB/OBJ model into a 3D scene using ModelLoadCmd.",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
-                {"model_path", stringSchema("Project-relative model path, e.g. assets/models/dog.glb")},
+                {"model_path", stringSchema("Project-relative model path inside the assets directory (get_project_summary reports it as assets_dir), e.g. assets/models/dog.glb")},
                 {"entity_name", stringSchema("Name for the created model entity")},
                 {"position", vector3Schema("Optional drop position")}
             }, {"model_path"}),
@@ -596,7 +596,7 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "set_terrain_textures",
-            "Assign terrain base/blend/detail texture paths through undoable property commands.",
+            "Assign terrain base/blend/detail texture paths through undoable property commands. Every path must be inside the assets directory (get_project_summary reports it as assets_dir).",
             objectSchema({
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Terrain entity id")},
