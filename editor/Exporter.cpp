@@ -193,7 +193,7 @@ void editor::Exporter::runExport() {
             std::lock_guard<std::mutex> lock(progressMutex);
             progress.finished = true;
         }
-        Out::info("Shaders generated successfully at: %s", getShaderOutputDir().string().c_str());
+        Out::info("Shaders generated successfully at: %s", config.targetDir.string().c_str());
         return;
     }
 
@@ -279,25 +279,6 @@ std::string editor::Exporter::getEffectiveGenerator() const {
     }
     const char* envGenerator = std::getenv("CMAKE_GENERATOR");
     return envGenerator ? envGenerator : "";
-}
-
-fs::path editor::Exporter::getShaderOutputDir() const {
-    if (!config.shaderOutputDir.empty()) {
-        return config.shaderOutputDir;
-    }
-
-    if (config.shaderOutputFormat == ShaderOutputFormat::Header) {
-        return config.targetDir / "shaders";
-    }
-
-    // Loose .sdat/JSON go under the project's compiled-shaders dir inside assets.
-    // NOTE: the standalone runtime loads them from System::getShaderPath() =
-    // <assets>/shaders (the "/shaders" suffix is hardcoded in the engine), so for a
-    // loose-file export the dir must stay "shaders" to be found. It is freely
-    // configurable for the default Header export, which embeds shaders into the build
-    // and never reads this directory at runtime.
-    const fs::path shadersDir = project ? project->getShadersDir() : fs::path("shaders");
-    return getExportProjectRoot() / "assets" / shadersDir;
 }
 
 bool editor::Exporter::shouldSkipExportSupportFile(const fs::path& relativePath) {
@@ -1586,7 +1567,8 @@ bool editor::Exporter::buildAndSaveShaders() {
         config.selectedShaderKeys = std::move(normalizedKeys);
     }
 
-    fs::path shadersDst = getShaderOutputDir();
+    // Shader-only generation writes straight into the requested dir
+    fs::path shadersDst = project ? config.targetDir / "shaders" : config.targetDir;
 
     std::error_code ec;
     fs::create_directories(shadersDst, ec);

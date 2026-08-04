@@ -40,7 +40,7 @@ std::string editor::Platform::getLuaPath(){
 
 std::string editor::Platform::getShaderPath(){
     // Compiled shaders are a build output, not a referenced asset
-    return (project->getProjectPath() / project->getShadersDir()).string();
+    return (project->getProjectPath() / "shaders").string();
 }
 
 void editor::Platform::setMouseMode(MouseMode mode){

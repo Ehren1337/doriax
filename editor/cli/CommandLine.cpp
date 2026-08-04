@@ -599,7 +599,6 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
 
     ExportConfig config;
     config.targetDir = options.targetDir;
-    config.shaderOutputDir = options.targetDir;
     config.shaderOutputFormat = options.outputFormat;
     config.selectedPlatforms = options.platforms;
     config.selectedShaderKeys = options.shaderKeys;

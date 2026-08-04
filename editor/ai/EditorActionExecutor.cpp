@@ -3729,7 +3729,6 @@ ActionResult EditorActionExecutor::generateShaders(const Json& arguments, const 
     if (cancel && cancel->load()) return failResult("Shader generation cancelled.");
     ExportConfig config;
     config.targetDir = arguments.value("target_dir", "");
-    config.shaderOutputDir = config.targetDir;
     std::string error;
     config.selectedPlatforms = parsePlatformList(arguments.value("platforms", "all"), error);
     if (!error.empty()) return failResult(error);

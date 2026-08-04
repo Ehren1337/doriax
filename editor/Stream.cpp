@@ -1518,9 +1518,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (!project->getLuaDir().empty()) {
         root["luaDir"] = project->getLuaDir().string();
     }
-    if (project->getShadersDir() != "shaders") {
-        root["shadersDir"] = project->getShadersDir().string();
-    }
     if (!project->getCMakeCCompiler().empty()) {
         root["cmakeCCompiler"] = project->getCMakeCCompiler();
     }
@@ -1688,10 +1685,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node) {
 
     if (node["luaDir"]) {
         project->setLuaDir(node["luaDir"].as<std::string>());
-    }
-
-    if (node["shadersDir"]) {
-        project->setShadersDir(node["shadersDir"].as<std::string>());
     }
 
     if (node["cmakeCCompiler"] || node["cmakeCxxCompiler"] || node["cmakeGenerator"]) {

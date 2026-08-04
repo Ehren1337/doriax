@@ -168,7 +168,6 @@ namespace doriax::editor{
         std::filesystem::path windowIcon;  // project-relative image path; empty = no icon
         std::filesystem::path assetsDir;
         std::filesystem::path luaDir;
-        std::filesystem::path shadersDir;        // compiled .sdat output dir (engine/build-facing)
         std::string cmakeCCompiler;
         std::string cmakeCxxCompiler;
         std::string cmakeGenerator;
@@ -376,11 +375,6 @@ namespace doriax::editor{
         // Applies new roots: referenced files outside them are moved in keeping their
         // layout, then every stored reference is rewritten and saved.
         void changeAssetRoots(const std::filesystem::path& newAssetsDir, const std::filesystem::path& newLuaDir);
-
-        // Directory (project-relative) where compiled .sdat shaders are written/loaded.
-        // This is the engine/build-facing location. Defaults to "shaders".
-        void setShadersDir(const std::filesystem::path& shadersDir);
-        std::filesystem::path getShadersDir() const;
 
         void setCMakeKit(const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator = "");
         std::string getCMakeCCompiler() const;

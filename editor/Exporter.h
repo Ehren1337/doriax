@@ -40,7 +40,6 @@ namespace doriax::editor {
         uint32_t startSceneId = 0;
         std::set<ShaderKey> selectedShaderKeys;
         std::set<::doriax::Platform> selectedPlatforms;
-        fs::path shaderOutputDir;
         ShaderOutputFormat shaderOutputFormat = ShaderOutputFormat::Header;
         // Desktop: compiler kit from project settings ("" = CMake default toolchain)
         std::string cmakeCCompiler;
@@ -100,7 +99,6 @@ namespace doriax::editor {
         void collectSelectedShaderKeys(bool mergeWithExisting = false);
 
         fs::path getExportProjectRoot() const;
-        fs::path getShaderOutputDir() const;
         static bool shouldSkipExportSupportFile(const fs::path& relativePath);
         static bool isCppHeaderFile(const fs::path& path);
         static bool isCppSourceFile(const fs::path& path);

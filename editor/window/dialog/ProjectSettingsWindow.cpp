@@ -344,7 +344,6 @@ void ProjectSettingsWindow::open(Project* project) {
     m_windowIcon = project->getWindowIcon();
     m_assetsDir = project->getAssetsDir();
     m_luaDir = project->getLuaDir();
-    m_shadersDir = project->getShadersDir();
 
     m_startSceneId = project->getStartSceneId();
     const SceneProject* startScene = project->getScene(m_startSceneId);
@@ -618,10 +617,6 @@ void ProjectSettingsWindow::drawDirectoriesSettings() {
             m_project, "Lua Directory", nullptr, "##LuaPath", "Browse##lua",
             m_luaDir, fs::path("."), true
         );
-        drawDirectorySetting(
-            m_project, "Shader Binaries Directory", "Where compiled .sdat shaders are written/loaded (engine-facing).",
-            "##ShadersPath", "Browse##shaders", m_shadersDir, fs::path("shaders")
-        );
     });
 }
 
@@ -700,7 +695,6 @@ void ProjectSettingsWindow::applySettings() {
 
     // Moves the referenced files in and rewrites every reference to the new roots
     m_project->changeAssetRoots(m_assetsDir, m_luaDir);
-    m_project->setShadersDir(m_shadersDir);
 
     const SceneProject* startScene = m_project->getScene(m_startSceneId);
     if (startScene && !startScene->filepath.empty()) {

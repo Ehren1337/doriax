@@ -2175,15 +2175,6 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
     saveProjectFile();
 }
 
-void editor::Project::setShadersDir(const std::filesystem::path& shadersDir){
-    this->shadersDir = shadersDir;
-}
-
-std::filesystem::path editor::Project::getShadersDir() const{
-    // Falls back to the default so older projects (and a cleared setting) still resolve.
-    return shadersDir.empty() ? std::filesystem::path("shaders") : shadersDir;
-}
-
 void editor::Project::setCMakeKit(const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator){
     this->cmakeCCompiler = cCompiler;
     this->cmakeCxxCompiler = cxxCompiler;
@@ -3329,7 +3320,6 @@ void editor::Project::resetConfigs() {
     windowIcon.clear();
     assetsDir = ".";
     luaDir = ".";
-    shadersDir = "shaders";
     cmakeCCompiler = "";
     cmakeCxxCompiler = "";
     cmakeGenerator = "";
