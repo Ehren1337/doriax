@@ -62,8 +62,12 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addStaticProperty("NEGATIVE_UNIT_X", &Vector2::NEGATIVE_UNIT_X)
         .addStaticProperty("NEGATIVE_UNIT_Y", &Vector2::NEGATIVE_UNIT_Y)
         .addStaticProperty("UNIT_SCALE", &Vector2::UNIT_SCALE)
-        .addProperty("x", &Vector2::x)
-        .addProperty("y", &Vector2::y)
+        .addProperty("x",
+            [] (Vector2* self) { return self->x; },
+            [] (Vector2* self, float value) { self->x = value; })
+        .addProperty("y",
+            [] (Vector2* self) { return self->y; },
+            [] (Vector2* self, float value) { self->y = value; })
         .addFunction("__tostring", &Vector2::toString)
         .addFunction("__eq", &Vector2::operator==)
         .addFunction("__lt", &Vector2::operator<)
@@ -108,9 +112,15 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addStaticProperty("UNIT_Y", &Vector3::UNIT_Y)
         .addStaticProperty("UNIT_Z", &Vector3::UNIT_Z)
         .addStaticProperty("UNIT_SCALE", &Vector3::UNIT_SCALE)
-        .addProperty("x", &Vector3::x)
-        .addProperty("y", &Vector3::y)
-        .addProperty("z", &Vector3::z)
+        .addProperty("x",
+            [] (Vector3* self) { return self->x; },
+            [] (Vector3* self, float value) { self->x = value; })
+        .addProperty("y",
+            [] (Vector3* self) { return self->y; },
+            [] (Vector3* self, float value) { self->y = value; })
+        .addProperty("z",
+            [] (Vector3* self) { return self->z; },
+            [] (Vector3* self, float value) { self->z = value; })
         .addFunction("__tostring", &Vector3::toString)
         .addFunction("__eq", &Vector3::operator==)
         .addFunction("__lt", &Vector3::operator<)
@@ -153,10 +163,18 @@ void LuaBinding::registerMathClasses(lua_State *L){
         .addStaticProperty("UNIT_Z", &Vector4::UNIT_Z)
         .addStaticProperty("UNIT_W", &Vector4::UNIT_W)
         .addStaticProperty("UNIT_SCALE", &Vector4::UNIT_SCALE)
-        .addProperty("x", &Vector4::x)
-        .addProperty("y", &Vector4::y)
-        .addProperty("z", &Vector4::z)
-        .addProperty("w", &Vector4::w)
+        .addProperty("x",
+            [] (Vector4* self) { return self->x; },
+            [] (Vector4* self, float value) { self->x = value; })
+        .addProperty("y",
+            [] (Vector4* self) { return self->y; },
+            [] (Vector4* self, float value) { self->y = value; })
+        .addProperty("z",
+            [] (Vector4* self) { return self->z; },
+            [] (Vector4* self, float value) { self->z = value; })
+        .addProperty("w",
+            [] (Vector4* self) { return self->w; },
+            [] (Vector4* self, float value) { self->w = value; })
         .addFunction("__tostring", &Vector4::toString)
         .addFunction("__eq", &Vector4::operator==)
         .addFunction("__lt", &Vector4::operator<)
@@ -310,6 +328,18 @@ void LuaBinding::registerMathClasses(lua_State *L){
             void(const Matrix3&),
             void(const Matrix4&)>()
         .addStaticProperty("IDENTITY", &Quaternion::IDENTITY)
+        .addProperty("w",
+            [] (Quaternion* self) { return self->w; },
+            [] (Quaternion* self, float value) { self->w = value; })
+        .addProperty("x",
+            [] (Quaternion* self) { return self->x; },
+            [] (Quaternion* self, float value) { self->x = value; })
+        .addProperty("y",
+            [] (Quaternion* self) { return self->y; },
+            [] (Quaternion* self, float value) { self->y = value; })
+        .addProperty("z",
+            [] (Quaternion* self) { return self->z; },
+            [] (Quaternion* self, float value) { self->z = value; })
         .addFunction("__tostring", &Quaternion::toString)
         .addFunction("__eq", &Quaternion::operator==)
         .addFunction("__sub", (Quaternion (Quaternion::*)(const Quaternion&) const)&Quaternion::operator-)
