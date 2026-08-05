@@ -495,7 +495,7 @@ void editor::DeleteEntityCmd::undo(){
             }
 
             std::vector<Entity> allEntities = Stream::decodeEntity(entityData.data, sceneProject->scene,
-                &sceneProject->entities, project, sceneProject, NULL_ENTITY, true, &entityRemap);
+                &sceneProject->entities, project, sceneProject, NULL_ENTITY, true, false, &entityRemap);
             if (allEntities.empty()) {
                 continue;
             }

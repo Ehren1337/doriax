@@ -2253,7 +2253,7 @@ std::vector<Entity> editor::Stream::decodeEntitySelection(const YAML::Node& enti
         return allEntities;
     }
 
-    return decodeEntity(entityNode, registry, entities, project, sceneProject, parent, createNewIfExists, entityRemap);
+    return decodeEntity(entityNode, registry, entities, project, sceneProject, parent, createNewIfExists, false, entityRemap);
 }
 
 YAML::Node editor::Stream::encodeEntity(const Entity entity, const EntityRegistry* registry,
@@ -2701,7 +2701,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
     return prop;
 }
 
-std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities, Project* project, SceneProject* sceneProject, Entity parent, bool createNewIfExists, std::unordered_map<Entity, Entity>* entityRemap) {
+std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities, Project* project, SceneProject* sceneProject, Entity parent, bool createNewIfExists, bool removeMissingComponents, std::unordered_map<Entity, Entity>* entityRemap) {
     std::vector<Entity> allEntities;
 
     if (!entityNode || !entityNode.IsMap() || !entityNode["type"]) {
@@ -2741,6 +2741,19 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
             decodeComponents(entity, parent, registry, entityNode["components"]);
         }
 
+        // Components added to a live entity after it was encoded, like a script calling
+        // getBody3D(), are not removed by decodeComponents
+        if (removeMissingComponents){
+            YAML::Node savedComponents = entityNode["components"];
+            std::vector<Entity> unusedEntities;
+            std::vector<Entity>& sceneEntities = entities ? *entities : (sceneProject ? sceneProject->entities : unusedEntities);
+
+            for (ComponentType cpType : Catalog::findComponents(registry, entity)){
+                if (savedComponents && savedComponents[Catalog::getComponentName(cpType, true)]) continue;
+                ProjectUtils::removeEntityComponent(registry, entity, cpType, sceneEntities);
+            }
+        }
+
         // If entity has BundleComponent, import bundle children from its path
         if (project && sceneProject) {
             BundleComponent* bundleComp = registry->findComponent<BundleComponent>(entity);
@@ -2755,7 +2768,7 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
         // Decode children from actualNode
         if (entityNode["children"]) {
             for (const auto& childNode : entityNode["children"]) {
-                std::vector<Entity> childEntities = decodeEntity(childNode, registry, entities, project, sceneProject, entity, createNewIfExists, entityRemap);
+                std::vector<Entity> childEntities = decodeEntity(childNode, registry, entities, project, sceneProject, entity, createNewIfExists, removeMissingComponents, entityRemap);
                 std::copy(childEntities.begin(), childEntities.end(), std::back_inserter(allEntities));
             }
         }

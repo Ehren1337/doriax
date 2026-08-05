@@ -221,7 +221,9 @@ namespace doriax::editor {
         // still keeping active imported bundle descendants opaque.
         static YAML::Node encodeEntity(const Entity entity, const EntityRegistry* registry,
             const Project* project, const SceneProject* sceneProject, bool ignoreContainingBundle);
-        static std::vector<Entity> decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, std::unordered_map<Entity, Entity>* entityRemap = nullptr);
+        // removeMissingComponents also removes the components the node does not hold, so a
+        // live entity is restored exactly. Only for nodes with a full component encode.
+        static std::vector<Entity> decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, bool removeMissingComponents = false, std::unordered_map<Entity, Entity>* entityRemap = nullptr);
 
         static YAML::Node encodeMaterial(const Material& material, bool embedTextureData = true);
         static Material decodeMaterial(const YAML::Node& node);

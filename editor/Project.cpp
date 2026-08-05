@@ -3523,15 +3523,10 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         if (sceneProject->playStateSnapshot && !sceneProject->playStateSnapshot.IsNull()) {
             Stream::decodeScene(sceneProject->scene, sceneProject->playStateSnapshot["scene"]);
 
+            // entities are still live, so the decode also removes components added during play
             auto entitiesNode = sceneProject->playStateSnapshot["entities"];
             for (const auto& entityNode : entitiesNode) {
-                Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false);
-            }
-
-            // Remove InstancedMeshComponent dynamically added during play (e.g. particle targets).
-            for (const auto& entityNode : entitiesNode) {
-                if (!entityNode["entity"] || !entityNode["components"]) continue;
-                ProjectUtils::removeDynamicInstmesh(entityNode["entity"].as<Entity>(), entityNode["components"], sceneProject->scene);
+                Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
             }
 
             // snapshot decode leaves camera-linked textures unresolved (no framebuffer)
@@ -5700,7 +5695,7 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
             }
 
             std::vector<Entity> decoded = Stream::decodeEntity(localEntNode, scene, entities, this, sceneProject,
-                parentEntity, true, entityRemap);
+                parentEntity, true, false, entityRemap);
             if (!decoded.empty()) {
                 Entity localEntity = decoded[0];
                 scene->addEntityChild(parentEntity, localEntity, true);
@@ -6078,7 +6073,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
 
     std::unordered_map<Entity, Entity> recoveredRegistryIds;
     std::vector<Entity> regEntities = Stream::decodeEntity(nodeRegData, bundle->registry.get(),
-        &bundle->registryEntities, nullptr, nullptr, NULL_ENTITY, true, &recoveredRegistryIds);
+        &bundle->registryEntities, nullptr, nullptr, NULL_ENTITY, true, false, &recoveredRegistryIds);
     if (regEntities.empty()) {
         Out::error("Could not recover registry data for entity bundle");
         return false;
@@ -6171,7 +6166,7 @@ bool editor::Project::addEntityToBundle(uint32_t sceneId, const NodeRecovery& re
         std::unordered_map<Entity, Entity> recoveredLocalIds;
         if (decodeBranch) {
             newOtherEntities = Stream::decodeEntity(nodeData, otherScene->scene,
-                &otherScene->entities, this, otherScene, NULL_ENTITY, true, &recoveredLocalIds);
+                &otherScene->entities, this, otherScene, NULL_ENTITY, true, false, &recoveredLocalIds);
         } else {
             ProjectUtils::collectEntities(nodeData, newOtherEntities);
         }
