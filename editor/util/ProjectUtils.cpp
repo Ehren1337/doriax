@@ -1859,6 +1859,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<LinesComponent>()))       return objectClass("Lines");
     if (signature.test(scene->getComponentId<PolygonComponent>()))     return objectClass("Polygon");
     if (signature.test(scene->getComponentId<MeshPolygonComponent>())) return meshClass("MeshPolygon");
+    if (signature.test(scene->getComponentId<MirrorComponent>()))      return meshClass("Mirror");
     if (signature.test(scene->getComponentId<MeshComponent>()))        return meshClass("Mesh");
     if (signature.test(scene->getComponentId<SkyComponent>()))         return handleClass("SkyBox");
     if (signature.test(scene->getComponentId<FogComponent>()))         return handleClass("Fog");

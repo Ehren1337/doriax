@@ -15,6 +15,7 @@
 #include "object/Object.h"
 #include "object/Mesh.h"
 #include "object/Shape.h"
+#include "object/Mirror.h"
 #include "object/Model.h"
 #include "object/MeshPolygon.h"
 #include "object/Points.h"
@@ -530,6 +531,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, doriax::Scene* scene, dori
     DISPATCH_TYPE(Occluder2D, "occluder2d");
     DISPATCH_TYPE(Mesh, "mesh");
     DISPATCH_TYPE(Shape, "shape");
+    DISPATCH_TYPE(Mirror, "mirror");
     DISPATCH_TYPE(Terrain, "terrain");
     DISPATCH_TYPE(Tilemap, "tilemap");
     DISPATCH_TYPE(Model, "model");

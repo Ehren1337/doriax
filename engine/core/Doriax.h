@@ -125,6 +125,7 @@
 #include "object/Lines.h"
 #include "object/Mesh.h"
 #include "object/MeshPolygon.h"
+#include "object/Mirror.h"
 #include "object/Model.h"
 #include "object/Object.h"
 #include "object/Occluder2D.h"

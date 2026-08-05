@@ -22,6 +22,7 @@
 #include "Occluder2D.h"
 #include "Mesh.h"
 #include "Shape.h"
+#include "Mirror.h"
 #include "Tilemap.h"
 #include "Bone.h"
 #include "Model.h"
@@ -482,6 +483,9 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("createPlane", 
             luabridge::overload<float, float>(&Shape::createPlane),
             luabridge::overload<float, float, unsigned int>(&Shape::createPlane))
+        .addFunction("createWall", 
+            luabridge::overload<float, float>(&Shape::createWall),
+            luabridge::overload<float, float, unsigned int>(&Shape::createWall))
         .addFunction("createBox", 
             luabridge::overload<float, float, float>(&Shape::createBox),
             luabridge::overload<float, float, float, unsigned int>(&Shape::createBox))
@@ -501,6 +505,13 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("createTorus", 
             luabridge::overload<float, float>(&Shape::createTorus),
             luabridge::overload<float, float, unsigned int, unsigned int>(&Shape::createTorus))
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<Mirror, Shape>("Mirror")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("normal", &Mirror::getNormal, (void(Mirror::*)(Vector3))&Mirror::setNormal)
+        .addFunction("setNormal", (void(Mirror::*)(const float, const float, const float))&Mirror::setNormal)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

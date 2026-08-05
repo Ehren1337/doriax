@@ -669,6 +669,7 @@ set(DORIAX_SRCS
     core/object/Lines.cpp
     core/object/Mesh.cpp
     core/object/MeshPolygon.cpp
+    core/object/Mirror.cpp
     core/object/Model.cpp
     core/object/Object.cpp
     core/object/Occluder2D.cpp
