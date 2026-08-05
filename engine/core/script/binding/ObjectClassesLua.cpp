@@ -1228,7 +1228,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addFunction("setBitsFilter", &Body3D::setBitsFilter)
         .addProperty("categoryBitsFilter", &Body3D::getCategoryBitsFilter, &Body3D::setCategoryBitsFilter)
         .addProperty("maskBitsFilter", &Body3D::getMaskBitsFilter, &Body3D::setMaskBitsFilter)
-        .addProperty("sllowSleeping", &Body3D::isAllowSleeping, &Body3D::setAllowSleeping)
+        .addProperty("allowSleeping", &Body3D::isAllowSleeping, &Body3D::setAllowSleeping)
         .addProperty("friction", &Body3D::getFriction, &Body3D::setFriction)
         .addProperty("restitution", &Body3D::getRestitution, &Body3D::setRestitution)
         .addProperty("position", &Body3D::getPosition, &Body3D::setPosition)
