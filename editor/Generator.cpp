@@ -690,6 +690,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    " + engineApiPathStr + "/renders\n";
     cmakeContent += "    " + engineApiPathStr + "/core\n";
     cmakeContent += "    " + engineApiPathStr + "/core/action\n";
+    cmakeContent += "    " + engineApiPathStr + "/core/action/keyframe\n";
     cmakeContent += "    " + engineApiPathStr + "/core/buffer\n";
     cmakeContent += "    " + engineApiPathStr + "/core/component\n";
     cmakeContent += "    " + engineApiPathStr + "/core/ecs\n";

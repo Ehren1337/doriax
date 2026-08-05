@@ -951,12 +951,14 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
         "    DPROPERTY(\"" + displayName + "\")\n"
         "    " + typeDecl + "* " + varName + " = nullptr;\n";
 
-    // If using a subclass type, check if we need to add an #include
+    // The member type must be declared: a subclass type needs its own script header,
+    // an engine type needs the engine header
     bool needsInclude = false;
     size_t includeInsertPos = std::string::npos;
     std::string includeDirective;
-    if (isSubclassType && !subclassHeaderFile.empty()) {
-        includeDirective = "#include \"" + subclassHeaderFile + "\"";
+    std::string typeHeaderFile = isSubclassType ? subclassHeaderFile : (entityType + ".h");
+    if (!typeHeaderFile.empty()) {
+        includeDirective = "#include \"" + typeHeaderFile + "\"";
         if (headerText.find(includeDirective) == std::string::npos) {
             needsInclude = true;
             // Find the last #include line to insert after it

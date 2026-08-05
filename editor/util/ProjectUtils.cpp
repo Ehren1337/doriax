@@ -1834,57 +1834,74 @@ void editor::ProjectUtils::removeDynamicInstmesh(Entity entity, const YAML::Node
     }
 }
 
-std::string editor::ProjectUtils::getEntityTypeName(Scene* scene, Entity entity) {
+namespace {
+
+using EntityClassInfo = editor::ProjectUtils::EntityClassInfo;
+
+// Base each class inherits, stated next to the component that selects it
+EntityClassInfo meshClass(const char* name)   { return {name, true,  true }; }
+EntityClassInfo objectClass(const char* name) { return {name, true,  false}; }
+EntityClassInfo handleClass(const char* name) { return {name, false, false}; }
+
+} // namespace
+
+editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(Scene* scene, Entity entity) {
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return handleClass("EntityHandle");
+
     Signature signature = scene->getSignature(entity);
 
-    if (signature.test(scene->getComponentId<ModelComponent>()))       return "Model";
-    if (signature.test(scene->getComponentId<BoneComponent>()))        return "Bone";
-    if (signature.test(scene->getComponentId<TilemapComponent>()))     return "Tilemap";
-    if (signature.test(scene->getComponentId<TerrainComponent>()))     return "Terrain";
-    if (signature.test(scene->getComponentId<SpriteComponent>()))      return "Sprite";
-    if (signature.test(scene->getComponentId<PointsComponent>()))      return "Points";
-    if (signature.test(scene->getComponentId<LinesComponent>()))       return "Lines";
-    if (signature.test(scene->getComponentId<PolygonComponent>()))     return "Polygon";
-    if (signature.test(scene->getComponentId<MeshPolygonComponent>())) return "MeshPolygon";
-    if (signature.test(scene->getComponentId<MeshComponent>()))        return "Mesh";
-    if (signature.test(scene->getComponentId<SkyComponent>()))         return "SkyBox";
-    if (signature.test(scene->getComponentId<FogComponent>()))         return "Fog";
-    if (signature.test(scene->getComponentId<SoundComponent>()))       return "Sound";
-    if (signature.test(scene->getComponentId<ButtonComponent>()))      return "Button";
-    if (signature.test(scene->getComponentId<ScrollbarComponent>()))   return "Scrollbar";
-    if (signature.test(scene->getComponentId<ProgressbarComponent>())) return "Progressbar";
-    if (signature.test(scene->getComponentId<TextEditComponent>()))    return "TextEdit";
-    if (signature.test(scene->getComponentId<TextComponent>()))        return "Text";
-    if (signature.test(scene->getComponentId<PanelComponent>()))       return "Panel";
-    if (signature.test(scene->getComponentId<ImageComponent>()))       return "Image";
-    if (signature.test(scene->getComponentId<UIContainerComponent>())) return "Container";
-    if (signature.test(scene->getComponentId<UIComponent>()))          return "UILayout";
-    if (signature.test(scene->getComponentId<Light2DComponent>()))     return "Light2D";
-    if (signature.test(scene->getComponentId<Occluder2DComponent>()))  return "Occluder2D";
-    if (signature.test(scene->getComponentId<LightComponent>()))       return "Light";
-    if (signature.test(scene->getComponentId<CameraComponent>()))      return "Camera";
-    if (signature.test(scene->getComponentId<ReflectionProbeComponent>())) return "ReflectionProbe";
-    if (signature.test(scene->getComponentId<Body2DComponent>()))      return "Body2D";
-    if (signature.test(scene->getComponentId<Body3DComponent>()))      return "Body3D";
-    if (signature.test(scene->getComponentId<Joint2DComponent>()))     return "Joint2D";
-    if (signature.test(scene->getComponentId<Joint3DComponent>()))     return "Joint3D";
-    if (signature.test(scene->getComponentId<AlphaActionComponent>())) return "AlphaAction";
-    if (signature.test(scene->getComponentId<ColorActionComponent>())) return "ColorAction";
-    if (signature.test(scene->getComponentId<PositionActionComponent>())) return "PositionAction";
-    if (signature.test(scene->getComponentId<RotationActionComponent>())) return "RotationAction";
-    if (signature.test(scene->getComponentId<ScaleActionComponent>())) return "ScaleAction";
-    if (signature.test(scene->getComponentId<TimedActionComponent>())) return "TimedAction";
-    if (signature.test(scene->getComponentId<AnimationComponent>()))   return "Animation";
-    if (signature.test(scene->getComponentId<SpriteAnimationComponent>())) return "SpriteAnimation";
-    if (signature.test(scene->getComponentId<MorphTracksComponent>())) return "MorphTracks";
-    if (signature.test(scene->getComponentId<RotateTracksComponent>())) return "RotateTracks";
-    if (signature.test(scene->getComponentId<ScaleTracksComponent>())) return "ScaleTracks";
-    if (signature.test(scene->getComponentId<TranslateTracksComponent>())) return "TranslateTracks";
-    if (signature.test(scene->getComponentId<ParticlesComponent>()))   return "Particles";
-    if (signature.test(scene->getComponentId<ActionComponent>()))      return "Action";
-    if (signature.test(scene->getComponentId<Transform>()))            return "Object";
+    if (signature.test(scene->getComponentId<ModelComponent>()))       return meshClass("Model");
+    if (signature.test(scene->getComponentId<BoneComponent>()))        return objectClass("Bone");
+    if (signature.test(scene->getComponentId<TilemapComponent>()))     return meshClass("Tilemap");
+    if (signature.test(scene->getComponentId<TerrainComponent>()))     return meshClass("Terrain");
+    if (signature.test(scene->getComponentId<SpriteComponent>()))      return meshClass("Sprite");
+    if (signature.test(scene->getComponentId<PointsComponent>()))      return objectClass("Points");
+    if (signature.test(scene->getComponentId<LinesComponent>()))       return objectClass("Lines");
+    if (signature.test(scene->getComponentId<PolygonComponent>()))     return objectClass("Polygon");
+    if (signature.test(scene->getComponentId<MeshPolygonComponent>())) return meshClass("MeshPolygon");
+    if (signature.test(scene->getComponentId<MeshComponent>()))        return meshClass("Mesh");
+    if (signature.test(scene->getComponentId<SkyComponent>()))         return handleClass("SkyBox");
+    if (signature.test(scene->getComponentId<FogComponent>()))         return handleClass("Fog");
+    if (signature.test(scene->getComponentId<SoundComponent>()))       return handleClass("Sound");
+    if (signature.test(scene->getComponentId<ButtonComponent>()))      return objectClass("Button");
+    if (signature.test(scene->getComponentId<ScrollbarComponent>()))   return objectClass("Scrollbar");
+    if (signature.test(scene->getComponentId<ProgressbarComponent>())) return objectClass("Progressbar");
+    if (signature.test(scene->getComponentId<TextEditComponent>()))    return objectClass("TextEdit");
+    if (signature.test(scene->getComponentId<TextComponent>()))        return objectClass("Text");
+    if (signature.test(scene->getComponentId<PanelComponent>()))       return objectClass("Panel");
+    if (signature.test(scene->getComponentId<ImageComponent>()))       return objectClass("Image");
+    if (signature.test(scene->getComponentId<UIContainerComponent>())) return objectClass("Container");
+    if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("UILayout");
+    if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
+    if (signature.test(scene->getComponentId<Occluder2DComponent>()))  return objectClass("Occluder2D");
+    if (signature.test(scene->getComponentId<LightComponent>()))       return objectClass("Light");
+    if (signature.test(scene->getComponentId<CameraComponent>()))      return objectClass("Camera");
+    if (signature.test(scene->getComponentId<ReflectionProbeComponent>())) return objectClass("ReflectionProbe");
+    if (signature.test(scene->getComponentId<Body2DComponent>()))      return handleClass("Body2D");
+    if (signature.test(scene->getComponentId<Body3DComponent>()))      return handleClass("Body3D");
+    if (signature.test(scene->getComponentId<Joint2DComponent>()))     return handleClass("Joint2D");
+    if (signature.test(scene->getComponentId<Joint3DComponent>()))     return handleClass("Joint3D");
+    if (signature.test(scene->getComponentId<AlphaActionComponent>())) return handleClass("AlphaAction");
+    if (signature.test(scene->getComponentId<ColorActionComponent>())) return handleClass("ColorAction");
+    if (signature.test(scene->getComponentId<PositionActionComponent>())) return handleClass("PositionAction");
+    if (signature.test(scene->getComponentId<RotationActionComponent>())) return handleClass("RotationAction");
+    if (signature.test(scene->getComponentId<ScaleActionComponent>())) return handleClass("ScaleAction");
+    if (signature.test(scene->getComponentId<TimedActionComponent>())) return handleClass("TimedAction");
+    if (signature.test(scene->getComponentId<AnimationComponent>()))   return handleClass("Animation");
+    if (signature.test(scene->getComponentId<SpriteAnimationComponent>())) return handleClass("SpriteAnimation");
+    if (signature.test(scene->getComponentId<MorphTracksComponent>())) return handleClass("MorphTracks");
+    if (signature.test(scene->getComponentId<RotateTracksComponent>())) return handleClass("RotateTracks");
+    if (signature.test(scene->getComponentId<ScaleTracksComponent>())) return handleClass("ScaleTracks");
+    if (signature.test(scene->getComponentId<TranslateTracksComponent>())) return handleClass("TranslateTracks");
+    if (signature.test(scene->getComponentId<ParticlesComponent>()))   return handleClass("Particles");
+    if (signature.test(scene->getComponentId<ActionComponent>()))      return handleClass("Action");
+    if (signature.test(scene->getComponentId<Transform>()))            return objectClass("Object");
 
     // generic engine type for entities with no recognized component: valid as a
     // C++ pointer type (doriax::EntityHandle*) and known to the Lua dispatcher
-    return "EntityHandle";
+    return handleClass("EntityHandle");
+}
+
+std::string editor::ProjectUtils::getEntityTypeName(Scene* scene, Entity entity) {
+    return getEntityClassInfo(scene, entity).name;
 }

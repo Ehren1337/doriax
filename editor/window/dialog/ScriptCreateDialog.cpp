@@ -2,6 +2,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "Scene.h"
 #include "Factory.h"
+#include "util/ProjectUtils.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include <fstream>
@@ -80,37 +81,10 @@ void ScriptCreateDialog::writeFiles(const fs::path& headerPath,
         fs::create_directories(headerPath.parent_path());
 
         if (isCppSubclass) {
-            std::string parentClass = "EntityHandle";
-            bool hasTransform = false;
-            bool isMesh = false;
-
-            if (m_scene && m_entity != NULL_ENTITY) {
-                Signature signature = m_scene->getSignature(m_entity);
-                auto cameraComponentId = m_scene->getComponentId<CameraComponent>();
-                auto meshComponentId = m_scene->getComponentId<MeshComponent>();
-                auto lightComponentId = m_scene->getComponentId<LightComponent>();
-                auto light2DComponentId = m_scene->getComponentId<Light2DComponent>();
-                auto occluder2DComponentId = m_scene->getComponentId<Occluder2DComponent>();
-                auto transformComponentId = m_scene->getComponentId<Transform>();
-
-                if (signature.test(transformComponentId)) {
-                    parentClass = "Object";
-                    hasTransform = true;
-                }
-
-                if (signature.test(cameraComponentId)) {
-                    parentClass = "Camera";
-                } else if (signature.test(meshComponentId)) {
-                    parentClass = "Mesh";
-                    isMesh = true;
-                } else if (signature.test(lightComponentId)) {
-                    parentClass = "Light";
-                } else if (signature.test(light2DComponentId)) {
-                    parentClass = "Light2D";
-                } else if (signature.test(occluder2DComponentId)) {
-                    parentClass = "Occluder2D";
-                }
-            }
+            ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(m_scene, m_entity);
+            std::string parentClass = parentInfo.name;
+            bool hasTransform = parentInfo.derivesObject;
+            bool isMesh = parentInfo.derivesMesh;
 
             // Header
             {

@@ -63,6 +63,16 @@ public:
 
     static void collectEntities(const YAML::Node& entityNode, std::vector<Entity>& allEntities);
 
+    // Engine class wrapping an entity, used to generate C++ that names it (subclass
+    // script parents, DPROPERTY members). Every class here is declared in the flat
+    // header "<name>.h" and has a (Scene*, Entity) constructor.
+    struct EntityClassInfo {
+        std::string name;           // e.g. "Terrain", declared in "Terrain.h"
+        bool derivesObject = false; // has doriax::Object API (getPosition, setPosition, ...)
+        bool derivesMesh = false;   // has doriax::Mesh API (setColor, ...), implies derivesObject
+    };
+    static EntityClassInfo getEntityClassInfo(Scene* scene, Entity entity);
+
     // Returns entity type name (e.g. "Mesh", "Camera", "Light") based on its components
     static std::string getEntityTypeName(Scene* scene, Entity entity);
 

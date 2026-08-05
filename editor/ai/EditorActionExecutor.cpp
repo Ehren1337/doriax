@@ -3257,14 +3257,11 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
     }
 
     std::string parentClass = "EntityHandle";
+    bool parentDerivesMesh = false;
     if (type == ScriptType::SUBCLASS) {
-        if (hasComponent(sceneProject->scene, entity, ComponentType::CameraComponent)) parentClass = "Camera";
-        else if (hasComponent(sceneProject->scene, entity, ComponentType::MeshComponent) ||
-                 hasComponent(sceneProject->scene, entity, ComponentType::ModelComponent)) parentClass = "Mesh";
-        else if (hasComponent(sceneProject->scene, entity, ComponentType::LightComponent)) parentClass = "Light";
-        else if (hasComponent(sceneProject->scene, entity, ComponentType::Light2DComponent)) parentClass = "Light2D";
-        else if (hasComponent(sceneProject->scene, entity, ComponentType::Occluder2DComponent)) parentClass = "Occluder2D";
-        else if (hasComponent(sceneProject->scene, entity, ComponentType::Transform)) parentClass = "Object";
+        ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(sceneProject->scene, entity);
+        parentClass = parentInfo.name;
+        parentDerivesMesh = parentInfo.derivesMesh;
     } else if (type != ScriptType::SCRIPT_LUA) {
         parentClass = "ScriptBase";
     }
@@ -3350,12 +3347,12 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         data["cpp_startup_method"] =
             "Use onUpdate for variable-frame non-physics logic or onFixedUpdate for physics-step logic, "
             "with matching REGISTER_ENGINE_EVENT/UNREGISTER_ENGINE_EVENT calls";
-        if (parentClass == "Mesh") {
+        if (parentDerivesMesh) {
             data["recommended_type"] = "cpp_subclass";
             data["cpp_cube_color_example"] =
                 "#include \"" + className + ".h\"\n\n"
                 "using namespace doriax;\n\n"
-                + className + "::" + className + "(Scene* scene, Entity entity): Mesh(scene, entity) {\n"
+                + className + "::" + className + "(Scene* scene, Entity entity): " + parentClass + "(scene, entity) {\n"
                 "    REGISTER_ENGINE_EVENT(onUpdate);\n"
                 "    setColor(1.0f, 0.0f, 0.0f, 1.0f);\n"
                 "}\n\n"
