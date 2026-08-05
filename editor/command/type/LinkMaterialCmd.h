@@ -23,6 +23,8 @@ namespace doriax::editor{
         Material newMaterial;
         Material oldMaterial;
         std::string oldLinkedFilePath;
+        Entity oldOverridesModel = NULL_ENTITY;
+        std::vector<SubmeshOverride> oldOverrides;
 
     public:
         LinkMaterialCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType,

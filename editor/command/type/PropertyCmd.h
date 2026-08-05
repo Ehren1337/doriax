@@ -87,6 +87,10 @@ namespace doriax::editor{
         std::function<void()> onValueChanged;
 
         std::map<Entity,PropertyCmdValue<T>> values;
+        // Submesh edits also change the owning model's override list, so undo restores the list as
+        // it was instead of re-recording the value it puts back. Keyed by model, since a multi
+        // selection can hold several mesh children of one model, all sharing a single list.
+        std::map<Entity,std::vector<SubmeshOverride>> oldOverrides;
 
     public:
 
@@ -110,6 +114,13 @@ namespace doriax::editor{
                 PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, type, propertyName);
                 T* valueRef = static_cast<T*>(prop.ref);
 
+                Entity modelEntity = Catalog::findSubmeshOverrideModel(sceneProject->scene, entity, type, propertyName);
+                if (modelEntity != NULL_ENTITY && oldOverrides.find(modelEntity) == oldOverrides.end()){
+                    if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, modelEntity)){
+                        oldOverrides[modelEntity] = *overrides;
+                    }
+                }
+
                 value.oldValue = T(*valueRef);
                 *valueRef = value.newValue;
 
@@ -120,6 +131,8 @@ namespace doriax::editor{
                 }
 
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
+                Catalog::recordSubmeshOverride(sceneProject->scene, entity, type, propertyName);
+                project->bundleSubmeshOverridesChanged(sceneId, modelEntity);
 
                 if (project->isEntityInBundle(sceneId, entity)){
                     project->bundlePropertyChanged(sceneId, entity, type, {propertyName});
@@ -159,6 +172,14 @@ namespace doriax::editor{
                 }
             }
 
+            // After every live property is back: one write per model, once all its meshes are done.
+            for (auto const& [modelEntity, saved] : oldOverrides){
+                if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, modelEntity)){
+                    *overrides = saved;
+                    project->bundleSubmeshOverridesChanged(sceneId, modelEntity);
+                }
+            }
+
             sceneProject->isModified = wasModified;
 
             if (onValueChanged) {
@@ -180,6 +201,10 @@ namespace doriax::editor{
                         }else{
                             values[otherEntity] = otherValue;
                         }
+                    }
+                    // The older command's snapshot is the state a single undo has to restore.
+                    for (auto const& [otherEntity, otherOverrides] : otherCmd->oldOverrides){
+                        oldOverrides[otherEntity] = otherOverrides;
                     }
                     wasModified = wasModified && otherCmd->wasModified;
                     // Keep the most recent callback

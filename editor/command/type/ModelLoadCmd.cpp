@@ -181,6 +181,12 @@ bool editor::ModelLoadCmd::execute(){
         }
     }
 
+    // A different asset is a fresh import and its own materials win; reloading the same file (a
+    // hierarchy or merge change) keeps the user's submesh edits.
+    if (MeshSystem::getModelFilenameKey(model.filename) != MeshSystem::getModelFilenameKey(modelPath)) {
+        model.submeshOverrides.clear();
+    }
+
     // Clear stale model data before loading new model
     model.skeleton = NULL_ENTITY;
     model.bonesIdMapping.clear();

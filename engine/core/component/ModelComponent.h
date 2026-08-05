@@ -7,6 +7,8 @@
 
 #include "ecs/Entity.h"
 #include "math/Matrix4.h"
+#include "render/Render.h"
+#include "texture/Material.h"
 #include <vector>
 #include <map>
 #include <memory>
@@ -17,6 +19,71 @@ namespace tinygltf {class Model;}
 namespace doriax{
 
     struct ObjModelData;
+
+    // Fields a SubmeshOverride carries; anything not flagged keeps following the model file.
+    enum SubmeshOverrideFlags : uint32_t {
+        SubmeshOverride_BaseColorFactor          = 1 << 0,
+        SubmeshOverride_MetallicFactor           = 1 << 1,
+        SubmeshOverride_RoughnessFactor          = 1 << 2,
+        SubmeshOverride_AlphaCutoff              = 1 << 3,
+        SubmeshOverride_EmissiveFactor           = 1 << 4,
+        SubmeshOverride_AlphaMode                = 1 << 5,
+        SubmeshOverride_MaterialName             = 1 << 6,
+        SubmeshOverride_BaseColorTexture         = 1 << 7,
+        SubmeshOverride_EmissiveTexture          = 1 << 8,
+        SubmeshOverride_MetallicRoughnessTexture = 1 << 9,
+        SubmeshOverride_OcclusionTexture         = 1 << 10,
+        SubmeshOverride_NormalTexture            = 1 << 11,
+        SubmeshOverride_FaceCulling              = 1 << 12,
+        SubmeshOverride_TextureShadow            = 1 << 13,
+        SubmeshOverride_PrimitiveType            = 1 << 14,
+
+        SubmeshOverride_Material = SubmeshOverride_BaseColorFactor | SubmeshOverride_MetallicFactor |
+                                   SubmeshOverride_RoughnessFactor | SubmeshOverride_AlphaCutoff |
+                                   SubmeshOverride_EmissiveFactor | SubmeshOverride_AlphaMode |
+                                   SubmeshOverride_MaterialName | SubmeshOverride_BaseColorTexture |
+                                   SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
+                                   SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture,
+
+        SubmeshOverride_All = SubmeshOverride_Material | SubmeshOverride_FaceCulling |
+                              SubmeshOverride_TextureShadow | SubmeshOverride_PrimitiveType
+    };
+
+    // Material texture slots, so override code does not spell all five out every time.
+    struct SubmeshOverrideTextureSlot{
+        Texture Material::* texture;
+        int Material::* texCoord;
+        uint32_t field;
+        const char* name;
+        const char* texCoordName;
+    };
+
+    inline constexpr SubmeshOverrideTextureSlot submeshOverrideTextureSlots[] = {
+        {&Material::baseColorTexture, &Material::baseColorTexCoord, SubmeshOverride_BaseColorTexture, "baseColorTexture", "baseColorTexCoord"},
+        {&Material::emissiveTexture, &Material::emissiveTexCoord, SubmeshOverride_EmissiveTexture, "emissiveTexture", "emissiveTexCoord"},
+        {&Material::metallicRoughnessTexture, &Material::metallicRoughnessTexCoord, SubmeshOverride_MetallicRoughnessTexture, "metallicRoughnessTexture", "metallicRoughnessTexCoord"},
+        {&Material::occlusionTexture, &Material::occlusionTexCoord, SubmeshOverride_OcclusionTexture, "occlusionTexture", "occlusionTexCoord"},
+        {&Material::normalTexture, &Material::normalTexCoord, SubmeshOverride_NormalTexture, "normalTexture", "normalTexCoord"}
+    };
+
+    // A submesh property edited after import. Overrides live on the model, not on the mesh entities
+    // the loader rebuilds on every reload, and are keyed by the primitive they patch.
+    struct DORIAX_API SubmeshOverride{
+        int nodeIndex = -1;              // glTF node owning the primitive (-1 for OBJ)
+        unsigned int primitiveIndex = 0; // primitive inside the node (material index for OBJ)
+        std::string sourceName;          // source identity, matched when the asset was reordered
+
+        uint32_t fields = 0;             // SubmeshOverrideFlags carried by this entry
+
+        Material material;
+        bool faceCulling = true;
+        bool textureShadow = false;
+        PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
+
+        // Rebuilt from a scene saved before overrides existed: no key yet, so the first load
+        // matches it by position and reduces it to the real differences.
+        bool needMigrate = false;
+    };
 
     struct DORIAX_API ModelComponent{
         std::shared_ptr<tinygltf::Model> gltfModel;
@@ -36,6 +103,9 @@ namespace doriax{
         std::map<std::string, int> morphNameMapping;
 
         std::vector<Entity> animations;
+
+        // Submesh properties edited after import, re-applied after every load of this model.
+        std::vector<SubmeshOverride> submeshOverrides;
 
         std::string filename;
 

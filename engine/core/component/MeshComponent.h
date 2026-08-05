@@ -79,6 +79,11 @@ namespace doriax{
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
         unsigned int vertexCount = 0;
 
+        // Primitive this submesh came from (-1 node for OBJ). Submeshes are reversed after loading,
+        // so it is the only stable key for ModelComponent::submeshOverrides.
+        int sourceNode = -1;
+        unsigned int sourcePrimitive = 0;
+
         bool faceCulling = true;
         bool textureShadow = false;
 

@@ -25,6 +25,8 @@ namespace doriax::editor{
             std::string linkedFilePath;
         };
         std::map<Entity, EntityData> entities;
+        // Mesh children of one model share an override list, so it is snapshotted once per model.
+        std::map<Entity, std::vector<SubmeshOverride>> oldOverrides;
 
     public:
         UnlinkMaterialCmd(Project* project, uint32_t sceneId, ComponentType componentType,

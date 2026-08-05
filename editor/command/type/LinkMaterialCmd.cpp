@@ -31,11 +31,18 @@ bool editor::LinkMaterialCmd::execute(){
         return false;
     }
 
+    oldOverridesModel = Catalog::findSubmeshOverrideModel(sceneProject->scene, entity, componentType, propertyName);
+    if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, oldOverridesModel)) {
+        oldOverrides = *overrides;
+    }
+
     PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, componentType, propertyName);
     if (prop.ref) {
         Material* matRef = static_cast<Material*>(prop.ref);
         *matRef = newMaterial;
         Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
+        Catalog::recordSubmeshOverride(sceneProject->scene, entity, componentType, propertyName);
+        project->bundleSubmeshOverridesChanged(sceneId, oldOverridesModel);
 
         if (project->isEntityInBundle(sceneId, entity)){
             project->bundlePropertyChanged(sceneId, entity, componentType, {propertyName});
@@ -71,6 +78,11 @@ void editor::LinkMaterialCmd::undo(){
         Material* matRef = static_cast<Material*>(prop.ref);
         *matRef = oldMaterial;
         Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
+
+        if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, oldOverridesModel)) {
+            *overrides = oldOverrides;
+            project->bundleSubmeshOverridesChanged(sceneId, oldOverridesModel);
+        }
 
         if (project->isEntityInBundle(sceneId, entity)){
             project->bundlePropertyChanged(sceneId, entity, componentType, {propertyName});

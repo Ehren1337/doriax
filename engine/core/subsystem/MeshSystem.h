@@ -65,7 +65,6 @@ namespace doriax{
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
-        static std::string getModelFilenameKey(const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
         std::shared_ptr<AsyncModelLoadResult> pollOrStartAsyncModelLoad(const std::string& filename, bool obj);
         static std::shared_ptr<AsyncModelLoadResult> loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId);
@@ -75,6 +74,10 @@ namespace doriax{
         }
         static void applyDefaultGLTFMaterial(Material& material);
         static void applyDefaultObjMaterial(Submesh& submesh);
+        static unsigned int countSourceName(const ModelComponent& model, const std::string& sourceName);
+        static SubmeshOverride* matchSubmeshOverride(ModelComponent& model, const Submesh& submesh, unsigned int submeshIndex);
+        static void migrateSubmeshOverride(SubmeshOverride& submeshOverride, const Submesh& submesh);
+        static void applySubmeshOverrides(ModelComponent& model, MeshComponent& mesh);
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
         bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
@@ -113,6 +116,12 @@ namespace doriax{
         void createCapsule(MeshComponent& mesh, float baseRadius=1, float topRadius=1, float height=2, unsigned int slices=36, unsigned int stacks=18);
         void createTorus(MeshComponent& mesh, float radius=1, float ringRadius=0.5, unsigned int sides=36, unsigned int rings=16);
         bool canMergeStaticModel(const ModelComponent& model, std::string* reason = nullptr) const;
+
+        // Canonical form of a model path: the same file spelled in different ways maps to one key.
+        static std::string getModelFilenameKey(const std::string& filename);
+
+        // How a primitive is named in its source file, used to identify submesh overrides.
+        static std::string getSourceName(const ModelComponent& model, int nodeIndex, unsigned int primitiveIndex);
         bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
 

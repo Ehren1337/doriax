@@ -157,6 +157,11 @@ namespace doriax::editor {
         static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true);
         static Submesh decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh = nullptr);
 
+        static void migrateSubmeshOverrides(EntityRegistry* registry, Entity entity);
+
+        static YAML::Node encodeSubmeshOverride(const SubmeshOverride& submeshOverride);
+        static SubmeshOverride decodeSubmeshOverride(const YAML::Node& node);
+
         static YAML::Node encodeAABB(const AABB& aabb);
         static AABB decodeAABB(const YAML::Node& node);
 
@@ -181,7 +186,10 @@ namespace doriax::editor {
         // (the ModelComponent root or one of a multi-node model's generated child meshes),
         // so its buffers/embedded textures/bones must not be serialized, and replacing its
         // geometry in place would be undone on the next load.
-        static bool isModelBackedMesh(const Entity entity, const EntityRegistry* registry, Signature signature);
+        static bool isModelBackedMesh(const Entity entity, const EntityRegistry* registry);
+
+        // The model a mesh comes from (itself or the ancestor that generated it), or NULL_ENTITY.
+        static Entity findModelOwner(const Entity entity, const EntityRegistry* registry);
 
         // True when a mesh's geometry is rebuilt on load from its sprite, tilemap, mesh
         // polygon or terrain component, so its buffers and bones must not be serialized.

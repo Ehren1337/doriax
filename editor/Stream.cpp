@@ -1379,6 +1379,15 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     node["faceCulling"] = submesh.faceCulling;
     node["textureShadow"] = submesh.textureShadow;
 
+    // Kept so a submesh can still be matched to an override before its model file is loaded (the
+    // loader stamps these again as soon as it fills the submesh).
+    if (submesh.sourceNode >= 0) {
+        node["sourceNode"] = submesh.sourceNode;
+    }
+    if (submesh.sourcePrimitive > 0) {
+        node["sourcePrimitive"] = submesh.sourcePrimitive;
+    }
+
     // Flags
     node["hasTexCoord1"] = submesh.hasTexCoord1;
     node["hasTexCoord2"] = submesh.hasTexCoord2;
@@ -1408,6 +1417,9 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     submesh.faceCulling = node["faceCulling"].as<bool>();
     submesh.textureShadow = node["textureShadow"].as<bool>();
 
+    if (node["sourceNode"]) submesh.sourceNode = node["sourceNode"].as<int>();
+    if (node["sourcePrimitive"]) submesh.sourcePrimitive = node["sourcePrimitive"].as<unsigned int>();
+
     // Flags
     if (node["hasTexCoord1"]) submesh.hasTexCoord1 = node["hasTexCoord1"].as<bool>();
     if (node["hasTexCoord2"]) submesh.hasTexCoord2 = node["hasTexCoord2"].as<bool>();
@@ -1422,6 +1434,116 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     submesh.hasMorphTangent = node["hasMorphTangent"].as<bool>();
 
     return submesh;
+}
+
+// Rebuilds override entries from the submesh values of a model saved before overrides existed, so
+// the load stops wiping the user's edits. Every field is carried over: the model file is not in
+// memory yet, so MeshSystem reduces each entry to the real differences once it loads.
+void editor::Stream::migrateSubmeshOverrides(EntityRegistry* registry, Entity entity) {
+    ModelComponent* model = registry->findComponent<ModelComponent>(entity);
+    if (!model || model->filename.empty() || !model->submeshOverrides.empty()) {
+        return;
+    }
+
+    auto collectMesh = [registry, model](Entity meshEntity, int nodeIndex) {
+        MeshComponent* mesh = registry->findComponent<MeshComponent>(meshEntity);
+        if (!mesh) {
+            return;
+        }
+
+        for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
+            SubmeshOverride submeshOverride;
+            submeshOverride.nodeIndex = nodeIndex;
+            submeshOverride.primitiveIndex = i;
+            submeshOverride.fields = SubmeshOverride_All;
+            submeshOverride.material = mesh->submeshes[i].material;
+            submeshOverride.faceCulling = mesh->submeshes[i].faceCulling;
+            submeshOverride.textureShadow = mesh->submeshes[i].textureShadow;
+            submeshOverride.primitiveType = mesh->submeshes[i].primitiveType;
+            submeshOverride.needMigrate = true;
+
+            model->submeshOverrides.push_back(submeshOverride);
+        }
+    };
+
+    // The root mesh (single-node and merged models) has no node of its own.
+    collectMesh(entity, -1);
+    for (const auto& meshNode : model->meshNodesMapping) {
+        collectMesh(meshNode.second, meshNode.first);
+    }
+}
+
+// Only the fields the user changed are written; the rest keeps following the model file.
+YAML::Node editor::Stream::encodeSubmeshOverride(const SubmeshOverride& submeshOverride) {
+    YAML::Node node;
+
+    const uint32_t fields = submeshOverride.fields;
+    const Material& material = submeshOverride.material;
+
+    node["nodeIndex"] = submeshOverride.nodeIndex;
+    node["primitiveIndex"] = submeshOverride.primitiveIndex;
+    if (!submeshOverride.sourceName.empty()) {
+        node["sourceName"] = submeshOverride.sourceName;
+    }
+    node["fields"] = fields;
+    // A migration that never ran (the model file failed to load) must stay a migration.
+    if (submeshOverride.needMigrate) {
+        node["needMigrate"] = true;
+    }
+
+    if (fields & SubmeshOverride_BaseColorFactor) node["baseColorFactor"] = encodeVector4(material.baseColorFactor);
+    if (fields & SubmeshOverride_MetallicFactor) node["metallicFactor"] = material.metallicFactor;
+    if (fields & SubmeshOverride_RoughnessFactor) node["roughnessFactor"] = material.roughnessFactor;
+    if (fields & SubmeshOverride_AlphaCutoff) node["alphaCutoff"] = material.alphaCutoff;
+    if (fields & SubmeshOverride_EmissiveFactor) node["emissiveFactor"] = encodeVector3(material.emissiveFactor);
+    if (fields & SubmeshOverride_AlphaMode) node["alphaMode"] = materialAlphaModeToString(material.alphaMode);
+    if (fields & SubmeshOverride_MaterialName) node["name"] = material.name;
+
+    // Stored by path only. A flagged slot with no texture node is an override that cleared it.
+    for (const SubmeshOverrideTextureSlot& slot : submeshOverrideTextureSlots) {
+        if (!(fields & slot.field)) continue;
+
+        const Texture& texture = material.*slot.texture;
+        if (!texture.empty()) node[slot.name] = encodeTexture(texture, false);
+        node[slot.texCoordName] = material.*slot.texCoord;
+    }
+
+    if (fields & SubmeshOverride_FaceCulling) node["faceCulling"] = submeshOverride.faceCulling;
+    if (fields & SubmeshOverride_TextureShadow) node["textureShadow"] = submeshOverride.textureShadow;
+    if (fields & SubmeshOverride_PrimitiveType) node["primitiveType"] = primitiveTypeToString(submeshOverride.primitiveType);
+
+    return node;
+}
+
+SubmeshOverride editor::Stream::decodeSubmeshOverride(const YAML::Node& node) {
+    SubmeshOverride submeshOverride;
+
+    if (node["nodeIndex"]) submeshOverride.nodeIndex = node["nodeIndex"].as<int>();
+    if (node["primitiveIndex"]) submeshOverride.primitiveIndex = node["primitiveIndex"].as<unsigned int>();
+    if (node["sourceName"]) submeshOverride.sourceName = node["sourceName"].as<std::string>();
+    if (node["fields"]) submeshOverride.fields = node["fields"].as<uint32_t>();
+    if (node["needMigrate"]) submeshOverride.needMigrate = node["needMigrate"].as<bool>();
+
+    Material& material = submeshOverride.material;
+
+    if (node["baseColorFactor"]) material.baseColorFactor = decodeVector4(node["baseColorFactor"]);
+    if (node["metallicFactor"]) material.metallicFactor = node["metallicFactor"].as<float>();
+    if (node["roughnessFactor"]) material.roughnessFactor = node["roughnessFactor"].as<float>();
+    if (node["alphaCutoff"]) material.alphaCutoff = node["alphaCutoff"].as<float>();
+    if (node["emissiveFactor"]) material.emissiveFactor = decodeVector3(node["emissiveFactor"]);
+    if (node["alphaMode"]) material.alphaMode = stringToMaterialAlphaMode(node["alphaMode"].as<std::string>());
+    if (node["name"]) material.name = node["name"].as<std::string>();
+
+    for (const SubmeshOverrideTextureSlot& slot : submeshOverrideTextureSlots) {
+        if (node[slot.name]) material.*slot.texture = decodeTexture(node[slot.name]);
+        if (node[slot.texCoordName]) material.*slot.texCoord = node[slot.texCoordName].as<int>();
+    }
+
+    if (node["faceCulling"]) submeshOverride.faceCulling = node["faceCulling"].as<bool>();
+    if (node["textureShadow"]) submeshOverride.textureShadow = node["textureShadow"].as<bool>();
+    if (node["primitiveType"]) submeshOverride.primitiveType = stringToPrimitiveType(node["primitiveType"].as<std::string>());
+
+    return submeshOverride;
 }
 
 YAML::Node editor::Stream::encodeAABB(const AABB& aabb) {
@@ -2737,8 +2859,14 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
         std::string name = entityNode["name"].as<std::string>();
         registry->setEntityName(entity, name);
 
+        bool migrateOverrides = false;
         if (entityNode["components"]){
             decodeComponents(entity, parent, registry, entityNode["components"]);
+
+            // A model saved before overrides existed still keeps the user's edits in its submesh
+            // arrays.
+            YAML::Node modelNode = entityNode["components"][Catalog::getComponentName(ComponentType::ModelComponent, true)];
+            migrateOverrides = modelNode && !modelNode["submeshOverrides"];
         }
 
         // Components added to a live entity after it was encoded, like a script calling
@@ -2773,6 +2901,10 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
             }
         }
 
+        // Runs after the children: a model's generated meshes carry submesh values of their own.
+        if (migrateOverrides) {
+            migrateSubmeshOverrides(registry, entity);
+        }
     }
 
     return allEntities;
@@ -2866,19 +2998,18 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node) {
     return material;
 }
 
-// A mesh whose geometry is regenerated from a model's source file on load must not
-// serialize its buffers/embedded textures (they are large and redundant). This holds
-// for an entity carrying the ModelComponent itself, and for the per-node child mesh
-// entities a multi-node model spreads its geometry across (tracked in meshNodesMapping).
-bool editor::Stream::isModelBackedMesh(const Entity entity, const EntityRegistry* registry, Signature signature) {
+// The entity holding the model a mesh is generated from: itself when it carries the ModelComponent,
+// or the ancestor model that built it as one of its mesh nodes.
+Entity editor::Stream::findModelOwner(const Entity entity, const EntityRegistry* registry) {
     const auto modelId = registry->getComponentId<ModelComponent>();
     const auto transformId = registry->getComponentId<Transform>();
+    const Signature signature = registry->getSignature(entity);
 
     if (signature.test(modelId) && !registry->getComponent<ModelComponent>(entity).filename.empty()) {
-        return true;
+        return entity;
     }
     if (!signature.test(transformId)) {
-        return false;
+        return NULL_ENTITY;
     }
     // Walk up to the owning model: a child mesh is model-backed only if that model has a
     // source file and lists this entity among its generated nodes (manually added child
@@ -2891,18 +3022,24 @@ bool editor::Stream::isModelBackedMesh(const Entity entity, const EntityRegistry
             if (!model.filename.empty()) {
                 for (const auto& [nodeIdx, mappedEntity] : model.meshNodesMapping) {
                     if (mappedEntity == entity) {
-                        return true;
+                        return ancestor;
                     }
                 }
             }
-            return false; // owning model found, but this entity is not one of its meshes
+            return NULL_ENTITY; // owning model found, but this entity is not one of its meshes
         }
         if (!aSig.test(transformId)) {
             break;
         }
         ancestor = registry->getComponent<Transform>(ancestor).parent;
     }
-    return false;
+    return NULL_ENTITY;
+}
+
+// A mesh regenerated from a model's source file on load must not serialize its buffers and
+// embedded textures (they are large and redundant).
+bool editor::Stream::isModelBackedMesh(const Entity entity, const EntityRegistry* registry) {
+    return findModelOwner(entity, registry) != NULL_ENTITY;
 }
 
 bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature signature) {
@@ -2927,7 +3064,7 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         // entities a multi-node model spreads its geometry across. An empty filename (or
         // a manually added mesh) loads no geometry, so the mesh data must still be
         // encoded to remain visible.
-        bool isModel = isModelBackedMesh(entity, registry, signature);
+        bool isModel = isModelBackedMesh(entity, registry);
         // a generated mesh rebuilds its buffers on load, but not its textures
         bool isGenerated = isModel || isGeneratedMesh(registry, signature);
         MeshComponent mesh = registry->getComponent<MeshComponent>(entity);
@@ -4717,6 +4854,16 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
         node["mergeStaticMeshes"] = true;
     }
 
+    // Written even when empty: a missing key marks a scene saved before overrides existed.
+    YAML::Node overridesNode(YAML::NodeType::Sequence);
+    for (const auto& submeshOverride : model.submeshOverrides) {
+        if (submeshOverride.fields == 0) {
+            continue;
+        }
+        overridesNode.push_back(encodeSubmeshOverride(submeshOverride));
+    }
+    node["submeshOverrides"] = overridesNode;
+
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
 
     if (!model.animations.empty()) {
@@ -4774,6 +4921,13 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     if (node["filename"]) model.filename = node["filename"].as<std::string>();
     if (node["mergeStaticMeshes"]) model.mergeStaticMeshes = node["mergeStaticMeshes"].as<bool>();
     if (node["skeleton"]) model.skeleton = static_cast<Entity>(node["skeleton"].as<uint32_t>());
+
+    if (node["submeshOverrides"]) {
+        model.submeshOverrides.clear();
+        for (const auto& overrideNode : node["submeshOverrides"]) {
+            model.submeshOverrides.push_back(decodeSubmeshOverride(overrideNode));
+        }
+    }
 
     if (node["animations"]) {
         model.animations.clear();

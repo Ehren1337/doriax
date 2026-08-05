@@ -170,6 +170,17 @@ namespace doriax::editor{
 
         static PropertyData getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
 
+        // Every model load rewrites the submeshes of a model-backed mesh, so an edit only survives
+        // as an override on the owning model. Commands snapshot per model, since generated mesh
+        // children of one model share a single list.
+        static Entity findSubmeshOverrideModel(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName);
+        static std::vector<SubmeshOverride>* getSubmeshOverrides(EntityRegistry* registry, Entity modelEntity);
+        static void recordSubmeshOverride(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName);
+
+        // Same store, for the writers that bypass commands (a linked .material file changing on
+        // disk, an asset move). Leaves the overridden fields alone.
+        static void refreshSubmeshOverride(EntityRegistry* registry, Entity entity, unsigned int submeshIndex);
+
         template<typename T>
         static T* getPropertyRef(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
             PropertyData property = Catalog::getProperty(registry, entity, component, propertyName);
