@@ -31,6 +31,11 @@
 		175DCCB8300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCB5300FA1F2008C19EC /* ReflectionProbe.cpp */; };
 		175DCCBB300FA22F008C19EC /* Export.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCB9300FA22F008C19EC /* Export.h */; };
 		175DCCBC300FA22F008C19EC /* SceneSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCBA300FA22F008C19EC /* SceneSettings.h */; };
+		175DCCBE3022C5A2008C19EC /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */; };
+		175DCCBF3022C5A2008C19EC /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */; };
+		175DCCC23022C5E9008C19EC /* Mirror.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCC03022C5E9008C19EC /* Mirror.h */; };
+		175DCCC33022C5E9008C19EC /* Mirror.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCC13022C5E9008C19EC /* Mirror.cpp */; };
+		175DCCC43022C5E9008C19EC /* Mirror.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCC13022C5E9008C19EC /* Mirror.cpp */; };
 		1787AD8E2F673CE000DB1D75 /* BundleComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 1787AD8D2F673CE000DB1D75 /* BundleComponent.h */; };
 		1787AD942F6C333300DB1D75 /* SceneManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD922F6C333300DB1D75 /* SceneManager.cpp */; };
 		1787AD952F6C333300DB1D75 /* BundleManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD902F6C333300DB1D75 /* BundleManager.cpp */; };
@@ -365,8 +370,6 @@
 		710EE49E2A2E1E9200EB04EC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 710EE49C2A2E1E9200EB04EC /* Assets.xcassets */; };
 		71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
 		71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
-		71C0FFEF2E41845E006D11A1 /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C0FFEE2E41845E006D11A1 /* ComponentManager.cpp */; };
-		71C0FFF02E41845E006D11A1 /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C0FFEE2E41845E006D11A1 /* ComponentManager.cpp */; };
 		71125F1C2E41845E006D11A1 /* EntityRegistry.h in Headers */ = {isa = PBXBuildFile; fileRef = 71125F172E41845E006D11A1 /* EntityRegistry.h */; };
 		711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */ = {isa = PBXBuildFile; fileRef = 711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */; };
 		7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */; };
@@ -1333,6 +1336,9 @@
 		175DCCB5300FA1F2008C19EC /* ReflectionProbe.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ReflectionProbe.cpp; sourceTree = "<group>"; };
 		175DCCB9300FA22F008C19EC /* Export.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Export.h; sourceTree = "<group>"; };
 		175DCCBA300FA22F008C19EC /* SceneSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneSettings.h; sourceTree = "<group>"; };
+		175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ComponentManager.cpp; sourceTree = "<group>"; };
+		175DCCC03022C5E9008C19EC /* Mirror.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Mirror.h; sourceTree = "<group>"; };
+		175DCCC13022C5E9008C19EC /* Mirror.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Mirror.cpp; sourceTree = "<group>"; };
 		1787AD8D2F673CE000DB1D75 /* BundleComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BundleComponent.h; sourceTree = "<group>"; };
 		1787AD8F2F6C333300DB1D75 /* BundleManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BundleManager.h; sourceTree = "<group>"; };
 		1787AD902F6C333300DB1D75 /* BundleManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BundleManager.cpp; sourceTree = "<group>"; };
@@ -2331,7 +2337,6 @@
 		71E36B8325D5996400EFEED4 /* Signature.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Signature.h; sourceTree = "<group>"; };
 		71E36B8425D5996400EFEED4 /* EntityManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EntityManager.h; sourceTree = "<group>"; };
 		71E36B8525D5996400EFEED4 /* ComponentManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ComponentManager.h; sourceTree = "<group>"; };
-		71C0FFEE2E41845E006D11A1 /* ComponentManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ComponentManager.cpp; sourceTree = "<group>"; };
 		71E36B8625D5996400EFEED4 /* SubSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SubSystem.h; sourceTree = "<group>"; };
 		71E36B8725D5996400EFEED4 /* Entity.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Entity.h; sourceTree = "<group>"; };
 		71E36B8C25D5999C00EFEED4 /* libtinyobjloader-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libtinyobjloader-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -3579,6 +3584,8 @@
 				71E36B5425D5994100EFEED4 /* Mesh.cpp */,
 				713E580527BA9CB700376680 /* MeshPolygon.h */,
 				713E580427BA9CB700376680 /* MeshPolygon.cpp */,
+				175DCCC03022C5E9008C19EC /* Mirror.h */,
+				175DCCC13022C5E9008C19EC /* Mirror.cpp */,
 				71E36B5225D5994100EFEED4 /* Model.h */,
 				71E36B5325D5994100EFEED4 /* Model.cpp */,
 				7162FC6825962A0E0075B97D /* Object.h */,
@@ -4144,12 +4151,12 @@
 			isa = PBXGroup;
 			children = (
 				71E36B8225D5996400EFEED4 /* ComponentArray.h */,
-				71E36B8325D5996400EFEED4 /* Signature.h */,
-				71E36B8425D5996400EFEED4 /* EntityManager.h */,
 				71E36B8525D5996400EFEED4 /* ComponentManager.h */,
-				71C0FFEE2E41845E006D11A1 /* ComponentManager.cpp */,
-				71E36B8625D5996400EFEED4 /* SubSystem.h */,
+				175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */,
 				71E36B8725D5996400EFEED4 /* Entity.h */,
+				71E36B8425D5996400EFEED4 /* EntityManager.h */,
+				71E36B8325D5996400EFEED4 /* Signature.h */,
+				71E36B8625D5996400EFEED4 /* SubSystem.h */,
 			);
 			path = ecs;
 			sourceTree = "<group>";
@@ -4424,6 +4431,7 @@
 				71F225482C587388006ED3CA /* Particles.h in Headers */,
 				71BE621225B1DB37006D6E02 /* FunctionSubscribe.h in Headers */,
 				718FDDF52837CA9A00AF314C /* msl21ios.h in Headers */,
+				175DCCC23022C5E9008C19EC /* Mirror.h in Headers */,
 				71E824962A9C242B00C8E6F2 /* PhysicsSystem.h in Headers */,
 				718FDDF92837CA9A00AF314C /* glsl330.h in Headers */,
 				717AD96A290B6602007D7DB5 /* Sound.h in Headers */,
@@ -5691,6 +5699,7 @@
 				715CB118288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08725BB033D00965B51 /* Input.cpp in Sources */,
 				713D82AB259D307F00567F9F /* Texture.cpp in Sources */,
+				175DCCC43022C5E9008C19EC /* Mirror.cpp in Sources */,
 				71451BE0270CA17F00712643 /* PositionAction.cpp in Sources */,
 				71ABBD4527A879D4001CE3AF /* Button.cpp in Sources */,
 				713D82AD259D307F00567F9F /* RenderSystem.cpp in Sources */,
@@ -5699,10 +5708,10 @@
 				71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
 				71ABBD25277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
-				71C0FFEF2E41845E006D11A1 /* ComponentManager.cpp in Sources */,
 				713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */,
 				71E54500284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F2254A2C587388006ED3CA /* Particles.cpp in Sources */,
+				175DCCBE3022C5A2008C19EC /* ComponentManager.cpp in Sources */,
 				717AD994292FC30A007D7DB5 /* Framebuffer.cpp in Sources */,
 				7128D11F25C2356200965B51 /* SokolSystem.cpp in Sources */,
 				7105A56528B305B20092EA05 /* CoreClassesLua.cpp in Sources */,
@@ -5874,6 +5883,7 @@
 				71451BD1270CA17F00712643 /* SpriteAnimation.cpp in Sources */,
 				715CB117288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08625BB033D00965B51 /* Input.cpp in Sources */,
+				175DCCC33022C5E9008C19EC /* Mirror.cpp in Sources */,
 				7162FD3D25963AE00075B97D /* Plane.cpp in Sources */,
 				71451BDF270CA17F00712643 /* PositionAction.cpp in Sources */,
 				71ABBD4427A879D4001CE3AF /* Button.cpp in Sources */,
@@ -5882,10 +5892,10 @@
 				71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
 				71ABBD24277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
-				71C0FFF02E41845E006D11A1 /* ComponentManager.cpp in Sources */,
 				7162FD4525963AE00075B97D /* Object.cpp in Sources */,
 				71E544FF284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F225492C587388006ED3CA /* Particles.cpp in Sources */,
+				175DCCBF3022C5A2008C19EC /* ComponentManager.cpp in Sources */,
 				717AD993292FC30A007D7DB5 /* Framebuffer.cpp in Sources */,
 				7128D11E25C2356200965B51 /* SokolSystem.cpp in Sources */,
 				7105A56428B305B20092EA05 /* CoreClassesLua.cpp in Sources */,
