@@ -151,6 +151,28 @@ std::wstring StringUtils::utf8ToWString(const std::string& text, bool& hadInvali
     return out;
 }
 
+std::vector<std::string> StringUtils::split(const std::string& text, char separator) {
+    std::vector<std::string> out;
+
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t end = text.find(separator, start);
+        if (end == std::string::npos) {
+            end = text.size();
+        }
+
+        size_t first = text.find_first_not_of(" \t\r\n", start);
+        if (first != std::string::npos && first < end) {
+            size_t last = text.find_last_not_of(" \t\r\n", end - 1);
+            out.push_back(text.substr(first, last - first + 1));
+        }
+
+        start = end + 1;
+    }
+
+    return out;
+}
+
 size_t StringUtils::countCodepoints(const std::string& text) {
     bool hadInvalid = false;
     return decodeUtf8ToCodepoints(text, hadInvalid).size();

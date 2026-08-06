@@ -8,6 +8,8 @@
 #include "util/STBText.h"
 #include <map>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace doriax{
 
@@ -19,7 +21,7 @@ namespace doriax{
 
     public:
         static std::shared_ptr<STBText> get(const std::string& id);
-        static std::shared_ptr<STBText> get(const std::string& id, const std::string& fontpath, unsigned int fontSize);
+        static std::shared_ptr<STBText> get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize);
         static void remove(const std::string& id);
 
         // necessary for engine shutdown

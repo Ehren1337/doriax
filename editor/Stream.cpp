@@ -4580,6 +4580,7 @@ YAML::Node editor::Stream::encodeTextComponent(const TextComponent& text) {
     YAML::Node node;
 
     node["font"] = text.font;
+    node["fontFallbacks"] = text.fontFallbacks;
     node["text"] = text.text;
     node["fontSize"] = text.fontSize;
     node["multiline"] = text.multiline;
@@ -4600,6 +4601,7 @@ TextComponent editor::Stream::decodeTextComponent(const YAML::Node& node, const 
     }
 
     if (node["font"]) text.font = node["font"].as<std::string>();
+    if (node["fontFallbacks"]) text.fontFallbacks = node["fontFallbacks"].as<std::string>();
     if (node["text"]) text.text = node["text"].as<std::string>();
     if (node["fontSize"]) text.fontSize = node["fontSize"].as<unsigned int>();
     if (node["multiline"]) text.multiline = node["multiline"].as<bool>();

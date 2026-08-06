@@ -591,6 +591,7 @@ namespace {
     static const FastPropertyDescriptor kTextProperties[] = {
         makeFastProperty<TextComponent, std::string, &TextComponent::text>("text", PropertyType::String, UpdateFlags_Text),
         makeFastProperty<TextComponent, std::string, &TextComponent::font>("font", PropertyType::String, UpdateFlags_Text_Atlas),
+        makeFastProperty<TextComponent, std::string, &TextComponent::fontFallbacks>("fontFallbacks", PropertyType::String, UpdateFlags_Text_Atlas),
         makeFastProperty<TextComponent, unsigned int, &TextComponent::fontSize>("fontSize", PropertyType::UInt, UpdateFlags_Text_Atlas),
         makeFastProperty<TextComponent, bool, &TextComponent::multiline>("multiline", PropertyType::Bool, UpdateFlags_Text),
         makeFastProperty<TextComponent, unsigned int, &TextComponent::maxTextSize>("maxTextSize", PropertyType::UInt, UpdateFlags_Text),

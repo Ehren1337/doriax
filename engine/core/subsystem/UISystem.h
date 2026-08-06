@@ -84,7 +84,10 @@ namespace doriax{
         int textEditSelectionStart(const TextEditComponent& textedit) const;
         int textEditSelectionEnd(const TextEditComponent& textedit) const;
         void textEditClampCursor(TextEditComponent& textedit, size_t numCodepoints) const;
-        float textEditCursorPixelX(const TextComponent& text, int cursorIndex, float textWidth) const;
+        void textEditSelectionRects(const TextComponent& text, int start, int end, std::vector<Rect>& rects) const;
+        //one caret stop to the left or right on screen, not in the string
+        int textEditVisualStep(const TextComponent& text, int cursorIndex, int direction) const;
+        float textEditCursorPixelX(const TextComponent& text, int cursorIndex) const;
         int textEditFindCursorIndexFromX(const TextComponent& text, float x) const;
         std::string textEditMaskText(const std::string& text, char maskChar) const;
         void textEditDeleteSelection(TextEditComponent& textedit, TextComponent& text);

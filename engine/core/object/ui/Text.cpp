@@ -130,6 +130,24 @@ std::string Text::getFont() const{
     return textcomp.font;
 }
 
+void Text::setFontFallbacks(const std::string& fontFallbacks){
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    if (textcomp.fontFallbacks != fontFallbacks){
+        textcomp.fontFallbacks = fontFallbacks;
+
+        textcomp.needReloadAtlas = true;
+        textcomp.needUpdateText = true;
+    }
+}
+
+std::string Text::getFontFallbacks() const{
+    TextComponent& textcomp = getComponent<TextComponent>();
+
+    return textcomp.fontFallbacks;
+}
+
+
 void Text::setFontSize(unsigned int fontSize){
     TextComponent& textcomp = getComponent<TextComponent>();
 

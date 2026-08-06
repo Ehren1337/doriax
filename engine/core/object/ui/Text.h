@@ -37,6 +37,10 @@ namespace doriax{
         void setFont(const std::string& font);
         std::string getFont() const;
 
+        // ";" separated font paths, tried in order for what the main font misses
+        void setFontFallbacks(const std::string& fontFallbacks);
+        std::string getFontFallbacks() const;
+
         void setFontSize(unsigned int fontSize);
         unsigned int getFontSize() const;
 

@@ -26,6 +26,9 @@ namespace doriax{
 
         static size_t countCodepoints(const std::string& text);
 
+        // Splits on a separator, trimming blanks and dropping empty parts.
+        static std::vector<std::string> split(const std::string& text, char separator);
+
         // Removes codepoints in [startIndex, endIndex). Indices are codepoint offsets.
         static void eraseCodepointsUtf8(std::string& text, size_t startIndex, size_t endIndex);
 

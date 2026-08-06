@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 #include "Scene.h"
 #include "Input.h"
@@ -199,6 +200,10 @@ std::string UISystem::getFontId(const TextComponent& text) const{
     if (text.font.empty())
         fontId = "font";
 
+    //two texts only share an atlas when they fall back the same way
+    if (!text.fontFallbacks.empty())
+        fontId += std::string(";") + text.fontFallbacks;
+
     return fontId + std::string("|") + std::to_string(text.fontSize);
 }
 
@@ -233,7 +238,7 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutCompo
 
     text.stbtext = FontPool::get(fontId);
     if (!text.stbtext){
-        text.stbtext = FontPool::get(fontId, text.font, text.fontSize);
+        text.stbtext = FontPool::get(fontId, text.font, StringUtils::split(text.fontFallbacks, ';'), text.fontSize);
         if (!text.stbtext) {
             Log::error("Cannot load font atlas from: %s", text.font.c_str());
             return false;
@@ -280,7 +285,7 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, UILayoutComponen
     ui.minBufferCount = text.maxTextSize * 4;
     ui.minIndicesCount = text.maxTextSize * 6;
 
-    text.stbtext->createText(text.text, &ui.buffer, indices_array, text.charPositions, layout.width, layout.height, text.fixedWidth, text.fixedHeight, text.multiline, ui.flipY);
+    text.stbtext->createText(text.text, &ui.buffer, indices_array, text.charPositions, text.charExtents, layout.width, layout.height, text.fixedWidth, text.fixedHeight, text.multiline, ui.flipY);
 
     syncFontAtlas(text, ui);
 
@@ -756,32 +761,131 @@ void UISystem::textEditClampCursor(TextEditComponent& textedit, size_t numCodepo
     }
 }
 
-float UISystem::textEditCursorPixelX(const TextComponent& text, int cursorIndex, float textWidth) const{
-    size_t numChars = text.charPositions.size();
-    if (cursorIndex <= 0){
+int UISystem::textEditVisualStep(const TextComponent& text, int cursorIndex, int direction) const{
+    size_t numChars = text.charExtents.size();
+    if (numChars == 0){
+        return cursorIndex + direction;
+    }
+
+    //arrows follow the screen, like the click that places the caret. Where the
+    //direction changes two stops land on the same pixel and both must stay reachable,
+    //so the logical index breaks the tie and keeps the order total
+    std::vector<std::pair<float, int>> stops;
+    stops.reserve(numChars + 1);
+
+    for (int i = 0; i <= (int)numChars; i++){
+        stops.push_back({textEditCursorPixelX(text, i), i});
+    }
+
+    std::sort(stops.begin(), stops.end());
+
+    for (size_t i = 0; i < stops.size(); i++){
+        if (stops[i].second != cursorIndex)
+            continue;
+
+        if (direction < 0){
+            return (i > 0) ? stops[i - 1].second : cursorIndex;
+        }
+        return (i + 1 < stops.size()) ? stops[i + 1].second : cursorIndex;
+    }
+
+    return cursorIndex + direction;
+}
+
+float UISystem::textEditCursorPixelX(const TextComponent& text, int cursorIndex) const{
+    size_t numChars = text.charExtents.size();
+    if (numChars == 0){
         return 0;
     }
-    if (cursorIndex >= static_cast<int>(numChars)){
-        return textWidth;
+
+    //the caret sits after the previous codepoint, which in an RTL run is its left side
+    if (cursorIndex > 0){
+        const CharExtent& previous = text.charExtents[std::min((size_t)cursorIndex, numChars) - 1];
+        return previous.rtl ? previous.left : previous.right;
     }
-    return text.charPositions[static_cast<size_t>(cursorIndex - 1)].x;
+
+    const CharExtent& first = text.charExtents[0];
+    return first.rtl ? first.right : first.left;
 }
 
 int UISystem::textEditFindCursorIndexFromX(const TextComponent& text, float x) const{
-    size_t numChars = text.charPositions.size();
-    if (numChars == 0 || x <= 0){
+    size_t numChars = text.charExtents.size();
+    if (numChars == 0){
         return 0;
     }
 
+    //visual order does not follow logical order, the codepoint under the pointer has
+    //to be searched for instead of accumulated
+    size_t nearest = 0;
+    float nearestDistance = std::numeric_limits<float>::max();
+
     for (size_t i = 0; i < numChars; i++){
-        float charStart = (i == 0) ? 0.0f : text.charPositions[i - 1].x;
-        float charEnd = text.charPositions[i].x;
-        if (x < (charStart + charEnd) * 0.5f){
-            return static_cast<int>(i);
+        const CharExtent& extent = text.charExtents[i];
+
+        float distance = 0.0f;
+        if (x < extent.left){
+            distance = extent.left - x;
+        }else if (x > extent.right){
+            distance = x - extent.right;
+        }
+
+        if (distance < nearestDistance){
+            nearestDistance = distance;
+            nearest = i;
+            if (distance == 0.0f)
+                break;
         }
     }
 
-    return static_cast<int>(numChars);
+    const CharExtent& extent = text.charExtents[nearest];
+    float middle = (extent.left + extent.right) * 0.5f;
+    bool afterChar = extent.rtl ? (x < middle) : (x > middle);
+
+    return static_cast<int>(afterChar ? nearest + 1 : nearest);
+}
+
+void UISystem::textEditSelectionRects(const TextComponent& text, int start, int end, std::vector<Rect>& rects) const{
+    rects.clear();
+
+    size_t numChars = text.charExtents.size();
+    if (start >= end || numChars == 0){
+        return;
+    }
+
+    size_t from = std::min((size_t)std::max(start, 0), numChars);
+    size_t to = std::min((size_t)std::max(end, 0), numChars);
+
+    //contiguous in logical order can still be several pieces on screen, so the spans
+    //are merged by position
+    std::vector<Rect> spans;
+    for (size_t i = from; i < to; i++){
+        const CharExtent& extent = text.charExtents[i];
+        if (extent.right <= extent.left)
+            continue;
+
+        spans.push_back(Rect(extent.left, extent.y, extent.right - extent.left, 0));
+    }
+
+    if (spans.empty()){
+        return;
+    }
+
+    std::sort(spans.begin(), spans.end(), [](const Rect& a, const Rect& b){
+        return a.getX() < b.getX();
+    });
+
+    Rect current = spans[0];
+    for (size_t i = 1; i < spans.size(); i++){
+        float currentRight = current.getX() + current.getWidth();
+        if (spans[i].getX() <= currentRight + 0.5f){
+            float right = std::max(currentRight, spans[i].getX() + spans[i].getWidth());
+            current.setWidth(right - current.getX());
+        }else{
+            rects.push_back(current);
+            current = spans[i];
+        }
+    }
+    rects.push_back(current);
 }
 
 std::string UISystem::textEditMaskText(const std::string& text, char maskChar) const{
@@ -860,7 +964,7 @@ void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageC
     int heightArea = layout.height - img.patchMarginTop - img.patchMarginBottom;
     int widthArea = layout.width - img.patchMarginRight - img.patchMarginLeft - textedit.cursorWidth;
 
-    float cursorPixelX = textEditCursorPixelX(text, textedit.cursorIndex, static_cast<float>(textlayout.width));
+    float cursorPixelX = textEditCursorPixelX(text, textedit.cursorIndex);
     if (cursorPixelX - textedit.scrollOffset > widthArea){
         textedit.scrollOffset = cursorPixelX - widthArea;
     }
@@ -890,23 +994,41 @@ void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageC
         PolygonComponent& selection = scene->getComponent<PolygonComponent>(textedit.selection);
 
         bool hasSelection = ui.focused && !textedit.disabled && textEditHasSelection(textedit) && !showingPlaceholder;
+
+        std::vector<Rect> selectionRects;
+        if (hasSelection){
+            textEditSelectionRects(text, textEditSelectionStart(textedit), textEditSelectionEnd(textedit), selectionRects);
+            hasSelection = !selectionRects.empty();
+        }
+
         selectiontransform.visible = hasSelection;
 
         if (hasSelection){
             createOrUpdatePolygon(selection, selectionui, selectionlayout);
 
-            float selectionLeft = textEditCursorPixelX(text, textEditSelectionStart(textedit), static_cast<float>(textlayout.width));
-            float selectionRight = textEditCursorPixelX(text, textEditSelectionEnd(textedit), static_cast<float>(textlayout.width));
             float selectionHeight = static_cast<float>(textlayout.height);
+            Vector4 white = Vector4(1.0, 1.0, 1.0, 1.0);
 
             selection.points.clear();
-            selection.points.push_back({Vector3(0, 0, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
-            selection.points.push_back({Vector3(selectionRight - selectionLeft, 0, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
-            selection.points.push_back({Vector3(0, selectionHeight, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
-            selection.points.push_back({Vector3(selectionRight - selectionLeft, selectionHeight, 0), Vector4(1.0, 1.0, 1.0, 1.0)});
+            for (const Rect& rect : selectionRects){
+                float left = rect.getX();
+                float right = left + rect.getWidth();
+
+                //a repeated vertex on each side of a gap keeps the bridging triangles
+                //degenerate, so one strip can hold several rectangles
+                if (!selection.points.empty()){
+                    selection.points.push_back(selection.points.back());
+                    selection.points.push_back({Vector3(left, 0, 0), white});
+                }
+
+                selection.points.push_back({Vector3(left, 0, 0), white});
+                selection.points.push_back({Vector3(right, 0, 0), white});
+                selection.points.push_back({Vector3(left, selectionHeight, 0), white});
+                selection.points.push_back({Vector3(right, selectionHeight, 0), white});
+            }
 
             selectionui.color = textedit.selectionColor;
-            selectiontransform.position = Vector3(textX + selectionLeft, textY, 0.0);
+            selectiontransform.position = Vector3(textX, textY, 0.0);
             selectiontransform.needUpdate = true;
             selection.needUpdatePolygon = true;
         }
@@ -1058,9 +1180,9 @@ bool UISystem::handleTextEditKeyDown(TextEditComponent& textedit, TextComponent&
     };
 
     if (key == D_KEY_LEFT){
-        moveCursor(textedit.cursorIndex - 1);
+        moveCursor(textEditVisualStep(text, textedit.cursorIndex, -1));
     }else if (key == D_KEY_RIGHT){
-        moveCursor(textedit.cursorIndex + 1);
+        moveCursor(textEditVisualStep(text, textedit.cursorIndex, 1));
     }else if (key == D_KEY_HOME){
         moveCursor(0);
     }else if (key == D_KEY_END){

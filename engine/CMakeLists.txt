@@ -595,6 +595,8 @@ include_directories(libs/tinygltf)
 include_directories(libs/tinyxml2)
 include_directories(libs/box2d/include)
 include_directories(libs/joltphysics)
+include_directories(libs/harfbuzz)
+include_directories(libs/sheenbidi/Headers)
 
 add_subdirectory(libs/sokol)
 add_subdirectory(libs/lua)
@@ -605,6 +607,8 @@ add_subdirectory(libs/tinygltf)
 add_subdirectory(libs/tinyxml2)
 add_subdirectory(libs/box2d)
 add_subdirectory(libs/joltphysics)
+add_subdirectory(libs/harfbuzz)
+add_subdirectory(libs/sheenbidi)
 
 if(DEFINED NO_LUA_INIT)
     add_definitions("-DNO_LUA_INIT=${NO_LUA_INIT}")
@@ -782,7 +786,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud box2d joltphysics
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud box2d joltphysics harfbuzz sheenbidi
 )
 
 set_target_properties(

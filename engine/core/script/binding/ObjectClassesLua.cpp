@@ -781,6 +781,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addProperty("maxTextSize", &Text::getMaxTextSize, &Text::setMaxTextSize)
         .addProperty("text", &Text::getText, &Text::setText)
         .addProperty("font", &Text::getFont, &Text::setFont)
+        .addProperty("fontFallbacks", &Text::getFontFallbacks, &Text::setFontFallbacks)
         .addProperty("fontSize", &Text::getFontSize, &Text::setFontSize)
         .addProperty("multiline", &Text::getMultiline, &Text::setMultiline)
         .addProperty("color", &Text::getColor, (void(Text::*)(Vector4))&Text::setColor)

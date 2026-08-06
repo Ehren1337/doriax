@@ -28,7 +28,7 @@ std::shared_ptr<STBText> FontPool::get(const std::string& id){
 	return NULL;
 }
 
-std::shared_ptr<STBText> FontPool::get(const std::string& id, const std::string& fontpath, unsigned int fontSize){
+std::shared_ptr<STBText> FontPool::get(const std::string& id, const std::string& fontpath, const std::vector<std::string>& fallbackPaths, unsigned int fontSize){
 	auto& shared = getMap()[id];
 
 	if (shared.use_count() > 0){
@@ -36,7 +36,7 @@ std::shared_ptr<STBText> FontPool::get(const std::string& id, const std::string&
 	}
 
 	const auto resource = std::make_shared<STBText>();
-    resource->load(fontpath, fontSize);
+    resource->load(fontpath, fallbackPaths, fontSize);
 
 	shared = resource;
 
