@@ -1128,7 +1128,8 @@ std::string editor::Generator::getPlatformEditorHeader() {
     content += "    virtual void setWindowSize(int width, int height);\n";
     content += "    virtual bool isWindowResizable();\n";
     content += "    virtual void setWindowResizable(bool resizable);\n";
-    content += "    virtual void setWindowTitle(const std::string& title);\n\n";
+    content += "    virtual void setWindowTitle(const std::string& title);\n";
+    content += "    virtual void quit();\n\n";
     content += "    virtual void setMouseCursor(doriax::CursorType type);\n";
     content += "    virtual void setMouseMode(doriax::MouseMode mode);\n\n";
     content += "    virtual void setMousePosition(float x, float y);\n\n";
@@ -1373,6 +1374,9 @@ std::string editor::Generator::getPlatformEditorSource(const fs::path& assetsPat
     content += "}\n\n";
     content += "void PlatformEditor::setWindowTitle(const std::string& title){\n";
     content += "    glfwSetWindowTitle(window, title.c_str());\n";
+    content += "}\n\n";
+    content += "void PlatformEditor::quit(){\n";
+    content += "    glfwSetWindowShouldClose(window, GLFW_TRUE);\n";
     content += "}\n\n";
     content += "void PlatformEditor::setMouseCursor(doriax::CursorType type){\n";
     content += "    GLFWcursor* cursor = NULL;\n\n";

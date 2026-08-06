@@ -31,6 +31,8 @@ private:
 
     static int sampleCount;
 
+    static bool quitRequested;
+
     static GamepadState gamepads[DORIAX_WEB_MAX_GAMEPADS];
 
     static EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent *e, void *userData);
@@ -43,6 +45,9 @@ private:
     static EM_BOOL webgl_context_callback(int emsc_type, const void* reserved, void* user_data);
 
     static EM_BOOL renderLoop(double time, void* userdata);
+
+    static void unregisterCallbacks();
+    static void syncFileSystemNow();
 
     static wchar_t toCodepoint(const std::string &u);
     static std::string toUTF8(wchar_t cp);
@@ -74,6 +79,7 @@ public:
     // Sets the browser tab title; the other window APIs keep the base
     // no-ops since the canvas has no OS window
     virtual void setWindowTitle(const std::string& title) override;
+    virtual void quit() override;
 
     virtual void setMouseCursor(doriax::CursorType type) override;
     virtual void setMouseMode(doriax::MouseMode mode) override;

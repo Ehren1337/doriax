@@ -21,6 +21,8 @@ public:
     virtual void showVirtualKeyboard(std::wstring text) override;
     virtual void hideVirtualKeyboard() override;
 
+    virtual void quit() override;
+
     virtual std::string getUserDataPath() override;
 
     virtual FILE* platformFopen(const char* fname, const char* mode) override;

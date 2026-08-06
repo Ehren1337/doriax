@@ -333,6 +333,10 @@ void DoriaxGLFW::setWindowTitle(const std::string& title){
     glfwSetWindowTitle(window, title.c_str());
 }
 
+void DoriaxGLFW::quit(){
+    glfwSetWindowShouldClose(window, GLFW_TRUE);
+}
+
 void DoriaxGLFW::setMouseCursor(doriax::CursorType type){
     GLFWcursor* cursor = NULL;
 

@@ -25,6 +25,8 @@ public:
     virtual void showVirtualKeyboard(std::wstring text) override;
     virtual void hideVirtualKeyboard() override;
 
+    virtual void quit() override;
+
     virtual std::string getAssetPath() override;
     virtual std::string getUserDataPath() override;
     virtual std::string getLuaPath() override;

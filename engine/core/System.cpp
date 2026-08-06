@@ -118,6 +118,10 @@ void System::setWindowTitle(const std::string& title){
 
 }
 
+void System::quit(){
+    Log::warn("quit() is not supported on this platform");
+}
+
 char System::getDirSeparator(){
 #if defined(_WIN32)
     return '\\';

@@ -42,6 +42,10 @@ void DoriaxSokol::setWindowTitle(const std::string& title){
     sapp_set_window_title(title.c_str());
 }
 
+void DoriaxSokol::quit(){
+    sapp_request_quit();
+}
+
 void DoriaxSokol::setMouseCursor(doriax::CursorType type){
     if (type == doriax::CursorType::ARROW){
         sapp_set_mouse_cursor(SAPP_MOUSECURSOR_ARROW);

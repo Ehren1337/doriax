@@ -43,6 +43,10 @@ void DoriaxAndroid::hideVirtualKeyboard(){
     NativeEngine::getInstance()->hideSoftInput();
 }
 
+void DoriaxAndroid::quit(){
+    GameActivity_finish(NativeEngine::getInstance()->getActivity());
+}
+
 std::string DoriaxAndroid::getUserDataPath() {
     return NativeEngine::getInstance()->getInternalDataPath();
 }

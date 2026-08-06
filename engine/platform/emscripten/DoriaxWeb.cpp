@@ -32,6 +32,8 @@ double DoriaxWeb::mousePosY;
 
 int DoriaxWeb::sampleCount = 0;
 
+bool DoriaxWeb::quitRequested = false;
+
 DoriaxWeb::GamepadState DoriaxWeb::gamepads[DORIAX_WEB_MAX_GAMEPADS];
 
 extern "C" {
@@ -184,6 +186,24 @@ int DoriaxWeb::init(int argc, char **argv){
     return 0;
 }
 
+void DoriaxWeb::unregisterCallbacks(){
+    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
+    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
+    emscripten_set_mousedown_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_mouseup_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_mousemove_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_mouseenter_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_mouseleave_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_wheel_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_touchstart_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_touchmove_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_touchend_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_touchcancel_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, NULL);
+}
+
 void DoriaxWeb::changeCanvasSize(int width, int height){
     emscripten_set_canvas_element_size(canvas.c_str(), width, height);
 
@@ -216,6 +236,10 @@ void DoriaxWeb::exitFullscreen(){
 
 void DoriaxWeb::setWindowTitle(const std::string& title){
     emscripten_set_window_title(title.c_str());
+}
+
+void DoriaxWeb::quit(){
+    quitRequested = true;
 }
 
 void DoriaxWeb::setMouseCursor(doriax::CursorType type){
@@ -275,6 +299,16 @@ bool DoriaxWeb::syncFileSystem(){
         syncWaitTime = 500;
 
     return true;
+}
+
+void DoriaxWeb::syncFileSystemNow(){
+    syncWaitTime = 0;
+
+    EM_ASM(
+        FS.syncfs(function(err) {
+            ccall('syncfs_callback', null, ['string'], [err ? err.message : ""]);
+        });
+    );
 }
 
 void DoriaxWeb::pollGamepads(){
@@ -351,6 +385,20 @@ void DoriaxWeb::pollGamepads(){
 }
 
 EM_BOOL DoriaxWeb::renderLoop(double time, void* userdata){
+    if (quitRequested) {
+        // input events would reach destroyed scenes and a closed Lua state
+        unregisterCallbacks();
+
+        doriax::Engine::systemViewDestroyed();
+        doriax::Engine::systemShutdown();
+
+        // shutdown also writes files and this loop will not run again
+        if (syncWaitTime > 0)
+            syncFileSystemNow();
+
+        return EM_FALSE;
+    }
+
     pollGamepads();
 
     doriax::Engine::systemDraw();
@@ -359,11 +407,7 @@ EM_BOOL DoriaxWeb::renderLoop(double time, void* userdata){
 		syncWaitTime -= (int)(doriax::Engine::getDeltatime()*1000);
 
         if (syncWaitTime <= 0){
-            EM_ASM(
-	            FS.syncfs(function(err) {
-                    ccall('syncfs_callback', null, ['string'], [err ? err.message : ""]);
-		        });
-	        );
+            syncFileSystemNow();
         }
     }
 

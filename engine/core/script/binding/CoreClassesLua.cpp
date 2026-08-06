@@ -892,6 +892,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("isWindowResizable", [] () { return System::instance().isWindowResizable(); })
         .addStaticFunction("setWindowResizable", [] (bool resizable) { System::instance().setWindowResizable(resizable); })
         .addStaticFunction("setWindowTitle", [] (const std::string& title) { System::instance().setWindowTitle(title); })
+        .addStaticFunction("quit", [] () { System::instance().quit(); })
         .addStaticFunction("getDirSeparator", [] () { return System::instance().getDirSeparator(); })
         .addStaticFunction("getAssetPath", [] () { return System::instance().getAssetPath(); })
         .addStaticFunction("getUserDataPath", [] () { return System::instance().getUserDataPath(); })

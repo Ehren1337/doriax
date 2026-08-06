@@ -1,6 +1,7 @@
 #include "Platform.h"
 #include "Out.h"
 #include "Backend.h"
+#include "EditorHost.h"
 
 using namespace doriax;
 
@@ -45,6 +46,13 @@ std::string editor::Platform::getShaderPath(){
 
 void editor::Platform::setMouseMode(MouseMode mode){
     Backend::setMouseMode(mode);
+}
+
+void editor::Platform::quit(){
+    // stops play instead of closing the editor, deferred to not stop inside a script call
+    editor::getEditorHost().enqueueMainThreadTask([this]() {
+        project->stopActivePlay();
+    });
 }
 
 void editor::Platform::platformLog(const int type, const char *fmt, va_list args){

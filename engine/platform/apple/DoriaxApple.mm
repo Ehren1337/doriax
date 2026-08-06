@@ -159,6 +159,18 @@ void DoriaxApple::hideVirtualKeyboard(){
 #endif
 }
 
+void DoriaxApple::quit(){
+#if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
+    // deferred to not close inside a script call
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[Renderer.view window] close];
+    });
+#else
+    // iOS apps should not terminate themselves
+    doriax::System::quit();
+#endif
+}
+
 std::string DoriaxApple::getAssetPath(){
     NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"assets"];
     

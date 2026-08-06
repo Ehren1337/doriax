@@ -62,6 +62,7 @@ public:
     virtual bool isWindowResizable() override;
     virtual void setWindowResizable(bool resizable) override;
     virtual void setWindowTitle(const std::string& title) override;
+    virtual void quit() override;
 
     virtual void setMouseCursor(doriax::CursorType type) override;
     virtual void setMouseMode(doriax::MouseMode mode) override;

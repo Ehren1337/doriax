@@ -28,6 +28,8 @@ namespace doriax::editor{
 
         void setMouseMode(MouseMode mode) override;
 
+        void quit() override;
+
         void platformLog(const int type, const char *fmt, va_list args) override;
     };
 

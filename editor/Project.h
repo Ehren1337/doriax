@@ -592,6 +592,7 @@ namespace doriax::editor{
         void pause(uint32_t sceneId);
         void resume(uint32_t sceneId);
         void stop(uint32_t sceneId);
+        void stopActivePlay();
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);

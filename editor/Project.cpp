@@ -7759,6 +7759,18 @@ void editor::Project::stop(uint32_t sceneId) {
     finalizeStopThread.detach();
 }
 
+void editor::Project::stopActivePlay() {
+    uint32_t mainSceneId;
+    {
+        std::scoped_lock lock(playSessionMutex);
+        if (!activePlaySession) {
+            return;
+        }
+        mainSceneId = activePlaySession->mainSceneId;
+    }
+    stop(mainSceneId);
+}
+
 void editor::Project::waitForPlaySessionToFinish() {
     // Wait for the detached finalizeStop thread to complete
     // so that all cleanup finishes before the app tears down.
