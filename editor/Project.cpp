@@ -232,6 +232,21 @@ static bool mergeScriptProperties(std::vector<ScriptProperty>& properties, const
     return hasChanges;
 }
 
+static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::vector<ScriptProperty>& properties) {
+    std::vector<editor::ScriptPropertyInfo> infos;
+    infos.reserve(properties.size());
+
+    for (const auto& prop : properties) {
+        editor::ScriptPropertyInfo info;
+        info.name = prop.name;
+        info.isPtr = (prop.type == ScriptPropertyType::EntityReference) || !prop.ptrTypeName.empty();
+        info.ptrTypeName = prop.ptrTypeName;
+        infos.push_back(std::move(info));
+    }
+
+    return infos;
+}
+
 // True when a component holds an entity reference pointing outside the bundle
 // instance: a cross-scene reference, or a local entity that is not one of the
 // instance's members. Such references cannot be shared through the registry.
@@ -2387,21 +2402,11 @@ void editor::Project::updateSceneCppScripts(SceneProject* sceneProject) {
                 continue;
             }
 
-            std::vector<ScriptPropertyInfo> properties;
-            properties.reserve(scriptEntry.properties.size());
-            for (const auto& prop : scriptEntry.properties) {
-                ScriptPropertyInfo propInfo;
-                propInfo.name = prop.name;
-                propInfo.isPtr = (prop.type == ScriptPropertyType::EntityReference) || !prop.ptrTypeName.empty();
-                propInfo.ptrTypeName = prop.ptrTypeName;
-                properties.push_back(std::move(propInfo));
-            }
-
             SceneScriptSource sceneScript;
             sceneScript.path = scriptEntry.path;
             sceneScript.headerPath = scriptEntry.headerPath;
             sceneScript.className = scriptEntry.className;
-            sceneScript.properties = std::move(properties);
+            sceneScript.properties = toScriptPropertyInfos(scriptEntry.properties);
             sceneProject->cppScripts.push_back(std::move(sceneScript));
         }
     }
@@ -3368,7 +3373,18 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
                 continue;
             }
 
-            mergedScripts.push_back(script);
+            SceneScriptSource merged = script;
+
+            // scene data can predate the last header edit, and only one scene contributes each script
+            fs::path headerPath = merged.headerPath;
+            if (headerPath.is_relative()) {
+                headerPath = getProjectPath() / headerPath;
+            }
+            if (fs::exists(headerPath)) {
+                merged.properties = toScriptPropertyInfos(ScriptParser::parseScriptProperties(headerPath));
+            }
+
+            mergedScripts.push_back(std::move(merged));
         }
     }
 

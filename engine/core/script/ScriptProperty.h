@@ -62,6 +62,7 @@ namespace doriax {
         ScriptPropertyValue defaultValue;
 
         void* memberPtr = nullptr; // For editor use only
+        void* ownedInstance = nullptr; // Wrapper created to fill an entity reference member
         int luaRef = 0; // For Lua script instance
 
         // Optional: Store the actual type name for editor UI/debugging

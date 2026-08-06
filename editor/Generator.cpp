@@ -496,6 +496,7 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
                         sourceContent += "                                    printf(\"[DEBUG]   No C++ script instance found, creating '" + prop.ptrTypeName + "' type\\n\");\n";
                         sourceContent += "                                    #endif\n";
                         sourceContent += "                                    instancePtr = new " + prop.ptrTypeName + "(targetScene, targetEntity);\n";
+                        sourceContent += "                                    prop.ownedInstance = instancePtr;\n";
                         sourceContent += "                                }\n";
                     }
                     sourceContent += "                            }\n";
@@ -556,6 +557,38 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
         }
         sourceContent += "                scriptEntry.instance = nullptr;\n";
         sourceContent += "            }\n";
+
+        // delete the wrappers initScripts created for entity reference members
+        for (const auto& s : scriptFiles) {
+            std::string deleteContent;
+            for (const auto& prop : s.properties) {
+                if (!prop.isPtr || prop.ptrTypeName.empty()) {
+                    continue;
+                }
+                deleteContent += "                    if (prop.name == \"" + prop.name + "\") {\n";
+                deleteContent += "                        delete static_cast<" + prop.ptrTypeName + "*>(prop.ownedInstance);\n";
+                deleteContent += "                    }\n";
+            }
+            if (deleteContent.empty()) {
+                continue;
+            }
+
+            sourceContent += "\n";
+            sourceContent += "            if (scriptEntry.className == \"" + s.className + "\") {\n";
+            sourceContent += "                for (auto& prop : scriptEntry.properties) {\n";
+            sourceContent += "                    if (!prop.ownedInstance) continue;\n";
+            sourceContent += "\n";
+            sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(prop.ownedInstance)) + \"_\";\n";
+            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
+            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            sourceContent += "\n";
+            sourceContent += deleteContent;
+            sourceContent += "\n";
+            sourceContent += "                    prop.ownedInstance = nullptr;\n";
+            sourceContent += "                }\n";
+            sourceContent += "            }\n";
+        }
+
         sourceContent += "        }\n";
         sourceContent += "    }\n";
     }
