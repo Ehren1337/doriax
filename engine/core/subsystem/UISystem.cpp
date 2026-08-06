@@ -203,43 +203,29 @@ std::string UISystem::getFontId(const TextComponent& text) const{
 }
 
 std::string UISystem::getFontTextureId(const TextComponent& text) const{
-    std::string fontId = getFontId(text);
-
-    //a resized atlas needs its own texture, the previous one is still in use by
-    //texts not rebuilt yet. Generation 1 is unsuffixed to keep the usual id
-    if (text.stbtext && text.stbtext->getAtlasGeneration() > 1){
-        fontId += std::string("#") + std::to_string(text.stbtext->getAtlasGeneration());
-    }
-
-    return fontId;
+    // Every atlas change gets its own texture. The previous one stays untouched for
+    // the texts still using it, instead of being rebuilt while bound, and is
+    // released when the last of them is rebuilt.
+    return getFontId(text) + std::string("#") + std::to_string(text.stbtext->getAtlasVersion());
 }
 
 bool UISystem::isFontAtlasStale(const TextComponent& text) const{
-    //another text using the same font can have resized and repacked the atlas
-    return text.loaded && text.stbtext && text.stbtext->getAtlasGeneration() != text.atlasGeneration;
+    //another text using the same font can have added glyphs to the atlas
+    return text.loaded && text.stbtext && text.stbtext->getAtlasVersion() != text.atlasVersion;
 }
 
 void UISystem::syncFontAtlas(TextComponent& text, UIComponent& ui){
-    if (!text.stbtext)
+    if (!text.stbtext || text.stbtext->getAtlasVersion() == text.atlasVersion)
         return;
 
-    unsigned long generation = text.stbtext->getAtlasGeneration();
-    unsigned long version = text.stbtext->getAtlasVersion();
+    TextureData* atlas = text.stbtext->getTextureData();
+    if (!atlas)
+        return;
 
-    if (generation != text.atlasGeneration){
-        ui.texture.setData(getFontTextureId(text), *text.stbtext->getTextureData());
+    ui.texture.setData(getFontTextureId(text), *atlas);
 
-        text.atlasGeneration = generation;
-        text.atlasVersion = version;
-        ui.needUpdateTexture = true;
-
-    }else if (version != text.atlasVersion){
-        //same size, only new glyph pixels
-        ui.texture.invalidateRender();
-
-        text.atlasVersion = version;
-        ui.needUpdateTexture = true;
-    }
+    text.atlasVersion = text.stbtext->getAtlasVersion();
+    ui.needUpdateTexture = true;
 }
 
 bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutComponent& layout){
@@ -254,12 +240,8 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutCompo
         }
     }
 
-    ui.texture.setData(getFontTextureId(text), *text.stbtext->getTextureData());
-
-    text.atlasVersion = text.stbtext->getAtlasVersion();
-    text.atlasGeneration = text.stbtext->getAtlasGeneration();
-
-    ui.needUpdateTexture = true;
+    //texture is published by syncFontAtlas, after createText rasterized the glyphs
+    text.atlasVersion = 0;
 
     text.needReloadAtlas = false;
     text.loaded = true;
@@ -1551,7 +1533,6 @@ void UISystem::destroyText(TextComponent& text){
     text.needUpdateText = true;
 
     text.atlasVersion = 0;
-    text.atlasGeneration = 0;
 
     if (text.stbtext){
         text.stbtext.reset();

@@ -33,7 +33,6 @@ namespace doriax{
 
         //atlas state this text was built with, see STBText
         unsigned long atlasVersion = 0;
-        unsigned long atlasGeneration = 0;
 
         bool needReloadAtlas = false;
         bool needUpdateText = true;

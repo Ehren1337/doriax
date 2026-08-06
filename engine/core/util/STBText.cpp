@@ -20,7 +20,6 @@ STBText::STBText() {
     atlasWidth = 0;
     atlasHeight = 0;
     atlasVersion = 0;
-    atlasGeneration = 0;
 
     ascent = 0;
     descent = 0;
@@ -48,7 +47,6 @@ void STBText::resetAtlas(unsigned int width, unsigned int height){
     shelves.clear();
 
     atlasVersion++;
-    atlasGeneration++;
 }
 
 bool STBText::packRect(int width, int height, int& outX, int& outY){
@@ -223,10 +221,6 @@ float STBText::getCharWidth(uint32_t codepoint){
 
 unsigned long STBText::getAtlasVersion() const{
     return atlasVersion;
-}
-
-unsigned long STBText::getAtlasGeneration() const{
-    return atlasGeneration;
 }
 
 TextureData* STBText::load(const std::string& fontpath, unsigned int fontSize){

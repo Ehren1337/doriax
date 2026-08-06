@@ -67,10 +67,8 @@ namespace doriax {
         //buffers of previous atlas sizes, TextureData points to them without owning
         std::vector<std::vector<unsigned char>> retiredAtlases;
 
-        //new glyph pixels, texture must be uploaded again
+        //bumped on every atlas change, texts built with an older one are outdated
         unsigned long atlasVersion;
-        //atlas was resized and repacked, texture coordinates in use are stale
-        unsigned long atlasGeneration;
 
         float ascent;
         float descent;
@@ -98,7 +96,6 @@ namespace doriax {
         float getCharWidth(uint32_t codepoint);
 
         unsigned long getAtlasVersion() const;
-        unsigned long getAtlasGeneration() const;
 
         TextureData* load(const std::string& fontpath, unsigned int fontSize);
         void createText(const std::string& text, Buffer* buffer, std::vector<uint16_t>& indices, std::vector<Vector2>& charPositions,
