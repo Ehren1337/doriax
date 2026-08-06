@@ -158,6 +158,8 @@ namespace doriax::editor {
         void DeleteSelection();
         void Backspace();
         void Delete();
+        void DeleteWordLeft();
+        void DeleteWordRight();
 
         // Undo/Redo
         void Undo(int steps = 1);
@@ -416,6 +418,8 @@ namespace doriax::editor {
         bool isWordChar(char c) const;
         TextPosition findWordStart(const TextPosition& pos) const;
         TextPosition findWordEnd(const TextPosition& pos) const;
+        TextPosition findDeleteWordStart(const TextPosition& pos) const;
+        TextPosition findDeleteWordEnd(const TextPosition& pos) const;
 
         void updateSearchResults();
 

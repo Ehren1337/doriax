@@ -1010,6 +1010,100 @@ void CustomTextEditor::Delete() {
     if (onTextChanged) onTextChanged();
 }
 
+void CustomTextEditor::DeleteWordLeft() {
+    if (readOnly) return;
+
+    addUndoRecord();
+
+    std::vector<size_t> order(cursors.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        auto editStart = [&](const Cursor& c) {
+            return c.selection.isEmpty() ? c.position : c.selection.getMin();
+        };
+        return editStart(cursors[a]) < editStart(cursors[b]);
+    });
+
+    for (size_t idx = 0; idx < order.size(); ++idx) {
+        auto& cursor = cursors[order[idx]];
+
+        TextPosition delStart, delEnd;
+
+        if (!cursor.selection.isEmpty()) {
+            delStart = cursor.selection.getMin();
+            delEnd = cursor.selection.getMax();
+        } else {
+            delStart = findDeleteWordStart(cursor.position);
+            delEnd = cursor.position;
+        }
+
+        if (delStart < delEnd) {
+            deleteRange(delStart, delEnd);
+            cursor.position = delStart;
+
+            for (size_t j = idx + 1; j < order.size(); ++j) {
+                adjustCursorAfterDelete(cursors[order[j]], delStart, delEnd);
+            }
+        }
+
+        cursor.selection.start = cursor.position;
+        cursor.selection.end = cursor.position;
+    }
+
+    mergeCursors();
+    tokenizeAll();
+    finalizeUndoRecord();
+
+    if (onTextChanged) onTextChanged();
+}
+
+void CustomTextEditor::DeleteWordRight() {
+    if (readOnly) return;
+
+    addUndoRecord();
+
+    std::vector<size_t> order(cursors.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        auto editStart = [&](const Cursor& c) {
+            return c.selection.isEmpty() ? c.position : c.selection.getMin();
+        };
+        return editStart(cursors[a]) < editStart(cursors[b]);
+    });
+
+    for (size_t idx = 0; idx < order.size(); ++idx) {
+        auto& cursor = cursors[order[idx]];
+
+        TextPosition delStart, delEnd;
+
+        if (!cursor.selection.isEmpty()) {
+            delStart = cursor.selection.getMin();
+            delEnd = cursor.selection.getMax();
+        } else {
+            delStart = cursor.position;
+            delEnd = findDeleteWordEnd(cursor.position);
+        }
+
+        if (delStart < delEnd) {
+            deleteRange(delStart, delEnd);
+            cursor.position = delStart;
+
+            for (size_t j = idx + 1; j < order.size(); ++j) {
+                adjustCursorAfterDelete(cursors[order[j]], delStart, delEnd);
+            }
+        }
+
+        cursor.selection.start = cursor.position;
+        cursor.selection.end = cursor.position;
+    }
+
+    mergeCursors();
+    tokenizeAll();
+    finalizeUndoRecord();
+
+    if (onTextChanged) onTextChanged();
+}
+
 void CustomTextEditor::deleteRange(const TextPosition& start, const TextPosition& end) {
     if (start == end) return;
 
@@ -1823,6 +1917,53 @@ TextPosition CustomTextEditor::findWordEnd(const TextPosition& pos) const {
     }
 
     return result;
+}
+
+TextPosition CustomTextEditor::findDeleteWordStart(const TextPosition& pos) const {
+    if (pos.column == 0) {
+        if (pos.line == 0) return pos;
+        return TextPosition(pos.line - 1, static_cast<int>(lines[pos.line - 1].size()));
+    }
+
+    const std::string& line = lines[pos.line];
+    TextPosition result = pos;
+
+    // A whitespace run goes as a whole, so one press clears an indentation
+    while (result.column > 0 && std::isspace(line[result.column - 1])) {
+        --result.column;
+    }
+    if (pos.column - result.column > 1) return result;
+
+    if (result.column > 0 && !isWordChar(line[result.column - 1])) {
+        --result.column;
+        return result;
+    }
+
+    return findWordStart(result);
+}
+
+TextPosition CustomTextEditor::findDeleteWordEnd(const TextPosition& pos) const {
+    const std::string& line = lines[pos.line];
+    const int lineSize = static_cast<int>(line.size());
+
+    if (pos.column == lineSize) {
+        if (pos.line == static_cast<int>(lines.size()) - 1) return pos;
+        return TextPosition(pos.line + 1, 0);
+    }
+
+    TextPosition result = pos;
+
+    while (result.column < lineSize && std::isspace(line[result.column])) {
+        ++result.column;
+    }
+    if (result.column - pos.column > 1) return result;
+
+    if (result.column < lineSize && !isWordChar(line[result.column])) {
+        ++result.column;
+        return result;
+    }
+
+    return findWordEnd(result);
 }
 
 char CustomTextEditor::getCharAt(const TextPosition& pos) const {
@@ -2960,32 +3101,7 @@ void CustomTextEditor::handleKeyboardInput() {
     // Editing keys
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace) && !readOnly) {
         if (ctrl) {
-            // Ctrl+Backspace: delete word left
-            addUndoRecord();
-            for (auto& cursor : cursors) {
-                if (!cursor.selection.isEmpty()) {
-                    TextPosition delStart = cursor.selection.getMin();
-                    TextPosition delEnd = cursor.selection.getMax();
-                    deleteRange(delStart, delEnd);
-                    cursor.position = delStart;
-                } else {
-                    TextPosition wordStart = findWordStart(cursor.position);
-                    if (wordStart == cursor.position && wordStart.column > 0) {
-                        wordStart.column--;
-                        wordStart = findWordStart(wordStart);
-                    }
-                    if (wordStart < cursor.position) {
-                        deleteRange(wordStart, cursor.position);
-                        cursor.position = wordStart;
-                    }
-                }
-                cursor.selection.start = cursor.position;
-                cursor.selection.end = cursor.position;
-            }
-            mergeCursors();
-            tokenizeAll();
-            finalizeUndoRecord();
-            if (onTextChanged) onTextChanged();
+            DeleteWordLeft();
         } else {
             Backspace();
         }
@@ -2995,31 +3111,7 @@ void CustomTextEditor::handleKeyboardInput() {
 
     if (ImGui::IsKeyPressed(ImGuiKey_Delete) && !readOnly) {
         if (ctrl) {
-            // Ctrl+Delete: delete word right
-            addUndoRecord();
-            for (auto& cursor : cursors) {
-                if (!cursor.selection.isEmpty()) {
-                    TextPosition delStart = cursor.selection.getMin();
-                    TextPosition delEnd = cursor.selection.getMax();
-                    deleteRange(delStart, delEnd);
-                    cursor.position = delStart;
-                } else {
-                    TextPosition wordEnd = findWordEnd(cursor.position);
-                    if (wordEnd == cursor.position && wordEnd.column < static_cast<int>(lines[wordEnd.line].size())) {
-                        wordEnd.column++;
-                        wordEnd = findWordEnd(wordEnd);
-                    }
-                    if (cursor.position < wordEnd) {
-                        deleteRange(cursor.position, wordEnd);
-                    }
-                }
-                cursor.selection.start = cursor.position;
-                cursor.selection.end = cursor.position;
-            }
-            mergeCursors();
-            tokenizeAll();
-            finalizeUndoRecord();
-            if (onTextChanged) onTextChanged();
+            DeleteWordRight();
         } else {
             Delete();
         }
