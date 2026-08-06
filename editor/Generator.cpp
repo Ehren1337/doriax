@@ -460,7 +460,10 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
                 sourceContent += "                    if (prop.name == \"" + prop.name + "\") {\n";
 
                 if (prop.isPtr && !prop.ptrTypeName.empty()) {
-                    sourceContent += "                        const auto& entRef = std::get<doriax::EntityReference>(prop.value);\n";
+                    sourceContent += "                        doriax::EntityReference entRef;\n";
+                    sourceContent += "                        if (std::holds_alternative<doriax::EntityReference>(prop.value)) {\n";
+                    sourceContent += "                            entRef = std::get<doriax::EntityReference>(prop.value);\n";
+                    sourceContent += "                        }\n";
                     sourceContent += "                        doriax::Entity targetEntity = entRef.entity;\n";
                     sourceContent += "                        void* instancePtr = nullptr;\n";
                     sourceContent += "\n";
@@ -469,7 +472,9 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
                     sourceContent += "                            if (entRef.sceneId != 0) {\n";
                     sourceContent += "                                targetScene = SceneManager::getScenePtr(entRef.sceneId);\n";
                     sourceContent += "                            }\n";
-                    sourceContent += "                            if (targetScene) {\n";
+                    sourceContent += "                            if (!targetScene || !targetScene->isEntityCreated(targetEntity)) {\n";
+                    sourceContent += "                                Log::error(\"Script property " + s.className + "::" + prop.name + ": entity %u not found\", targetEntity);\n";
+                    sourceContent += "                            } else {\n";
                     sourceContent += "                                doriax::ScriptComponent* targetScriptComp = targetScene->findComponent<doriax::ScriptComponent>(targetEntity);\n";
                     sourceContent += "                                if (targetScriptComp) {\n";
                     sourceContent += "                                    for (auto& targetScript : targetScriptComp->scripts) {\n";

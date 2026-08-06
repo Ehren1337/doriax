@@ -4466,6 +4466,10 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
         for (Entity& entity : entities){
             PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, cpType, id);
+            // rows come from the first selected entity, others may not have this property
+            if (!prop.ref) {
+                continue;
+            }
             defVal = static_cast<unsigned int*>(prop.def);
             eValue[entity] = *static_cast<unsigned int*>(prop.ref);
 
@@ -4474,7 +4478,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             ScriptComponent* sc = sceneProject->scene->findComponent<ScriptComponent>(entity);
             if (sc && scriptIdx < sc->scripts.size()) {
                 for (auto& sp : sc->scripts[scriptIdx].properties) {
-                    if (sp.name == propName) {
+                    if (sp.name == propName && std::holds_alternative<EntityReference>(sp.value)) {
                         sid = std::get<EntityReference>(sp.value).sceneId;
                         break;
                     }

@@ -113,6 +113,10 @@ namespace doriax::editor{
             for (auto& [entity, value] : values){
                 PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, type, propertyName);
                 T* valueRef = static_cast<T*>(prop.ref);
+                // script properties are per entity, a selection may not share all of them
+                if (!valueRef){
+                    continue;
+                }
 
                 Entity modelEntity = Catalog::findSubmeshOverrideModel(sceneProject->scene, entity, type, propertyName);
                 if (modelEntity != NULL_ENTITY && oldOverrides.find(modelEntity) == oldOverrides.end()){
@@ -156,6 +160,9 @@ namespace doriax::editor{
             for (auto const& [entity, value] : values){
                 PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, type, propertyName);
                 T* valueRef = static_cast<T*>(prop.ref);
+                if (!valueRef){
+                    continue;
+                }
 
                 *valueRef = value.oldValue;
 
