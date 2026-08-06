@@ -239,13 +239,13 @@ Vector2 Text::getCharPosition(unsigned int index) const{
     throw std::out_of_range("charPositions out of range");
 }
 
-float Text::getCharWidth(char c) const{
+float Text::getCharWidth(uint32_t codepoint) const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
     if (!textcomp.stbtext)
         return 0;
     else
-        return textcomp.stbtext->getCharWidth(c);
+        return textcomp.stbtext->getCharWidth(codepoint);
 }
 
 void Text::setFlipY(bool flipY){

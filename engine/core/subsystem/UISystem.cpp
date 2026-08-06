@@ -194,11 +194,56 @@ bool UISystem::createImagePatches(ImageComponent& img, UIComponent& ui, UILayout
     return true;
 }
 
-bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutComponent& layout){
+std::string UISystem::getFontId(const TextComponent& text) const{
     std::string fontId = text.font;
     if (text.font.empty())
         fontId = "font";
-    fontId = fontId + std::string("|") + std::to_string(text.fontSize);
+
+    return fontId + std::string("|") + std::to_string(text.fontSize);
+}
+
+std::string UISystem::getFontTextureId(const TextComponent& text) const{
+    std::string fontId = getFontId(text);
+
+    //a resized atlas needs its own texture, the previous one is still in use by
+    //texts not rebuilt yet. Generation 1 is unsuffixed to keep the usual id
+    if (text.stbtext && text.stbtext->getAtlasGeneration() > 1){
+        fontId += std::string("#") + std::to_string(text.stbtext->getAtlasGeneration());
+    }
+
+    return fontId;
+}
+
+bool UISystem::isFontAtlasStale(const TextComponent& text) const{
+    //another text using the same font can have resized and repacked the atlas
+    return text.loaded && text.stbtext && text.stbtext->getAtlasGeneration() != text.atlasGeneration;
+}
+
+void UISystem::syncFontAtlas(TextComponent& text, UIComponent& ui){
+    if (!text.stbtext)
+        return;
+
+    unsigned long generation = text.stbtext->getAtlasGeneration();
+    unsigned long version = text.stbtext->getAtlasVersion();
+
+    if (generation != text.atlasGeneration){
+        ui.texture.setData(getFontTextureId(text), *text.stbtext->getTextureData());
+
+        text.atlasGeneration = generation;
+        text.atlasVersion = version;
+        ui.needUpdateTexture = true;
+
+    }else if (version != text.atlasVersion){
+        //same size, only new glyph pixels
+        ui.texture.invalidateRender();
+
+        text.atlasVersion = version;
+        ui.needUpdateTexture = true;
+    }
+}
+
+bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutComponent& layout){
+    std::string fontId = getFontId(text);
 
     text.stbtext = FontPool::get(fontId);
     if (!text.stbtext){
@@ -209,7 +254,10 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutCompo
         }
     }
 
-    ui.texture.setData(fontId, *text.stbtext->getTextureData());
+    ui.texture.setData(getFontTextureId(text), *text.stbtext->getTextureData());
+
+    text.atlasVersion = text.stbtext->getAtlasVersion();
+    text.atlasGeneration = text.stbtext->getAtlasGeneration();
 
     ui.needUpdateTexture = true;
 
@@ -251,6 +299,8 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, UILayoutComponen
     ui.minIndicesCount = text.maxTextSize * 6;
 
     text.stbtext->createText(text.text, &ui.buffer, indices_array, text.charPositions, layout.width, layout.height, text.fixedWidth, text.fixedHeight, text.multiline, ui.flipY);
+
+    syncFontAtlas(text, ui);
 
     if (text.pivotCentered || !text.pivotBaseline){
         Attribute* atrVertice = ui.buffer.getAttribute(AttributeType::POSITION);
@@ -1162,6 +1212,10 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, UILayout
         destroyText(text);
     }
 
+    if (isFontAtlasStale(text)){
+        text.needUpdateText = true;
+    }
+
     if (text.needUpdateText){
         if (ui.automaticFlipY){
             CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
@@ -1496,6 +1550,9 @@ void UISystem::destroyText(TextComponent& text){
 
     text.needUpdateText = true;
 
+    text.atlasVersion = 0;
+    text.atlasGeneration = 0;
+
     if (text.stbtext){
         text.stbtext.reset();
     }
@@ -1555,7 +1612,7 @@ void UISystem::createOrUpdateUiComponent(double dt, UILayoutComponent& layout, E
             TextComponent& text = scene->getComponent<TextComponent>(entity);
 
             if (TextEditComponent* ownerEdit = findTextEditForTextChild(entity)){
-                if (text.needUpdateText || text.needReloadAtlas){
+                if (text.needUpdateText || text.needReloadAtlas || isFontAtlasStale(text)){
                     ownerEdit->needUpdateTextEdit = true;
                 }
             }else{

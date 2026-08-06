@@ -54,6 +54,10 @@ namespace doriax{
         bool createImagePatches(ImageComponent& img, UIComponent& ui, UILayoutComponent& layout);
 
         // Text
+        std::string getFontId(const TextComponent& text) const;
+        std::string getFontTextureId(const TextComponent& text) const;
+        bool isFontAtlasStale(const TextComponent& text) const;
+        void syncFontAtlas(TextComponent& text, UIComponent& ui);
         bool loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutComponent& layout);
         void createText(TextComponent& text, UIComponent& ui, UILayoutComponent& layout);
 

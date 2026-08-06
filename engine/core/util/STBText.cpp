@@ -4,6 +4,7 @@
 
 #include "STBText.h"
 
+#include <cmath>
 #include <string>
 #include "Log.h"
 #include "io/Data.h"
@@ -13,8 +14,13 @@
 using namespace doriax;
 
 STBText::STBText() {
+    fontLoaded = false;
+    scale = 0;
+
     atlasWidth = 0;
     atlasHeight = 0;
+    atlasVersion = 0;
+    atlasGeneration = 0;
 
     ascent = 0;
     descent = 0;
@@ -30,39 +36,165 @@ STBText::~STBText() {
     }
 }
 
-void STBText::tryFindBitmapSize(const stbtt_fontinfo *info, float scale){
+void STBText::resetAtlas(unsigned int width, unsigned int height){
+    if (!atlasPixels.empty()){
+        retiredAtlases.push_back(std::move(atlasPixels));
+    }
 
-    atlasWidth = 512;
-    atlasHeight = 512;
+    atlasWidth = width;
+    atlasHeight = height;
 
-    int x0; int y0; int x1; int y1;
+    atlasPixels.assign((size_t)atlasWidth * (size_t)atlasHeight, 0);
+    shelves.clear();
 
-    stbtt_GetFontBoundingBox(info, &x0, &y0, &x1, &y1);
-    int gfh = (y1-y0) * scale;
+    atlasVersion++;
+    atlasGeneration++;
+}
 
-    bool fitBitmap = false;
-    while (!fitBitmap && atlasWidth <= atlasLimit){
+bool STBText::packRect(int width, int height, int& outX, int& outY){
+    outX = 0;
+    outY = 0;
 
-        int xOffset = 0;
-        int yOffset = 0;
+    if (width <= 0 || height <= 0){
+        return true;
+    }
 
-        for (int i = firstChar; (i < lastChar && yOffset <= atlasHeight && xOffset <= atlasWidth); i++){
-            stbtt_GetCodepointBox(info, i, &x0, &y0, &x1, &y1);
-            int gw = (x1-x0) * scale;
-            xOffset += gw+1;
-            if (xOffset > atlasWidth){
-                xOffset = 0;
-                yOffset += gfh;
-            }
-        }
+    width += atlasPadding;
+    height += atlasPadding;
 
-        if (yOffset > atlasHeight || xOffset > atlasWidth){
-            atlasWidth = 2 * atlasWidth;
-            atlasHeight = 2 * atlasHeight;
-        }else {
-            fitBitmap = true;
+    //shortest shelf that still fits, to not waste the taller ones
+    Shelf* best = NULL;
+    for (Shelf& shelf : shelves){
+        if (shelf.h >= height && (shelf.x + width) <= (int)atlasWidth){
+            if (!best || shelf.h < best->h)
+                best = &shelf;
         }
     }
+
+    if (best){
+        outX = best->x;
+        outY = best->y;
+        best->x += width;
+
+        return true;
+    }
+
+    int shelfY = 0;
+    if (!shelves.empty()){
+        shelfY = shelves.back().y + shelves.back().h;
+    }
+
+    if (width > (int)atlasWidth || (shelfY + height) > (int)atlasHeight){
+        return false;
+    }
+
+    shelves.push_back({width, shelfY, height});
+
+    outY = shelfY;
+
+    return true;
+}
+
+bool STBText::growAtlas(){
+    if (atlasWidth * 2 > atlasLimit || atlasHeight * 2 > atlasLimit){
+        return false;
+    }
+
+    std::vector<uint32_t> cached;
+    cached.reserve(glyphMap.size());
+    for (const auto& [glyphIndex, _] : glyphMap){
+        cached.push_back(glyphIndex);
+    }
+
+    resetAtlas(atlasWidth * 2, atlasHeight * 2);
+    glyphMap.clear();
+
+    for (uint32_t glyphIndex : cached){
+        getGlyph(glyphIndex);
+    }
+
+    return true;
+}
+
+void STBText::rasterizeGlyph(uint32_t glyphIndex, FontGlyph& glyph, int x, int y){
+    int x0, y0, x1, y1;
+    stbtt_GetGlyphBitmapBox(&fontInfo, glyphIndex, scale, scale, &x0, &y0, &x1, &y1);
+
+    int gw = x1 - x0;
+    int gh = y1 - y0;
+
+    if (gw > 0 && gh > 0){
+        stbtt_MakeGlyphBitmap(&fontInfo, &atlasPixels[(size_t)y * atlasWidth + x], gw, gh, atlasWidth, scale, scale, glyphIndex);
+    }
+
+    int advance, leftSideBearing;
+    stbtt_GetGlyphHMetrics(&fontInfo, glyphIndex, &advance, &leftSideBearing);
+
+    glyph.xoff = x0;
+    glyph.yoff = y0;
+    glyph.xoff2 = x1;
+    glyph.yoff2 = y1;
+
+    glyph.s0 = (float)x / atlasWidth;
+    glyph.t0 = (float)y / atlasHeight;
+    glyph.s1 = (float)(x + gw) / atlasWidth;
+    glyph.t1 = (float)(y + gh) / atlasHeight;
+
+    glyph.xadvance = advance * scale;
+
+    atlasVersion++;
+}
+
+const STBText::FontGlyph* STBText::getGlyph(uint32_t glyphIndex){
+    if (!fontLoaded)
+        return NULL;
+
+    auto it = glyphMap.find(glyphIndex);
+    if (it != glyphMap.end()){
+        return &it->second;
+    }
+
+    int x0, y0, x1, y1;
+    stbtt_GetGlyphBitmapBox(&fontInfo, glyphIndex, scale, scale, &x0, &y0, &x1, &y1);
+
+    int x, y;
+    if (!packRect(x1 - x0, y1 - y0, x, y)){
+        //growAtlas() repacks the cached glyphs, this one is still missing
+        if (!growAtlas() || !packRect(x1 - x0, y1 - y0, x, y)){
+            Log::error("Failed to pack glyph in font atlas");
+            return NULL;
+        }
+    }
+
+    FontGlyph& glyph = glyphMap[glyphIndex];
+    rasterizeGlyph(glyphIndex, glyph, x, y);
+
+    return &glyph;
+}
+
+const STBText::FontGlyph* STBText::getGlyphForCodepoint(uint32_t codepoint){
+    if (!fontLoaded)
+        return NULL;
+
+    auto it = codepointMap.find(codepoint);
+    if (it != codepointMap.end()){
+        return getGlyph(it->second);
+    }
+
+    //a codepoint the font does not map resolves to glyph 0, the .notdef box
+    uint32_t glyphIndex = stbtt_FindGlyphIndex(&fontInfo, codepoint);
+    codepointMap[codepoint] = glyphIndex;
+
+    return getGlyph(glyphIndex);
+}
+
+void STBText::refreshTextureData(){
+    unsigned int textureSize = atlasWidth * atlasHeight * sizeof(unsigned char);
+
+    if (textureData){
+        delete textureData;
+    }
+    textureData = new TextureData(atlasWidth, atlasHeight, textureSize, ColorFormat::RED, 1, (void*)atlasPixels.data());
 }
 
 float STBText::getAscent(){
@@ -81,22 +213,25 @@ int STBText::getLineHeight(){
     return lineHeight;
 }
 
-float STBText::getCharWidth(char c){
-    int intchar = (int)c;
-    if (intchar < firstChar || intchar > lastChar)
+float STBText::getCharWidth(uint32_t codepoint){
+    const FontGlyph* glyph = getGlyphForCodepoint(codepoint);
+    if (!glyph)
         return 0;
 
-    float offsetX = 0;
-    float offsetY = 0;
-    stbtt_aligned_quad quad;
-    stbtt_GetPackedQuad(charInfo, atlasWidth, atlasHeight, intchar - firstChar, &offsetX, &offsetY, &quad, 1);
+    return glyph->xadvance;
+}
 
-    return offsetX;
+unsigned long STBText::getAtlasVersion() const{
+    return atlasVersion;
+}
+
+unsigned long STBText::getAtlasGeneration() const{
+    return atlasGeneration;
 }
 
 TextureData* STBText::load(const std::string& fontpath, unsigned int fontSize){
 
-    Data fontData;
+    fontLoaded = false;
 
     if (!fontpath.empty()) {
         if (fontData.open(fontpath.c_str()) != FileErrors::FILEDATA_OK) {
@@ -110,58 +245,35 @@ TextureData* STBText::load(const std::string& fontpath, unsigned int fontSize){
         }
     }
 
-    stbtt_fontinfo info;
-    if (!stbtt_InitFont(&info, fontData.getMemPtr(), 0)) {
+    //font collections (.ttc) keep the first table directory past the start of the file
+    int fontOffset = stbtt_GetFontOffsetForIndex(fontData.getMemPtr(), 0);
+    if (fontOffset < 0) {
+        fontOffset = 0;
+    }
+
+    if (!stbtt_InitFont(&fontInfo, fontData.getMemPtr(), fontOffset)) {
         Log::error("Failed to initialize font: %s", fontpath.c_str());
         return NULL;
     }
-    float scale = stbtt_ScaleForPixelHeight(&info, fontSize);
+    scale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize);
 
     int ascent, descent, lineGap;
-    stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
+    stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
 
     this->ascent = ascent * scale;
     this->descent = descent * scale;
     this->lineGap = lineGap * scale;
     this->lineHeight = (ascent - descent + lineGap) * scale;
 
-    tryFindBitmapSize(&info, scale);
+    glyphMap.clear();
+    codepointMap.clear();
 
-    unsigned char *atlasData = NULL;
-    charInfo = new stbtt_packedchar[charCount];
+    resetAtlas(512, 512);
 
-    stbtt_pack_context context;
+    fontLoaded = true;
 
-    bool fitBitmap = false;
-    while (!fitBitmap && atlasWidth <= atlasLimit) {
-        if (atlasData) delete[] atlasData;
-        atlasData = new unsigned char[atlasWidth * atlasHeight];
+    refreshTextureData();
 
-        if (!stbtt_PackBegin(&context, atlasData, atlasWidth, atlasHeight, 0, 1, nullptr)){
-            Log::error("Failed to initialize font");
-            return NULL;
-        }
-
-        //stbtt_PackSetOversampling(&context, oversampleX, oversampleY);
-        if (!stbtt_PackFontRange(&context, fontData.getMemPtr(), 0, fontSize, firstChar, charCount, charInfo)){
-            atlasWidth = atlasWidth * 2;
-            atlasHeight = atlasHeight * 2;
-        }else{
-            fitBitmap = true;
-        }
-    }
-    if (atlasWidth > atlasLimit){
-        Log::error("Failed to pack font");
-        return NULL;
-    }
-    stbtt_PackEnd(&context);
-
-    unsigned int textureSize = atlasWidth * atlasHeight * sizeof(unsigned char);
-
-    if (textureData){
-        delete textureData;
-    }
-    textureData = new TextureData(atlasWidth, atlasHeight, textureSize, ColorFormat::RED, 1, (void*)atlasData);
     return textureData;
 }
 
@@ -173,7 +285,15 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
     if (hadInvalid) {
         Log::warn("Invalid character");
     }
-    
+
+    unsigned long startVersion = atlasVersion;
+
+    //cache every glyph first, a grow in the middle of the layout would repack the
+    //ones already written in the buffer
+    for (uint32_t codepoint : codepoints){
+        getGlyphForCodepoint(codepoint);
+    }
+
     float offsetX = 0;
     float offsetY = 0;
 
@@ -184,17 +304,19 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
 
         int lastSpace = 0;
         for (int i = 0; i < (int)codepoints.size(); i++){
-            int intchar = (int)codepoints[(size_t)i];
+            uint32_t intchar = codepoints[(size_t)i];
             if (intchar == 32){ //space
                 lastSpace = i;
             }
             if (intchar == 10){ //\n
                 offsetX = 0;
+                continue;
             }
-            if (intchar >= firstChar && intchar <= lastChar) {
-                stbtt_aligned_quad quad;
-                stbtt_GetPackedQuad(charInfo, atlasWidth, atlasHeight, intchar - firstChar, &offsetX, &offsetY, &quad, 1);
-                
+
+            const FontGlyph* glyph = getGlyphForCodepoint(intchar);
+            if (glyph) {
+                offsetX += glyph->xadvance;
+
                 if (offsetX > (float)width){
                     if (lastSpace > 0){
                         codepoints[(size_t)lastSpace] = '\n';
@@ -219,7 +341,7 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
 
     for (int i = 0; i < (int)codepoints.size(); i++){
 
-        int intchar = (int)codepoints[(size_t)i];
+        uint32_t intchar = codepoints[(size_t)i];
 
         if (intchar == 10){ //\n
             offsetY += lineHeight;
@@ -229,16 +351,25 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
             continue;
         }
 
-        //When char is not in bitmap
-        if (intchar < firstChar || intchar > lastChar) {
-            if (firstChar <= 127 && lastChar >= 127)
-                intchar = 127;
-            else
-                intchar = firstChar;
-        }
+        const FontGlyph* glyph = getGlyphForCodepoint(intchar);
+        if (!glyph)
+            continue;
+
+        //aligned to integer, like stbtt_GetPackedQuad does
+        float quadX = std::floor(offsetX + glyph->xoff + 0.5f);
+        float quadY = std::floor(offsetY + glyph->yoff + 0.5f);
 
         stbtt_aligned_quad quad;
-        stbtt_GetPackedQuad(charInfo, atlasWidth, atlasHeight, intchar - firstChar, &offsetX, &offsetY, &quad, 1);
+        quad.x0 = quadX;
+        quad.y0 = quadY;
+        quad.x1 = quadX + (glyph->xoff2 - glyph->xoff);
+        quad.y1 = quadY + (glyph->yoff2 - glyph->yoff);
+        quad.s0 = glyph->s0;
+        quad.t0 = glyph->t0;
+        quad.s1 = glyph->s1;
+        quad.t1 = glyph->t1;
+
+        offsetX += glyph->xadvance;
 
         charPositions.push_back(Vector2(offsetX, offsetY));
             
@@ -302,6 +433,10 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
         width = maxX1 - minX0;
     if (!fixedHeight)
         height = lineCount * lineHeight;
+
+    if (atlasVersion != startVersion){
+        refreshTextureData();
+    }
 }
 
 TextureData* STBText::getTextureData(){
