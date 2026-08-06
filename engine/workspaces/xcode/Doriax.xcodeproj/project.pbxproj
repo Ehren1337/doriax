@@ -36,6 +36,8 @@
 		175DCCC23022C5E9008C19EC /* Mirror.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCC03022C5E9008C19EC /* Mirror.h */; };
 		175DCCC33022C5E9008C19EC /* Mirror.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCC13022C5E9008C19EC /* Mirror.cpp */; };
 		175DCCC43022C5E9008C19EC /* Mirror.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCC13022C5E9008C19EC /* Mirror.cpp */; };
+		175DCE6B30255343008C19EC /* CharExtent.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCE6930255343008C19EC /* CharExtent.h */; };
+		175DCE6C30255343008C19EC /* DefaultFontArabic.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCE6A30255343008C19EC /* DefaultFontArabic.h */; };
 		1787AD8E2F673CE000DB1D75 /* BundleComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 1787AD8D2F673CE000DB1D75 /* BundleComponent.h */; };
 		1787AD942F6C333300DB1D75 /* SceneManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD922F6C333300DB1D75 /* SceneManager.cpp */; };
 		1787AD952F6C333300DB1D75 /* BundleManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD902F6C333300DB1D75 /* BundleManager.cpp */; };
@@ -1379,6 +1381,8 @@
 		175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ComponentManager.cpp; sourceTree = "<group>"; };
 		175DCCC03022C5E9008C19EC /* Mirror.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Mirror.h; sourceTree = "<group>"; };
 		175DCCC13022C5E9008C19EC /* Mirror.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Mirror.cpp; sourceTree = "<group>"; };
+		175DCE6930255343008C19EC /* CharExtent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CharExtent.h; sourceTree = "<group>"; };
+		175DCE6A30255343008C19EC /* DefaultFontArabic.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DefaultFontArabic.h; sourceTree = "<group>"; };
 		1787AD8D2F673CE000DB1D75 /* BundleComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BundleComponent.h; sourceTree = "<group>"; };
 		1787AD8F2F6C333300DB1D75 /* BundleManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BundleManager.h; sourceTree = "<group>"; };
 		1787AD902F6C333300DB1D75 /* BundleManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = BundleManager.cpp; sourceTree = "<group>"; };
@@ -3909,10 +3913,12 @@
 				71165BBE282981BE00CF79C1 /* Base64.h */,
 				71165BBD282981BE00CF79C1 /* Base64.cpp */,
 				7105CAA72AD61BD5007C91BA /* Box2DAux.h */,
+				175DCE6930255343008C19EC /* CharExtent.h */,
 				7105A55728B305910092EA05 /* Color.h */,
 				7105A55628B305910092EA05 /* Color.cpp */,
 				71AD5E742EAECC69004951AB /* CrashGuard.h */,
 				71ABBD28277A3210001CE3AF /* DefaultFont.h */,
+				175DCE6A30255343008C19EC /* DefaultFontArabic.h */,
 				71BE620D25B1DB37006D6E02 /* FunctionSubscribe.h */,
 				17A4DD6C2F5E4F8800C1BFC6 /* HybridArray.h */,
 				7105CAA62AD61BD5007C91BA /* JoltPhysicsAux.h */,
@@ -5574,6 +5580,8 @@
 				7170A3D72818A8A30003E965 /* SkyBox.h in Headers */,
 				71BE620025B1DB22006D6E02 /* System.h in Headers */,
 				175DCCBB300FA22F008C19EC /* Export.h in Headers */,
+				175DCE6B30255343008C19EC /* CharExtent.h in Headers */,
+				175DCE6C30255343008C19EC /* DefaultFontArabic.h in Headers */,
 				175DCCBC300FA22F008C19EC /* SceneSettings.h in Headers */,
 				71E54508284D5BB700C68FAB /* MorphTracks.h in Headers */,
 				7105CAA82AD61BD5007C91BA /* JoltPhysicsAux.h in Headers */,
