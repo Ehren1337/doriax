@@ -10,7 +10,9 @@ on:
 env:
   BUILD_TYPE: Release
   TARGET: doriax-editor
-  GLFW_VERSION: 3.4
+  # Keep at 3.5.1 or newer: 3.4 segfaults inside glfwTerminate on Wayland when
+  # the last frame swapped without a following poll (glfw/glfw#2744).
+  GLFW_VERSION: 3.5.1
   SDL2_VERSION: 2.30.11
 
 jobs:
