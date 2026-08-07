@@ -21,6 +21,7 @@
 #include "resources/fonts/jetbrains-mono-regular_ttf.h"
 //#include "recources/fonts/roboto-v20-latin-regular_ttf.h"
 #include "util/DefaultFont.h"
+#include "util/DefaultFontArabic.h"
 
 #include "shader/ShaderBuilder.h"
 #include "subsystem/MeshSystem.h"
@@ -1032,12 +1033,26 @@ void editor::App::setup() {
     static const ImWchar icon_ranges2[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
     io.Fonts->AddFontFromMemoryTTF(fa_solid_900_ttf, fa_solid_900_ttf_len, 16.0f, &config2, icon_ranges2);
 
+    // Same Arabic subset the engine renders text with, so property fields and the scene
+    // tree show Arabic instead of missing-glyph boxes. Since 1.92 the atlas loads glyphs
+    // on demand, it only needs a font that carries them.
+    ImFontConfig configArabic;
+    configArabic.MergeMode = true;
+    configArabic.FontDataOwnedByAtlas = false;
+    io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configArabic);
+
     ImFontConfig config3;
     strcpy(config3.Name, "jetbrains-mono-regular");
     config3.FontDataOwnedByAtlas = false;
     config3.OversampleH = 2;
     config3.OversampleV = 2;
     codeFont = io.Fonts->AddFontFromMemoryTTF(jetbrains_mono_regular_ttf, jetbrains_mono_regular_ttf_len, 16.0f, &config3);
+
+    //scripts can hold Arabic string literals
+    ImFontConfig configCodeArabic;
+    configCodeArabic.MergeMode = true;
+    configCodeArabic.FontDataOwnedByAtlas = false;
+    io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configCodeArabic);
 
     io.FontDefault = font1;
 

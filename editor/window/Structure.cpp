@@ -3,6 +3,7 @@
 #include "App.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
+#include "util/BidiText.h"
 #include "command/CommandHandle.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "command/type/AddChildSceneCmd.h"
@@ -1108,7 +1109,8 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         pushedHighlightColor = true;
     }
 
-    bool nodeOpen = ImGui::TreeNodeEx("##node", flags, "%s  %s", node.icon.c_str(), node.name.c_str());
+    std::string nodeLabel = BidiText::toVisual(node.name);
+    bool nodeOpen = ImGui::TreeNodeEx("##node", flags, "%s  %s", node.icon.c_str(), nodeLabel.c_str());
     if (!node.isScene && !node.isChildScene) {
         auto& sceneCollapsedEntities = collapsedEntities[getNodeSceneId(node)];
         if (!node.children.empty() && !nodeOpen) {
