@@ -33,9 +33,10 @@ NFD_INLINE bool NFD_SetDisplayPropertiesFromSDLWindow(SDL_Window* window) {
     SDL_PropertiesID props = SDL_GetWindowProperties(window);
     if (!props) return false;
 
+#if defined(SDL_PLATFORM_UNIX) && !defined(SDL_PLATFORM_APPLE)
     const char* driver = SDL_GetCurrentVideoDriver();
     if (driver && SDL_strcmp(driver, "wayland") == 0) {
-        wl_display* display = (wl_display*)SDL_GetPointerProperty(
+        struct wl_display* display = (struct wl_display*)SDL_GetPointerProperty(
             props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, NULL
         );
         if (display) {
@@ -43,6 +44,7 @@ NFD_INLINE bool NFD_SetDisplayPropertiesFromSDLWindow(SDL_Window* window) {
             return true;
         }
     }
+#endif
 
     return false;
 }
@@ -103,4 +105,4 @@ NFD_INLINE nfdresult_t NFD_GetNativeWindowFromSDLWindow(
 }
 #endif  // __cplusplus
 
-#endif  // _NFD_SDL2_H
+#endif  // _NFD_SDL3_H
