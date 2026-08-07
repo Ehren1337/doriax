@@ -2,16 +2,15 @@
 #include "EditorHost.h"
 #include "AppSettings.h"
 
-#include <SDL.h>
-#include <SDL_opengl.h>
+#include <SDL3/SDL.h>
 
-#include "imgui_impl_sdl2.h"
+#include "imgui_impl_sdl3.h"
 #include "imgui_impl_opengl3.h"
 
 #include <cstdlib>
 
 #include "nfd.hpp"
-#include "nfd_sdl2.h"
+#include "nfd_sdl3.h"
 
 using namespace doriax;
 
@@ -39,13 +38,13 @@ std::string editor::Backend::title;
 static void hideEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
-    SDL_SetRelativeMouseMode(SDL_FALSE);
-    SDL_SetWindowGrab(window, SDL_FALSE);
+    SDL_SetWindowRelativeMouseMode(window, false);
+    SDL_SetWindowMouseGrab(window, false);
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     if (invisibleCursor) {
         SDL_SetCursor(invisibleCursor);
     }
-    SDL_ShowCursor(SDL_DISABLE);
+    SDL_HideCursor();
     gameCursorHidden = true;
 }
 
@@ -53,9 +52,9 @@ static void showEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
 
-    SDL_SetRelativeMouseMode(SDL_FALSE);
-    SDL_SetWindowGrab(window, SDL_FALSE);
-    SDL_ShowCursor(SDL_ENABLE);
+    SDL_SetWindowRelativeMouseMode(window, false);
+    SDL_SetWindowMouseGrab(window, true);
+    SDL_ShowCursor();
     SDL_SetCursor(SDL_GetDefaultCursor());
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
     gameCursorHidden = false;
@@ -66,10 +65,10 @@ static void confineEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
-    SDL_SetRelativeMouseMode(SDL_FALSE);
-    SDL_ShowCursor(SDL_ENABLE);
+    SDL_SetWindowRelativeMouseMode(window, false);
+    SDL_ShowCursor();
     SDL_SetCursor(SDL_GetDefaultCursor());
-    SDL_SetWindowGrab(window, SDL_TRUE);
+    SDL_SetWindowMouseGrab(window, true);
     gameCursorHidden = false;
 }
 
@@ -107,17 +106,22 @@ int editor::Backend::init(int argc, char* argv[]) {
     // (DISPLAY set), select the x11 driver. Respect an explicit user-provided
     // SDL_VIDEODRIVER. Must be set before SDL_Init().
     if (AppSettings::getMultiViewportEnabled() &&
-        getenv("WAYLAND_DISPLAY") && getenv("DISPLAY") && !getenv("SDL_VIDEODRIVER"))
-        setenv("SDL_VIDEODRIVER", "x11", 1);
+        getenv("WAYLAND_DISPLAY") &&
+        getenv("DISPLAY") &&
+        !getenv("SDL_VIDEODRIVER")
+    ) {
+        SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11");
+    }
 #endif
 
     // Initialize SDL
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        fprintf(stderr, "Error: SDL_Init failed: %s\n", SDL_GetError());
         return -1;
     }
 
     if (NFD_Init() != NFD_OKAY) {
-        printf("Error: NFD_Init failed: %s\n", NFD_GetError());
+        fprintf(stderr, "Error: NFD_Init failed: %s\n", NFD_GetError());
         return -1;
     }
 
@@ -142,19 +146,27 @@ int editor::Backend::init(int argc, char* argv[]) {
     // Get saved window dimensions from app
     int windowWidth = app.getInitialWindowWidth();
     int windowHeight = app.getInitialWindowHeight();
+    int initWindowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 
     // Create window with OpenGL context
     window = SDL_CreateWindow(
-        "Doriax Engine",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        windowWidth, windowHeight,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI
+        "Doriax Engine", windowWidth, windowHeight, initWindowFlags
     );
-
     if (!window) {
+        fprintf(stderr, "Error: SDL_CreateWindow failed: %s\n", SDL_GetError());
         NFD_Quit();
         SDL_Quit();
         return -1;
+    }
+
+    // Tell NFD to set the Wayland display (does nothing in other platforms)
+    NFD_SetDisplayPropertiesFromSDLWindow(window);
+
+    // Get the scale of the window and not the display
+    float window_scale = SDL_GetWindowDisplayScale(window);
+
+    if (window_scale == 0.0f) {
+        window_scale = 1.0f;
     }
 
     // Apply saved window state
@@ -162,17 +174,22 @@ int editor::Backend::init(int argc, char* argv[]) {
         SDL_MaximizeWindow(window);
     }
 
-    SDL_Surface* cursorSurface = SDL_CreateRGBSurfaceWithFormat(0, 16, 16, 32, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface* cursorSurface = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGBA32);
     if (cursorSurface) {
         SDL_memset(cursorSurface->pixels, 0, cursorSurface->pitch * cursorSurface->h);
         invisibleCursor = SDL_CreateColorCursor(cursorSurface, 0, 0);
-        SDL_FreeSurface(cursorSurface);
+        SDL_DestroySurface(cursorSurface);
     }
 
-    NFD_GetNativeWindowFromSDLWindow(window, &nativeWindow);
+    // We log information (not error) in case this fails
+    if (NFD_GetNativeWindowFromSDLWindow(window, &nativeWindow) != NFD_OKAY) {
+        printf("Warning: Could not get native window handle for file dialogs.\n");
+        nativeWindow.type = NFD_WINDOW_HANDLE_TYPE_UNSET;
+    }
 
     SDL_GLContext glContext = SDL_GL_CreateContext(window);
     if (!glContext) {
+        fprintf(stderr, "Error: SDL_GL_CreateContext failed: %s\n", SDL_GetError());
         SDL_DestroyWindow(window);
         NFD_Quit();
         SDL_Quit();
@@ -181,20 +198,29 @@ int editor::Backend::init(int argc, char* argv[]) {
 
     SDL_GL_MakeCurrent(window, glContext);
     SDL_GL_SetSwapInterval(1); // Initial default; project/Wayland policy is applied below.
+    SDL_SetWindowPosition(
+        window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED
+    );
+    SDL_ShowWindow(window);
 
     // Setup Dear ImGui context - MUST BE DONE BEFORE app.setup()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
+    // Setup scaling
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ScaleAllSizes(window_scale); // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
+    style.FontScaleDpi = window_scale; // Set initial font scale. (in docking branch: using io.ConfigDpiScaleFonts=true automatically overrides this for every window depending on the current monitor)
+
     // Setup Platform/Renderer bindings - MUST BE DONE AFTER ImGui::CreateContext()
-    ImGui_ImplSDL2_InitForOpenGL(window, glContext);
+    ImGui_ImplSDL3_InitForOpenGL(window, glContext);
     ImGui_ImplOpenGL3_Init("#version 410");
 
     // Now we can safely call app.setup() which uses ImGui
     app.setup();
     app.engineInit(argc, argv);
 
-    SDL_ShowCursor(SDL_DISABLE);
+    SDL_HideCursor();
 
     app.engineViewLoaded();
 
@@ -211,9 +237,10 @@ int editor::Backend::init(int argc, char* argv[]) {
         SDL_GL_SetSwapInterval(0);
     }
     double framePeriod = 1.0 / 60.0;
-    SDL_DisplayMode displayMode;
-    if (SDL_GetCurrentDisplayMode(0, &displayMode) == 0 && displayMode.refresh_rate > 0) {
-        framePeriod = 1.0 / displayMode.refresh_rate;
+    SDL_DisplayID displayID = SDL_GetDisplayForWindow(window);
+    const SDL_DisplayMode* displayMode = SDL_GetCurrentDisplayMode(displayID);
+    if (displayMode && displayMode->refresh_rate > 0) {
+        framePeriod = 1.0 / displayMode->refresh_rate;
     }
     const double perfFrequency = static_cast<double>(SDL_GetPerformanceFrequency());
 
@@ -231,23 +258,25 @@ int editor::Backend::init(int argc, char* argv[]) {
 
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT) {
+            ImGui_ImplSDL3_ProcessEvent(&event);
+            if (event.type == SDL_EVENT_QUIT) {
                 // Handle quit event, but don't close immediately
                 app.exit();
             }
-            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window)) {
+            if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
+                event.window.windowID == SDL_GetWindowID(window))
+            {
                 // Handle window close event, but don't close immediately
                 app.exit();
             }
-            if (event.type == SDL_DROPBEGIN) {
+            if (event.type == SDL_EVENT_DROP_BEGIN) {
                 droppedPaths.clear();
             }
-            if (event.type == SDL_DROPFILE) {
-                droppedPaths.push_back(event.drop.file);
-                SDL_free(event.drop.file);
+            if (event.type == SDL_EVENT_DROP_FILE) {
+                droppedPaths.push_back(event.drop.data);
+                SDL_free((void*)event.drop.data);
             }
-            if (event.type == SDL_DROPCOMPLETE) {
+            if (event.type == SDL_EVENT_DROP_COMPLETE) {
                 app.handleExternalDrop(droppedPaths);
             }
         }
@@ -261,6 +290,8 @@ int editor::Backend::init(int argc, char* argv[]) {
         // Skip presenting while minimized: SwapWindow of a hidden window can
         // block and stall clipboard + AI. Keep polling/updating so both keep
         // working.
+        // On Wayland, "SDL_WINDOW_MINIMIZED" is not sent, when windows
+        // are minimized, unless we call "SDL_MinimizeWindow()" manually.
         const Uint32 windowFlags = SDL_GetWindowFlags(window);
         const bool minimized = (windowFlags & SDL_WINDOW_MINIMIZED) != 0;
 
@@ -272,7 +303,8 @@ int editor::Backend::init(int argc, char* argv[]) {
         // unfocused so SwapWindow never blocks; the delay below then paces the idle
         // loop. On Wayland, project VSync is implemented by manual pacing.
         const bool focused = (windowFlags & SDL_WINDOW_INPUT_FOCUS) != 0;
-        const bool frameSyncEnabled = !activeProject->isPlaySessionActive() || activeProject->isVSyncEnabled();
+        const bool frameSyncEnabled = !activeProject->isPlaySessionActive()
+            || activeProject->isVSyncEnabled();
 
         // Hand the cursor back to the editor while a play session isn't actively
         // running (paused or loading) so a game-held cursor lock can't trap the
@@ -281,10 +313,9 @@ int editor::Backend::init(int argc, char* argv[]) {
         // focus loss natively (as an exported game does), and folding focus in here
         // broke capture under multi-viewport, where the main window reports
         // unfocused whenever input is on a viewport panel. No-op outside a session.
-        setMouseControlSuspended(activeProject->isPlaySessionActive() &&
-                                 !activeProject->isMainScenePlaying());
+        setMouseControlSuspended(activeProject->isPlaySessionActive() && !activeProject->isMainScenePlaying());
         if (!isWayland) {
-            const int desiredInterval = (focused && frameSyncEnabled) ? 1 : 0;
+            const int desiredInterval = focused && frameSyncEnabled;
             if (desiredInterval != currentSwapInterval) {
                 SDL_GL_SetSwapInterval(desiredInterval);
                 currentSwapInterval = desiredInterval;
@@ -293,14 +324,14 @@ int editor::Backend::init(int argc, char* argv[]) {
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
         if (!minimized) {
             app.engineRender();
 
             int display_w, display_h;
-            SDL_GL_GetDrawableSize(window, &display_w, &display_h);
+            SDL_GetWindowSizeInPixels(window, &display_w, &display_h);
 
             render.setClearColor(Vector4(0.45f, 0.55f, 0.60f, 1.00f));
             render.startRenderPass(display_w, display_h);
@@ -364,17 +395,17 @@ int editor::Backend::init(int argc, char* argv[]) {
 
     // Cleanup
     ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplSDL2_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
 
     app.engineViewDestroyed();
 
     if (invisibleCursor) {
-        SDL_FreeCursor(invisibleCursor);
+        SDL_DestroyCursor(invisibleCursor);
         invisibleCursor = nullptr;
     }
 
-    SDL_GL_DeleteContext(glContext);
+    SDL_GL_DestroyContext(glContext);
     SDL_DestroyWindow(window);
     NFD_Quit();
     SDL_Quit();
@@ -397,9 +428,9 @@ void editor::Backend::disableMouseCursor() {
         SDL_SetCursor(invisibleCursor);
     }
 
-    SDL_SetWindowGrab(window, SDL_FALSE);
-    SDL_ShowCursor(SDL_DISABLE);
-    SDL_SetRelativeMouseMode(SDL_TRUE);
+    SDL_SetWindowMouseGrab(window, true);
+    SDL_ShowCursor();
+    SDL_SetWindowRelativeMouseMode(window, true);
 }
 
 void editor::Backend::enableMouseCursor() {
