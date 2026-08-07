@@ -142,6 +142,10 @@ namespace doriax {
         STBText();
         virtual ~STBText();
 
+        //unique_ptr faces are not copyable; MSVC instantiates the copy path unless these are deleted
+        STBText(const STBText&) = delete;
+        STBText& operator=(const STBText&) = delete;
+
         float getAscent();
         float getDescent();
         float getLineGap();
