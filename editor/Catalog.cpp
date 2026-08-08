@@ -168,13 +168,10 @@ namespace {
         return false;
     }
 
-    // What an override addresses: the owning model, the live submesh, and the mesh node a
-    // not-yet-migrated entry was keyed with.
+    // What an override addresses: the owning model and the live submesh.
     struct SubmeshOverrideTarget {
         ModelComponent* model = nullptr;
         const Submesh* submesh = nullptr;
-        unsigned int submeshIndex = 0;
-        int migrateNode = -1;
         std::string sourceName;
     };
 
@@ -191,34 +188,14 @@ namespace {
 
         target.model = &registry->getComponent<ModelComponent>(modelEntity);
         target.submesh = &mesh->submeshes[submeshIndex];
-        target.submeshIndex = submeshIndex;
-        target.migrateNode = -1;
         target.sourceName = MeshSystem::getSourceName(*target.model, target.submesh->sourceNode, target.submesh->sourcePrimitive);
-
-        if (entity != modelEntity) {
-            for (const auto& meshNode : target.model->meshNodesMapping) {
-                if (meshNode.second == entity) {
-                    target.migrateNode = meshNode.first;
-                    break;
-                }
-            }
-        }
 
         return true;
     }
 
-    // Mirrors MeshSystem's matching: a recorded entry through the primitive stamped on the submesh,
-    // one still to migrate through the node and position it was built with.
+    // Mirrors MeshSystem's matching, through the primitive stamped on the submesh.
     SubmeshOverride* findSubmeshOverrideEntry(const SubmeshOverrideTarget& target) {
         for (auto& submeshOverride : target.model->submeshOverrides) {
-            if (submeshOverride.needMigrate) {
-                if (submeshOverride.nodeIndex == target.migrateNode &&
-                        submeshOverride.primitiveIndex == target.submeshIndex) {
-                    return &submeshOverride;
-                }
-                continue;
-            }
-
             // Identity decides here too: an orphaned entry can still hold the numeric key of a
             // primitive that now belongs to someone else.
             if (submeshOverride.nodeIndex == target.submesh->sourceNode &&
@@ -3741,8 +3718,6 @@ void editor::Catalog::recordSubmeshOverride(EntityRegistry* registry, Entity ent
         entry->sourceName = target.sourceName;
     }
 
-    // An entry still to migrate is edited in place: it already carries every field, and the load
-    // reduces it to whatever differs from the model file, this edit included.
     entry->fields |= fields;
     storeSubmeshOverrideValues(*entry, *target.submesh);
 }

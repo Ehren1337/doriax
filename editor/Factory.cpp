@@ -1901,9 +1901,6 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
         code << subInd << "submeshOverride.primitiveIndex = " << formatUInt(submeshOverride.primitiveIndex) << ";\n";
         code << subInd << "submeshOverride.sourceName = " << formatString(submeshOverride.sourceName) << ";\n";
         code << subInd << "submeshOverride.fields = " << formatUInt(fields) << ";\n";
-        if (submeshOverride.needMigrate) {
-            code << subInd << "submeshOverride.needMigrate = true;\n";
-        }
 
         if (fields & SubmeshOverride_BaseColorFactor)
             code << subInd << "submeshOverride.material.baseColorFactor = " << formatVector4(material.baseColorFactor) << ";\n";

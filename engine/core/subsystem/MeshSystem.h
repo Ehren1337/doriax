@@ -75,8 +75,7 @@ namespace doriax{
         static void applyDefaultGLTFMaterial(Material& material);
         static void applyDefaultObjMaterial(Submesh& submesh);
         static unsigned int countSourceName(const ModelComponent& model, const std::string& sourceName);
-        static SubmeshOverride* matchSubmeshOverride(ModelComponent& model, const Submesh& submesh, unsigned int submeshIndex);
-        static void migrateSubmeshOverride(SubmeshOverride& submeshOverride, const Submesh& submesh);
+        static SubmeshOverride* matchSubmeshOverride(ModelComponent& model, const Submesh& submesh);
         static void applySubmeshOverrides(ModelComponent& model, MeshComponent& mesh);
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
         bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);

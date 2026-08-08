@@ -43,10 +43,7 @@ namespace doriax{
                                    SubmeshOverride_EmissiveFactor | SubmeshOverride_AlphaMode |
                                    SubmeshOverride_MaterialName | SubmeshOverride_BaseColorTexture |
                                    SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
-                                   SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture,
-
-        SubmeshOverride_All = SubmeshOverride_Material | SubmeshOverride_FaceCulling |
-                              SubmeshOverride_TextureShadow | SubmeshOverride_PrimitiveType
+                                   SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture
     };
 
     // Material texture slots, so override code does not spell all five out every time.
@@ -79,10 +76,6 @@ namespace doriax{
         bool faceCulling = true;
         bool textureShadow = false;
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
-
-        // Rebuilt from a scene saved before overrides existed: no key yet, so the first load
-        // matches it by position and reduces it to the real differences.
-        bool needMigrate = false;
     };
 
     struct DORIAX_API ModelComponent{

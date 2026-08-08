@@ -157,8 +157,6 @@ namespace doriax::editor {
         static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true);
         static Submesh decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh = nullptr);
 
-        static void migrateSubmeshOverrides(EntityRegistry* registry, Entity entity);
-
         static YAML::Node encodeSubmeshOverride(const SubmeshOverride& submeshOverride);
         static SubmeshOverride decodeSubmeshOverride(const YAML::Node& node);
 

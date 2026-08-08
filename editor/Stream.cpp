@@ -1436,43 +1436,6 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     return submesh;
 }
 
-// Rebuilds override entries from the submesh values of a model saved before overrides existed, so
-// the load stops wiping the user's edits. Every field is carried over: the model file is not in
-// memory yet, so MeshSystem reduces each entry to the real differences once it loads.
-void editor::Stream::migrateSubmeshOverrides(EntityRegistry* registry, Entity entity) {
-    ModelComponent* model = registry->findComponent<ModelComponent>(entity);
-    if (!model || model->filename.empty() || !model->submeshOverrides.empty()) {
-        return;
-    }
-
-    auto collectMesh = [registry, model](Entity meshEntity, int nodeIndex) {
-        MeshComponent* mesh = registry->findComponent<MeshComponent>(meshEntity);
-        if (!mesh) {
-            return;
-        }
-
-        for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
-            SubmeshOverride submeshOverride;
-            submeshOverride.nodeIndex = nodeIndex;
-            submeshOverride.primitiveIndex = i;
-            submeshOverride.fields = SubmeshOverride_All;
-            submeshOverride.material = mesh->submeshes[i].material;
-            submeshOverride.faceCulling = mesh->submeshes[i].faceCulling;
-            submeshOverride.textureShadow = mesh->submeshes[i].textureShadow;
-            submeshOverride.primitiveType = mesh->submeshes[i].primitiveType;
-            submeshOverride.needMigrate = true;
-
-            model->submeshOverrides.push_back(submeshOverride);
-        }
-    };
-
-    // The root mesh (single-node and merged models) has no node of its own.
-    collectMesh(entity, -1);
-    for (const auto& meshNode : model->meshNodesMapping) {
-        collectMesh(meshNode.second, meshNode.first);
-    }
-}
-
 // Only the fields the user changed are written; the rest keeps following the model file.
 YAML::Node editor::Stream::encodeSubmeshOverride(const SubmeshOverride& submeshOverride) {
     YAML::Node node;
@@ -1486,10 +1449,6 @@ YAML::Node editor::Stream::encodeSubmeshOverride(const SubmeshOverride& submeshO
         node["sourceName"] = submeshOverride.sourceName;
     }
     node["fields"] = fields;
-    // A migration that never ran (the model file failed to load) must stay a migration.
-    if (submeshOverride.needMigrate) {
-        node["needMigrate"] = true;
-    }
 
     if (fields & SubmeshOverride_BaseColorFactor) node["baseColorFactor"] = encodeVector4(material.baseColorFactor);
     if (fields & SubmeshOverride_MetallicFactor) node["metallicFactor"] = material.metallicFactor;
@@ -1522,7 +1481,6 @@ SubmeshOverride editor::Stream::decodeSubmeshOverride(const YAML::Node& node) {
     if (node["primitiveIndex"]) submeshOverride.primitiveIndex = node["primitiveIndex"].as<unsigned int>();
     if (node["sourceName"]) submeshOverride.sourceName = node["sourceName"].as<std::string>();
     if (node["fields"]) submeshOverride.fields = node["fields"].as<uint32_t>();
-    if (node["needMigrate"]) submeshOverride.needMigrate = node["needMigrate"].as<bool>();
 
     Material& material = submeshOverride.material;
 
@@ -2859,14 +2817,8 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
         std::string name = entityNode["name"].as<std::string>();
         registry->setEntityName(entity, name);
 
-        bool migrateOverrides = false;
         if (entityNode["components"]){
             decodeComponents(entity, parent, registry, entityNode["components"]);
-
-            // A model saved before overrides existed still keeps the user's edits in its submesh
-            // arrays.
-            YAML::Node modelNode = entityNode["components"][Catalog::getComponentName(ComponentType::ModelComponent, true)];
-            migrateOverrides = modelNode && !modelNode["submeshOverrides"];
         }
 
         // Components added to a live entity after it was encoded, like a script calling
@@ -2899,11 +2851,6 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
                 std::vector<Entity> childEntities = decodeEntity(childNode, registry, entities, project, sceneProject, entity, createNewIfExists, removeMissingComponents, entityRemap);
                 std::copy(childEntities.begin(), childEntities.end(), std::back_inserter(allEntities));
             }
-        }
-
-        // Runs after the children: a model's generated meshes carry submesh values of their own.
-        if (migrateOverrides) {
-            migrateSubmeshOverrides(registry, entity);
         }
     }
 
@@ -4856,15 +4803,13 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
         node["mergeStaticMeshes"] = true;
     }
 
-    // Written even when empty: a missing key marks a scene saved before overrides existed.
-    YAML::Node overridesNode(YAML::NodeType::Sequence);
-    for (const auto& submeshOverride : model.submeshOverrides) {
-        if (submeshOverride.fields == 0) {
-            continue;
+    if (!model.submeshOverrides.empty()) {
+        YAML::Node overridesNode;
+        for (const auto& submeshOverride : model.submeshOverrides) {
+            overridesNode.push_back(encodeSubmeshOverride(submeshOverride));
         }
-        overridesNode.push_back(encodeSubmeshOverride(submeshOverride));
+        node["submeshOverrides"] = overridesNode;
     }
-    node["submeshOverrides"] = overridesNode;
 
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
 
@@ -4924,11 +4869,9 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     if (node["mergeStaticMeshes"]) model.mergeStaticMeshes = node["mergeStaticMeshes"].as<bool>();
     if (node["skeleton"]) model.skeleton = static_cast<Entity>(node["skeleton"].as<uint32_t>());
 
-    if (node["submeshOverrides"]) {
-        model.submeshOverrides.clear();
-        for (const auto& overrideNode : node["submeshOverrides"]) {
-            model.submeshOverrides.push_back(decodeSubmeshOverride(overrideNode));
-        }
+    model.submeshOverrides.clear();
+    for (const auto& overrideNode : node["submeshOverrides"]) {
+        model.submeshOverrides.push_back(decodeSubmeshOverride(overrideNode));
     }
 
     if (node["animations"]) {

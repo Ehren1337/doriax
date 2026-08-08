@@ -246,20 +246,11 @@ unsigned int MeshSystem::countSourceName(const ModelComponent& model, const std:
 }
 
 // Finds the override that patches a loaded submesh: by source key, then by name for a reordered
-// asset, then by position for entries recovered from an old scene.
-SubmeshOverride* MeshSystem::matchSubmeshOverride(ModelComponent& model, const Submesh& submesh, unsigned int submeshIndex) {
+// asset.
+SubmeshOverride* MeshSystem::matchSubmeshOverride(ModelComponent& model, const Submesh& submesh) {
     const std::string sourceName = getSourceName(model, submesh.sourceNode, submesh.sourcePrimitive);
 
     for (auto& submeshOverride : model.submeshOverrides) {
-        if (submeshOverride.needMigrate) {
-            // No source key yet: rebuilt from the submesh array of a scene saved before overrides.
-            if (submeshOverride.primitiveIndex == submeshIndex &&
-                    (submeshOverride.nodeIndex < 0 || submeshOverride.nodeIndex == submesh.sourceNode)) {
-                return &submeshOverride;
-            }
-            continue;
-        }
-
         // The key is only trusted while the recorded name agrees: deleting a primitive shifts the
         // ones behind it, and a rename cannot be told from a deletion.
         if (submeshOverride.nodeIndex == submesh.sourceNode &&
@@ -277,7 +268,7 @@ SubmeshOverride* MeshSystem::matchSubmeshOverride(ModelComponent& model, const S
 
     SubmeshOverride* match = nullptr;
     for (auto& submeshOverride : model.submeshOverrides) {
-        if (submeshOverride.needMigrate || submeshOverride.sourceName != sourceName) {
+        if (submeshOverride.sourceName != sourceName) {
             continue;
         }
         if (match) {
@@ -290,52 +281,6 @@ SubmeshOverride* MeshSystem::matchSubmeshOverride(ModelComponent& model, const S
     return match;
 }
 
-// Reduces an entry recovered from an old scene to the fields that really differ from the file.
-void MeshSystem::migrateSubmeshOverride(SubmeshOverride& submeshOverride, const Submesh& submesh) {
-    // Saved values lose a few bits in text; an exact compare would flag untouched fields.
-    auto sameFloat = [](float a, float b) { return std::fabs(a - b) <= 1e-5f; };
-    auto sameVector3 = [&sameFloat](const Vector3& a, const Vector3& b) {
-        return sameFloat(a.x, b.x) && sameFloat(a.y, b.y) && sameFloat(a.z, b.z);
-    };
-    auto sameVector4 = [&sameFloat](const Vector4& a, const Vector4& b) {
-        return sameFloat(a.x, b.x) && sameFloat(a.y, b.y) && sameFloat(a.z, b.z) && sameFloat(a.w, b.w);
-    };
-
-    const Material& material = submesh.material;
-    uint32_t fields = submeshOverride.fields;
-
-    if (sameVector4(submeshOverride.material.baseColorFactor, material.baseColorFactor))
-        fields &= ~SubmeshOverride_BaseColorFactor;
-    if (sameFloat(submeshOverride.material.metallicFactor, material.metallicFactor))
-        fields &= ~SubmeshOverride_MetallicFactor;
-    if (sameFloat(submeshOverride.material.roughnessFactor, material.roughnessFactor))
-        fields &= ~SubmeshOverride_RoughnessFactor;
-    if (sameFloat(submeshOverride.material.alphaCutoff, material.alphaCutoff))
-        fields &= ~SubmeshOverride_AlphaCutoff;
-    if (sameVector3(submeshOverride.material.emissiveFactor, material.emissiveFactor))
-        fields &= ~SubmeshOverride_EmissiveFactor;
-    if (submeshOverride.material.alphaMode == material.alphaMode)
-        fields &= ~SubmeshOverride_AlphaMode;
-    if (submeshOverride.material.name == material.name)
-        fields &= ~SubmeshOverride_MaterialName;
-
-    for (const SubmeshOverrideTextureSlot& slot : submeshOverrideTextureSlots) {
-        if (submeshOverride.material.*slot.texture == material.*slot.texture) {
-            fields &= ~slot.field;
-        }
-    }
-
-    if (submeshOverride.faceCulling == submesh.faceCulling)
-        fields &= ~SubmeshOverride_FaceCulling;
-    if (submeshOverride.textureShadow == submesh.textureShadow)
-        fields &= ~SubmeshOverride_TextureShadow;
-    if (submeshOverride.primitiveType == submesh.primitiveType)
-        fields &= ~SubmeshOverride_PrimitiveType;
-
-    submeshOverride.fields = fields;
-    submeshOverride.needMigrate = false;
-}
-
 // Re-applies the user's edits after a load, once per MeshComponent the loaders filled.
 void MeshSystem::applySubmeshOverrides(ModelComponent& model, MeshComponent& mesh) {
     if (model.submeshOverrides.empty() || mesh.numSubmeshes == 0) {
@@ -345,13 +290,9 @@ void MeshSystem::applySubmeshOverrides(ModelComponent& model, MeshComponent& mes
     for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
         Submesh& submesh = mesh.submeshes[i];
 
-        SubmeshOverride* submeshOverride = matchSubmeshOverride(model, submesh, i);
+        SubmeshOverride* submeshOverride = matchSubmeshOverride(model, submesh);
         if (!submeshOverride) {
             continue;
-        }
-
-        if (submeshOverride->needMigrate) {
-            migrateSubmeshOverride(*submeshOverride, submesh);
         }
 
         // Re-key to where the primitive lives now: a name match should not have to happen twice.
@@ -388,14 +329,6 @@ void MeshSystem::applySubmeshOverrides(ModelComponent& model, MeshComponent& mes
 
         submesh.needUpdateTexture = true;
     }
-
-    // A migrated entry that matched the model file everywhere was never an edit.
-    model.submeshOverrides.erase(
-        std::remove_if(model.submeshOverrides.begin(), model.submeshOverrides.end(),
-            [](const SubmeshOverride& submeshOverride) {
-                return submeshOverride.fields == 0 && !submeshOverride.needMigrate;
-            }),
-        model.submeshOverrides.end());
 }
 
 bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, CameraComponent& camera){
