@@ -125,6 +125,7 @@
 #include "util/ThreadUtils.h"
 #include "texture/Framebuffer.h"
 #include <atomic>
+#include <mutex>
 #include <unordered_set>
 
 #define DORIAX_INIT \
@@ -239,11 +240,21 @@ namespace doriax {
 
         static Semaphore drawSemaphore;
 
+        // drawSemaphore only excludes async threads from systemDraw(). Main-thread code
+        // outside systemDraw() (scene activation, view callbacks, input dispatch) never takes
+        // it, so it can still touch scenes/oneTimeScenes while a worker thread is inside
+        // executeSceneOnce(). This mutex is what actually guards those two containers.
+        // Never block on drawSemaphore while holding it.
+        static std::mutex sceneListMutex;
+
         static Framebuffer* framebuffer;
         
         static bool transformCoordPos(float& x, float& y);
         static void calculateCanvas();
         static void includeScene(size_t index, Scene* scene);
+        // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
+        // free to add or remove scenes without invalidating the caller's traversal.
+        static std::vector<Scene*> getScenesSnapshot();
         
     public:
         class AsyncThreadScope {

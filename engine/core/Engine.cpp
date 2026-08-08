@@ -35,6 +35,7 @@ static unsigned int& getAsyncThreadDepthStorage() {
 //-----Doriax user config-----
 std::vector<Scene*> Engine::scenes;
 std::unordered_set<Scene*> Engine::oneTimeScenes;
+std::mutex Engine::sceneListMutex;
 
 Scene* Engine::mainScene = NULL;
 
@@ -122,38 +123,63 @@ void Engine::setScene(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
-    if (mainScene){
-        auto it = std::find(scenes.begin(), scenes.end(), mainScene);
+    {
+        std::lock_guard<std::mutex> lock(sceneListMutex);
 
-        if (it != scenes.end()) {
-            scenes.erase(it);
+        if (mainScene){
+            auto it = std::find(scenes.begin(), scenes.end(), mainScene);
+
+            if (it != scenes.end()) {
+                scenes.erase(it);
+            }
+        }
+
+        if (scene){
+            //main scene is allways first scene
+            scenes.insert(scenes.begin(), scene);
+            mainScene = scene;
         }
     }
 
-    if (scene){
-        //main scene is allways first scene
-        scenes.insert(scenes.begin(), scene);
+    // includeScene() runs scene->load(), which can re-enter the scene list, so it stays
+    // outside sceneListMutex. Same reasoning in addSceneLayer and executeSceneOnce.
+    if (scene)
         includeScene(0, scene);
-        mainScene = scene;
-    }
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
 }
 
 Scene* Engine::getScene(){
+    std::lock_guard<std::mutex> lock(sceneListMutex);
     return Engine::scenes[0];
+}
+
+std::vector<Scene*> Engine::getScenesSnapshot(){
+    std::lock_guard<std::mutex> lock(sceneListMutex);
+    return scenes;
 }
 
 void Engine::addSceneLayer(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
-    auto it = std::find(scenes.begin(), scenes.end(), scene);
-    if (scene && (it == scenes.end())) {
-        scenes.push_back(scene);
-        includeScene(scenes.size()-1, scene);
+    size_t index = 0;
+    bool linked = false;
+
+    {
+        std::lock_guard<std::mutex> lock(sceneListMutex);
+
+        auto it = std::find(scenes.begin(), scenes.end(), scene);
+        if (scene && (it == scenes.end())) {
+            scenes.push_back(scene);
+            index = scenes.size()-1;
+            linked = true;
+        }
     }
+
+    if (linked)
+        includeScene(index, scene);
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -163,15 +189,26 @@ void Engine::executeSceneOnce(Scene* scene) {
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
-    auto it = std::find(scenes.begin(), scenes.end(), scene);
-    if (scene && (it == scenes.end())) {
-        scenes.push_back(scene);
-        includeScene(scenes.size()-1, scene);
+    size_t index = 0;
+    bool linked = false;
+
+    {
+        std::lock_guard<std::mutex> lock(sceneListMutex);
+
+        if (scene) {
+            oneTimeScenes.insert(scene);
+
+            auto it = std::find(scenes.begin(), scenes.end(), scene);
+            if (it == scenes.end()) {
+                scenes.push_back(scene);
+                index = scenes.size()-1;
+                linked = true;
+            }
+        }
     }
 
-    if (scene) {
-        oneTimeScenes.insert(scene);
-    }
+    if (linked)
+        includeScene(index, scene);
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -181,22 +218,31 @@ void Engine::removeScene(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
-    if (scene){
-        auto it = std::find(scenes.begin(), scenes.end(), scene);
+    bool unlinked = false;
 
-        if (it != scenes.end()) {
-            scene->getSystem<UISystem>()->resetButtonStates();
-            scenes.erase(it);
+    {
+        std::lock_guard<std::mutex> lock(sceneListMutex);
+
+        if (scene){
+            auto it = std::find(scenes.begin(), scenes.end(), scene);
+
+            if (it != scenes.end()) {
+                scenes.erase(it);
+                unlinked = true;
+            }
+
+            if (mainScene == scene){
+                mainScene = NULL;
+            }
+
+            // A scene removed explicitly must not remain in the one-shot registry.
+            // Callers may destroy it immediately after this function returns.
+            oneTimeScenes.erase(scene);
         }
-
-        if (mainScene == scene){
-            mainScene = NULL;
-        }
-
-        // A scene removed explicitly must not remain in the one-shot registry.
-        // Callers may destroy it immediately after this function returns.
-        oneTimeScenes.erase(scene);
     }
+
+    if (unlinked)
+        scene->getSystem<UISystem>()->resetButtonStates();
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -206,22 +252,38 @@ void Engine::removeAllSceneLayers(bool removeOneTimeScenes){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
-    scenes.erase(
-        std::remove_if(scenes.begin(), scenes.end(),
-            [removeOneTimeScenes](Scene* scene) {
-                // Keep main scene
-                if (scene == mainScene)
-                    return false;
+    {
+        std::lock_guard<std::mutex> lock(sceneListMutex);
 
-                // If removeOneTimeScenes is false, keep scenes in oneTimeScenes
-                if (!removeOneTimeScenes && oneTimeScenes.find(scene) != oneTimeScenes.end())
-                    return false;
+        scenes.erase(
+            std::remove_if(scenes.begin(), scenes.end(),
+                [removeOneTimeScenes](Scene* scene) {
+                    // Keep main scene
+                    if (scene == mainScene)
+                        return false;
 
-                // Remove all other scenes
-                return true;
-            }),
-        scenes.end()
-    );
+                    // If removeOneTimeScenes is false, keep scenes in oneTimeScenes
+                    if (!removeOneTimeScenes && oneTimeScenes.find(scene) != oneTimeScenes.end())
+                        return false;
+
+                    // Remove all other scenes
+                    return true;
+                }),
+            scenes.end()
+        );
+
+        if (removeOneTimeScenes){
+            // A one-shot dropped from the draw list can never finish loading, so leaving it
+            // registered would keep hasScenesToExecuteOnce() true forever.
+            for (auto it = oneTimeScenes.begin(); it != oneTimeScenes.end(); ){
+                if (*it != mainScene){
+                    it = oneTimeScenes.erase(it);
+                }else{
+                    ++it;
+                }
+            }
+        }
+    }
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -231,8 +293,13 @@ void Engine::removeAllScenes(){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
-    scenes.clear();
-    mainScene = NULL;
+    {
+        std::lock_guard<std::mutex> lock(sceneListMutex);
+
+        scenes.clear();
+        mainScene = NULL;
+        oneTimeScenes.clear();
+    }
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -243,11 +310,13 @@ bool Engine::isSceneRunning(Scene* scene){
         return false;
     }
 
+    std::lock_guard<std::mutex> lock(sceneListMutex);
     auto it = std::find(scenes.begin(), scenes.end(), scene);
     return it != scenes.end();
 }
 
 bool Engine::hasScenesToExecuteOnce(){
+    std::lock_guard<std::mutex> lock(sceneListMutex);
     return !oneTimeScenes.empty();
 }
 
@@ -256,6 +325,7 @@ Scene* Engine::getMainScene(){
 }
 
 Scene* Engine::getLastScene(){
+    std::lock_guard<std::mutex> lock(sceneListMutex);
     return scenes.back();
 }
 
@@ -763,8 +833,8 @@ void Engine::systemViewLoaded(){
         framebuffer->create();
     }
     
-    for (int i = 0; i < scenes.size(); i++){
-        scenes[i]->load();
+    for (Scene* scene : getScenesSnapshot()){
+        scene->load();
     }
 }
 
@@ -829,8 +899,8 @@ void Engine::systemViewChanged(){
         }
     }
 
-    for (int i = 0; i < scenes.size(); i++){
-        scenes[i]->updateCameraSize();
+    for (Scene* scene : getScenesSnapshot()){
+        scene->updateCameraSize();
     }
 
     onViewChanged.call();
@@ -895,24 +965,27 @@ void Engine::systemDraw(){
 
     SystemRender::commit();
 
-    if (!oneTimeScenes.empty()) {
-        std::unordered_set<Scene*> loadedScenes;
+    {
+        std::lock_guard<std::mutex> lock(sceneListMutex);
 
-        for (Scene* scene : oneTimeScenes) {
-            if (scene == mainScene) {
+        // Retire one-shots that finished loading: they got the frame they asked for.
+        for (auto it = oneTimeScenes.begin(); it != oneTimeScenes.end(); ) {
+            Scene* scene = *it;
+
+            if (!scene->getSystem<RenderSystem>()->isAllLoaded()) {
+                ++it;
                 continue;
             }
-            bool loaded = scene->getSystem<RenderSystem>()->isAllLoaded();
-            auto sceneIt = std::find(scenes.begin(), scenes.end(), scene);
-            if (loaded && sceneIt != scenes.end()) {
-                scenes.erase(sceneIt);
-                loadedScenes.insert(scene);
-            }
-        }
 
-        // Only remove scenes that have been fully loaded
-        for (Scene* scene : loadedScenes) {
-            oneTimeScenes.erase(scene);
+            // The main scene draws every frame regardless, so only drop the registration.
+            if (scene != mainScene) {
+                auto sceneIt = std::find(scenes.begin(), scenes.end(), scene);
+                if (sceneIt != scenes.end()) {
+                    scenes.erase(sceneIt);
+                }
+            }
+
+            it = oneTimeScenes.erase(it);
         }
     }
 
@@ -933,7 +1006,10 @@ void Engine::systemViewDestroyed(){
         scenes[i]->destroy();
     }
 
-    oneTimeScenes.clear();
+    {
+        std::lock_guard<std::mutex> lock(sceneListMutex);
+        oneTimeScenes.clear();
+    }
 
     SystemRender::shutdown();
 
@@ -986,9 +1062,9 @@ void Engine::systemTouchStart(int pointer, float x, float y){
         Input::addTouch(pointer, x, y);
 
         uiEventReceived = false;
-        for (int i = 0; i < scenes.size(); i++){
-            if (scenes[i]->canReceiveUIEvents())
-                if (scenes[i]->getSystem<UISystem>()->eventOnPointerDown(x, y))
+        for (Scene* scene : getScenesSnapshot()){
+            if (scene->canReceiveUIEvents())
+                if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                     uiEventReceived = true;
         }
 
@@ -1013,9 +1089,9 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
         Input::removeTouch(pointer);
 
         uiEventReceived = false;
-        for (int i = 0; i < scenes.size(); i++){
-            if (scenes[i]->canReceiveUIEvents())
-                if (scenes[i]->getSystem<UISystem>()->eventOnPointerUp(x, y))
+        for (Scene* scene : getScenesSnapshot()){
+            if (scene->canReceiveUIEvents())
+                if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
                     uiEventReceived = true;
         }
 
@@ -1040,9 +1116,9 @@ void Engine::systemTouchMove(int pointer, float x, float y){
         Input::setTouchPosition(pointer, x, y);
 
         uiEventReceived = false;
-        for (int i = 0; i < scenes.size(); i++){
-            if (scenes[i]->canReceiveUIEvents())
-                if (scenes[i]->getSystem<UISystem>()->eventOnPointerMove(x, y))
+        for (Scene* scene : getScenesSnapshot()){
+            if (scene->canReceiveUIEvents())
+                if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;
         }
 
@@ -1076,10 +1152,10 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        for (int i = 0; i < scenes.size(); i++){
-            if (scenes[i]->canReceiveUIEvents())
+        for (Scene* scene : getScenesSnapshot()){
+            if (scene->canReceiveUIEvents())
                 if (button == D_MOUSE_BUTTON_1)
-                    if (scenes[i]->getSystem<UISystem>()->eventOnPointerDown(x, y))
+                    if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                         uiEventReceived = true;
         }
 
@@ -1105,10 +1181,10 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        for (int i = 0; i < scenes.size(); i++){
-            if (scenes[i]->canReceiveUIEvents())
+        for (Scene* scene : getScenesSnapshot()){
+            if (scene->canReceiveUIEvents())
                 if (button == D_MOUSE_BUTTON_1)
-                    if (scenes[i]->getSystem<UISystem>()->eventOnPointerUp(x, y))
+                    if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
                         uiEventReceived = true;
         }
 
@@ -1134,9 +1210,9 @@ void Engine::systemMouseMove(float x, float y, int mods){
             Input::setModifiers(mods);
 
         uiEventReceived = false;
-        for (int i = 0; i < scenes.size(); i++){
-            if (scenes[i]->canReceiveUIEvents())
-                if (scenes[i]->getSystem<UISystem>()->eventOnPointerMove(x, y))
+        for (Scene* scene : getScenesSnapshot()){
+            if (scene->canReceiveUIEvents())
+                if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;
         }
 
@@ -1186,9 +1262,9 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
         Input::setModifiers(mods);
     Engine::onKeyDown.call(key, repeat, mods);
 
-    for (int i = 0; i < scenes.size(); i++){
-        if (scenes[i]->canReceiveUIEvents())
-            scenes[i]->getSystem<UISystem>()->eventOnKeyDown(key, repeat, mods);
+    for (Scene* scene : getScenesSnapshot()){
+        if (scene->canReceiveUIEvents())
+            scene->getSystem<UISystem>()->eventOnKeyDown(key, repeat, mods);
     }
     //-----------------
 }
@@ -1204,9 +1280,9 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
 void Engine::systemCharInput(wchar_t codepoint){
     onCharInput.call(codepoint);
 
-    for (int i = 0; i < scenes.size(); i++){
-        if (scenes[i]->canReceiveUIEvents())
-            scenes[i]->getSystem<UISystem>()->eventOnCharInput(codepoint);
+    for (Scene* scene : getScenesSnapshot()){
+        if (scene->canReceiveUIEvents())
+            scene->getSystem<UISystem>()->eventOnCharInput(codepoint);
     }
 }
 
