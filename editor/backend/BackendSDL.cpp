@@ -500,6 +500,10 @@ bool editor::Backend::isRunningOnWayland() {
     return driver && SDL_strcmp(driver, "wayland") == 0;
 }
 
+float editor::Backend::setMainMenu(const PlatformMenuModel&, PlatformMenuCallback) {
+    return 0.0f;
+}
+
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
     if (projectName.empty()) {
         title = "Empty project - Doriax Engine";

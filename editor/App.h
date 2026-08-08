@@ -4,6 +4,7 @@
 #include "imgui.h"
 
 #include "EditorHost.h"
+#include "PlatformMenu.h"
 #include "Project.h"
 
 #include "window/Properties.h"
@@ -141,6 +142,10 @@ namespace doriax::editor{
         void saveAllAndProject(std::function<void()> onSuccess);
         void openProjectFunc();
 
+        PlatformMenuModel buildMenuModel();
+        void executeMenuCommand(const PlatformMenuCommand& command);
+        void showImGuiMenuItems(const std::vector<PlatformMenuItem>& items);
+        void showImGuiMenu(const PlatformMenuModel& menu);
         void showMenu();
         void showAlert();
         void showFooter();

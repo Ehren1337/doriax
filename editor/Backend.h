@@ -1,6 +1,7 @@
 #pragma once
 
 #include "App.h"
+#include "PlatformMenu.h"
 #include "System.h"
 
 namespace doriax::editor{
@@ -21,7 +22,7 @@ namespace doriax::editor{
         // play session is paused or loading, without discarding the game's requested
         // mouse mode. The mode is reapplied when the suspension is lifted (resume).
         // Driven from the main loop. Window focus is intentionally not a factor here:
-        // GLFW/SDL release a captured cursor on focus loss natively.
+        // Platform backends release a captured cursor on focus loss.
         static void setMouseControlSuspended(bool suspended);
         static void setGameCursorInSceneRect(bool inSceneRect);
         static void closeWindow();
@@ -30,6 +31,10 @@ namespace doriax::editor{
         // (Wayland). In that case toggling multi-viewport needs an app restart to
         // take effect, since the backend is chosen at startup from the saved setting.
         static bool isRunningOnWayland();
+
+        // Installs or updates the application menu. Returns the native menu bar
+        // height, or zero when App should render its ImGui fallback.
+        static float setMainMenu(const PlatformMenuModel& menu, PlatformMenuCallback callback);
 
         static void updateWindowTitle(const std::string& projectName);
 

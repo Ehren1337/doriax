@@ -534,6 +534,10 @@ bool editor::Backend::isRunningOnWayland() {
     return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
 }
 
+float editor::Backend::setMainMenu(const PlatformMenuModel&, PlatformMenuCallback) {
+    return 0.0f;
+}
+
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
     if (projectName.empty()) {
         title = "Empty project - Doriax Engine";

@@ -77,7 +77,7 @@ jobs:
         if: startsWith(matrix.config.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install ninja-build cmake libxi-dev libxcursor-dev libwayland-dev libxkbcommon-dev libxrandr-dev libxinerama-dev libglw1-mesa-dev wayland-protocols extra-cmake-modules libgtk-3-dev libdbus-1-dev libcurl4-openssl-dev
+          sudo apt-get install ninja-build cmake libx11-dev libxrandr-dev libgl1-mesa-dev libwayland-dev wayland-protocols extra-cmake-modules libgtk-3-dev libdbus-1-dev libcurl4-openssl-dev
           ninja --version
           cmake --version
           gcc --version
@@ -91,6 +91,7 @@ jobs:
           cmake --version
 
       - name: Download and install GLFW
+        if: ${{ !startsWith(matrix.config.os, 'ubuntu') }}
         shell: bash
         env:
           CC: ${{ matrix.config.cc }}

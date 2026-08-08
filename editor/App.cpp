@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 #if defined(_WIN32)
   #include <windows.h>
@@ -113,7 +114,109 @@ void editor::App::openProjectFunc(){
     }
 }
 
-void editor::App::showMenu(){
+namespace {
+
+enum class AppMenuCommand : uint32_t {
+    NewProject = 1,
+    NewScene3D,
+    NewScene2D,
+    NewSceneUI,
+    OpenProject,
+    OpenRecentProject,
+    ClearRecentProjects,
+    SaveProject,
+    SaveProjectAs,
+    Save,
+    SaveAll,
+    ExportProject,
+    Exit,
+    Undo,
+    Redo,
+    ToggleStructure,
+    ToggleProperties,
+    ToggleResources,
+    ToggleOutput,
+    ToggleAnimation,
+    ToggleTerrain,
+    ToggleAiChat,
+    ToggleDetachableWindows,
+    ResetLayout,
+    ProjectSettings,
+    ClearTrash,
+    ClearShaderCache,
+    RunScene,
+    PauseScene,
+    ResumeScene,
+    StopScene,
+    RemoveScene,
+    About
+};
+
+editor::PlatformMenuItem menuCommand(AppMenuCommand command,
+                                     std::string label,
+                                     bool enabled = true) {
+    editor::PlatformMenuItem item;
+    item.type = editor::PlatformMenuItemType::Command;
+    item.label = std::move(label);
+    item.command.id = static_cast<uint32_t>(command);
+    item.enabled = enabled;
+    return item;
+}
+
+editor::PlatformMenuItem menuShortcut(AppMenuCommand command,
+                                      std::string label,
+                                      std::string shortcut,
+                                      bool enabled = true) {
+    editor::PlatformMenuItem item = menuCommand(command, std::move(label), enabled);
+    item.shortcut = std::move(shortcut);
+    return item;
+}
+
+editor::PlatformMenuItem menuToggle(AppMenuCommand command,
+                                    std::string label,
+                                    bool checked) {
+    editor::PlatformMenuItem item = menuCommand(command, std::move(label));
+    item.checked = checked;
+    return item;
+}
+
+editor::PlatformMenuItem menuPayloadCommand(AppMenuCommand command,
+                                            std::string label,
+                                            std::string payload) {
+    editor::PlatformMenuItem item = menuCommand(command, std::move(label));
+    item.command.payload = std::move(payload);
+    return item;
+}
+
+editor::PlatformMenuItem menuSeparator() {
+    editor::PlatformMenuItem item;
+    item.type = editor::PlatformMenuItemType::Separator;
+    return item;
+}
+
+editor::PlatformMenuItem menuSubmenu(std::string label,
+                                     std::vector<editor::PlatformMenuItem> children,
+                                     bool enabled = true) {
+    editor::PlatformMenuItem item;
+    item.type = editor::PlatformMenuItemType::Submenu;
+    item.label = std::move(label);
+    item.enabled = enabled;
+    item.children = std::move(children);
+    return item;
+}
+
+const char* imguiMenuLabel(const editor::PlatformMenuItem& item) {
+    switch (static_cast<AppMenuCommand>(item.command.id)) {
+        case AppMenuCommand::NewScene3D: return ICON_FA_CUBES "  3D Scene";
+        case AppMenuCommand::NewScene2D: return ICON_FA_CUBES_STACKED "  2D Scene";
+        case AppMenuCommand::NewSceneUI: return ICON_FA_WINDOW_RESTORE "  UI Scene";
+        default: return item.label.c_str();
+    }
+}
+
+} // namespace
+
+editor::PlatformMenuModel editor::App::buildMenuModel(){
     SceneProject* selectedScene = project.getSelectedScene();
     uint32_t selectedSceneId = project.getSelectedSceneId();
     bool hasSelectedScene = selectedScene != nullptr;
@@ -128,315 +231,357 @@ void editor::App::showMenu(){
     bool canStop = hasSelectedScene && !isSaving && (isPlaying || isPaused || isLoading);
     bool canRemove = hasSelectedScene && !isProjectBusy && project.getScenes().size() > 1;
 
-    // Remove menu bar border
-    //ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-    //ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    bool canSave = lastFocusedWindow == LastFocusedWindow::Code
+        ? codeEditor->hasLastFocusedUnsavedChanges()
+        : !isProjectBusy && project.hasSelectedSceneUnsavedChanges();
+    bool canSaveAll = !isProjectBusy &&
+        (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges());
 
-    // Create the main menu bar
-    if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("File")) {
-            ImGui::BeginDisabled(isProjectBusy);
-            if (ImGui::MenuItem("New Project")) {
-                std::string projectName = "MyDoriaxProject";
-                auto startFreshProject = [this, projectName]() {
-                    if (project.createTempProject(projectName, true)) {
-                        aiChatWindow->startNewChat();
-                    }
-                };
-                if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() || project.isTempUnsavedProject()) {
-                    Backend::getApp().registerConfirmAlert(
-                        "Unsaved Changes",
-                        "There are unsaved changes. Do you want to save them before creating a new project?",
-                        [this, startFreshProject]() {
-                            saveAllAndProject(startFreshProject);
-                        },
-                        startFreshProject
-                    );
-                } else {
-                    // No unsaved changes, just reset
-                    startFreshProject();
-                }
-            }
-            ImGui::EndDisabled();
+    bool canUndo = false;
+    bool canRedo = false;
+    if (lastFocusedWindow == LastFocusedWindow::Resources) {
+        canUndo = project.getProjectCommandHistory()->canUndo();
+        canRedo = project.getProjectCommandHistory()->canRedo();
+    } else if (lastFocusedWindow == LastFocusedWindow::Code) {
+        canUndo = codeEditor->canUndoLastFocused();
+        canRedo = codeEditor->canRedoLastFocused();
+    } else if (lastFocusedWindow != LastFocusedWindow::AI && hasSelectedScene) {
+        canUndo = CommandHandle::get(selectedSceneId)->canUndo();
+        canRedo = CommandHandle::get(selectedSceneId)->canRedo();
+    }
 
-            ImGui::BeginDisabled(isProjectBusy);
-            if (ImGui::BeginMenu("New Scene")) {
-                if (ImGui::MenuItem(ICON_FA_CUBES "  3D Scene")) {
-                    project.createNewScene("New Scene", SceneType::SCENE_3D);
-                }
-                if (ImGui::MenuItem(ICON_FA_CUBES_STACKED "  2D Scene")) {
-                    project.createNewScene("New Scene", SceneType::SCENE_2D);
-                }
-                if (ImGui::MenuItem(ICON_FA_WINDOW_RESTORE "  UI Scene")) {
-                    project.createNewScene("New Scene", SceneType::SCENE_UI);
-                }
-                ImGui::EndMenu();
-            }
-            ImGui::EndDisabled();
-
-            ImGui::Separator();
-
-            ImGui::BeginDisabled(isProjectBusy);
-            if (ImGui::MenuItem("Open Project", "Ctrl+O")) {
-                openProjectFunc();
-            }
-            if (ImGui::BeginMenu("Recent Projects")) {
-                std::vector<std::filesystem::path> recentProjects = AppSettings::getRecentProjects();
-                if (recentProjects.empty()) {
-                    ImGui::MenuItem("No Recent Projects", nullptr, false, false);
-                } else {
-                    for (const auto& path : recentProjects) {
-                        std::string label = path.filename().string() + " (" + path.string() + ")";
-                        if (ImGui::MenuItem(label.c_str())) {
-                            if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() || project.isTempUnsavedProject()) {
-                                registerConfirmAlert(
-                                    "Unsaved Changes",
-                                    "There are unsaved changes. Do you want to save them before opening another project?",
-                                    [this, path]() {
-                                        saveAllAndProject([this, path]() {
-                                            this->project.loadProject(path);
-                                        });
-                                    },
-                                    [this, path]() {
-                                        // No callback - just continue without saving
-                                        this->project.loadProject(path);
-                                    }
-                                );
-                            } else {
-                                project.loadProject(path);
-                            }
-                        }
-                    }
-                    ImGui::Separator();
-                    if (ImGui::MenuItem("Clear Recent Projects")) {
-                        AppSettings::clearRecentProjects();
-                    }
-                }
-                ImGui::EndMenu();
-            }
-            ImGui::EndDisabled();
-
-            if (ImGui::MenuItem("Save Project")) {
-                project.saveProject(true);
-            }
-            if (ImGui::MenuItem("Save Project As...")) {
-                registerProjectSaveDialog([](){});
-            }
-            ImGui::Separator();
-            bool canSave = false;
-            if (lastFocusedWindow == LastFocusedWindow::Code) {
-                canSave = codeEditor->hasLastFocusedUnsavedChanges();
-            }else{
-                canSave = !isProjectBusy && project.hasSelectedSceneUnsavedChanges();
-            }
-            bool canSaveAll = !isProjectBusy && (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges());
-
-            ImGui::BeginDisabled(!canSave);
-            if (ImGui::MenuItem("Save")) {
-                saveFunc();
-            }
-            ImGui::EndDisabled();
-            ImGui::BeginDisabled(!canSaveAll);
-            if (ImGui::MenuItem("Save All")) {
-                saveAllFunc();
-            }
-            ImGui::EndDisabled();
-            ImGui::Separator();
-            if (ImGui::MenuItem("Export Project...")) {
-                exportWindow.open(&project);
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Exit")) {
-                exit();
-            }
-            ImGui::EndMenu();
+    std::vector<PlatformMenuItem> recentItems;
+    std::vector<std::filesystem::path> recentProjects = AppSettings::getRecentProjects();
+    if (recentProjects.empty()) {
+        recentItems.push_back(menuCommand(AppMenuCommand::OpenRecentProject,
+                                          "No Recent Projects", false));
+    } else {
+        for (const auto& path : recentProjects) {
+            recentItems.push_back(menuPayloadCommand(
+                AppMenuCommand::OpenRecentProject,
+                path.filename().string() + " (" + path.string() + ")",
+                path.string()));
         }
-        if (ImGui::BeginMenu("Edit")) {
-            bool canUndo = false;
-            bool canRedo = false;
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                canUndo = project.getProjectCommandHistory()->canUndo();
-                canRedo = project.getProjectCommandHistory()->canRedo();
-            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                canUndo = codeEditor->canUndoLastFocused();
-                canRedo = codeEditor->canRedoLastFocused();
-            } else if (lastFocusedWindow == LastFocusedWindow::AI) {
-                canUndo = false;
-                canRedo = false;
+        recentItems.push_back(menuSeparator());
+        recentItems.push_back(menuCommand(AppMenuCommand::ClearRecentProjects,
+                                          "Clear Recent Projects"));
+    }
+
+    PlatformMenuModel menu;
+    menu.menus.push_back(menuSubmenu("File", {
+        menuCommand(AppMenuCommand::NewProject, "New Project", !isProjectBusy),
+        menuSubmenu("New Scene", {
+            menuCommand(AppMenuCommand::NewScene3D, "3D Scene"),
+            menuCommand(AppMenuCommand::NewScene2D, "2D Scene"),
+            menuCommand(AppMenuCommand::NewSceneUI, "UI Scene")
+        }, !isProjectBusy),
+        menuSeparator(),
+        menuShortcut(AppMenuCommand::OpenProject, "Open Project", "Ctrl+O",
+                     !isProjectBusy),
+        menuSubmenu("Recent Projects", std::move(recentItems), !isProjectBusy),
+        menuCommand(AppMenuCommand::SaveProject, "Save Project"),
+        menuCommand(AppMenuCommand::SaveProjectAs, "Save Project As..."),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::Save, "Save", canSave),
+        menuCommand(AppMenuCommand::SaveAll, "Save All", canSaveAll),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::ExportProject, "Export Project..."),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::Exit, "Exit")
+    }));
+
+    menu.menus.push_back(menuSubmenu("Edit", {
+        menuCommand(AppMenuCommand::Undo, "Undo", canUndo),
+        menuCommand(AppMenuCommand::Redo, "Redo", canRedo)
+    }));
+
+    menu.menus.push_back(menuSubmenu("View", {
+        menuToggle(AppMenuCommand::ToggleStructure, Structure::WINDOW_NAME,
+                   structureWindow->isOpen()),
+        menuToggle(AppMenuCommand::ToggleProperties, Properties::WINDOW_NAME,
+                   propertiesWindow->isOpen()),
+        menuToggle(AppMenuCommand::ToggleResources, ResourcesWindow::WINDOW_NAME,
+                   resourcesWindow->isOpen()),
+        menuToggle(AppMenuCommand::ToggleOutput, OutputWindow::WINDOW_NAME,
+                   outputWindow->isOpen()),
+        menuToggle(AppMenuCommand::ToggleAnimation, AnimationWindow::WINDOW_NAME,
+                   animationWindow->isOpen()),
+        menuToggle(AppMenuCommand::ToggleTerrain, TerrainEditWindow::WINDOW_NAME,
+                   terrainEditWindow->isOpen()),
+        menuToggle(AppMenuCommand::ToggleAiChat, AiChatWindow::WINDOW_NAME,
+                   aiChatWindow->isOpen()),
+        menuSeparator(),
+        menuToggle(AppMenuCommand::ToggleDetachableWindows, "Detachable Windows",
+                   AppSettings::getMultiViewportEnabled()),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::ResetLayout, "Reset Layout")
+    }));
+
+    menu.menus.push_back(menuSubmenu("Project", {
+        menuCommand(AppMenuCommand::ProjectSettings, "Project Settings..."),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::ClearTrash, "Clear Trash"),
+        menuCommand(AppMenuCommand::ClearShaderCache, "Clear Shader Cache")
+    }));
+
+    menu.menus.push_back(menuSubmenu("Scene", {
+        menuShortcut(AppMenuCommand::RunScene, "Run", "F5", canRun),
+        menuShortcut(AppMenuCommand::PauseScene, "Pause", "F6", canPause),
+        menuShortcut(AppMenuCommand::ResumeScene, "Resume", "F5", canResume),
+        menuShortcut(AppMenuCommand::StopScene, "Stop", "F7", canStop),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::RemoveScene, "Remove", canRemove)
+    }));
+
+    menu.menus.push_back(menuSubmenu("Help", {
+        menuCommand(AppMenuCommand::About, "About Doriax")
+    }));
+    return menu;
+}
+
+void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
+    const auto action = static_cast<AppMenuCommand>(command.id);
+    switch (action) {
+        case AppMenuCommand::NewProject: {
+            if (project.isAnyScenePlaying()) return;
+            std::string projectName = "MyDoriaxProject";
+            auto startFreshProject = [this, projectName]() {
+                if (project.createTempProject(projectName, true)) aiChatWindow->startNewChat();
+            };
+            if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() ||
+                project.isTempUnsavedProject()) {
+                registerConfirmAlert(
+                    "Unsaved Changes",
+                    "There are unsaved changes. Do you want to save them before creating a new project?",
+                    [this, startFreshProject]() { saveAllAndProject(startFreshProject); },
+                    startFreshProject);
             } else {
-                canUndo = CommandHandle::get(project.getSelectedSceneId())->canUndo();
-                canRedo = CommandHandle::get(project.getSelectedSceneId())->canRedo();
+                startFreshProject();
             }
-
-            ImGui::BeginDisabled(!canUndo);
-            if (ImGui::MenuItem("Undo")) {
-                if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                    project.getProjectCommandHistory()->undo();
-                    resourcesWindow->refreshCurrentDirectory();
-                } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                    codeEditor->undoLastFocused();
-                } else if (lastFocusedWindow != LastFocusedWindow::AI) {
-                    CommandHandle::get(project.getSelectedSceneId())->undo();
-                }
-            }
-            ImGui::EndDisabled();
-            ImGui::BeginDisabled(!canRedo);
-            if (ImGui::MenuItem("Redo")) {
-                if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                    project.getProjectCommandHistory()->redo();
-                    resourcesWindow->refreshCurrentDirectory();
-                } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                    codeEditor->redoLastFocused();
-                } else if (lastFocusedWindow != LastFocusedWindow::AI) {
-                    CommandHandle::get(project.getSelectedSceneId())->redo();
-                }
-            }
-            ImGui::EndDisabled();
-            ImGui::EndMenu();
+            break;
         }
-        if (ImGui::BeginMenu("View")) {
-            bool structureOpen = structureWindow->isOpen();
-            if (ImGui::MenuItem(Structure::WINDOW_NAME, nullptr, &structureOpen)) {
-                structureWindow->setOpen(structureOpen);
+        case AppMenuCommand::NewScene3D:
+            if (!project.isAnyScenePlaying())
+                project.createNewScene("New Scene", SceneType::SCENE_3D);
+            break;
+        case AppMenuCommand::NewScene2D:
+            if (!project.isAnyScenePlaying())
+                project.createNewScene("New Scene", SceneType::SCENE_2D);
+            break;
+        case AppMenuCommand::NewSceneUI:
+            if (!project.isAnyScenePlaying())
+                project.createNewScene("New Scene", SceneType::SCENE_UI);
+            break;
+        case AppMenuCommand::OpenProject:
+            openProjectFunc();
+            break;
+        case AppMenuCommand::OpenRecentProject: {
+            if (command.payload.empty() || project.isAnyScenePlaying()) return;
+            const std::filesystem::path path(command.payload);
+            if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() ||
+                project.isTempUnsavedProject()) {
+                registerConfirmAlert(
+                    "Unsaved Changes",
+                    "There are unsaved changes. Do you want to save them before opening another project?",
+                    [this, path]() {
+                        saveAllAndProject([this, path]() { project.loadProject(path); });
+                    },
+                    [this, path]() { project.loadProject(path); });
+            } else {
+                project.loadProject(path);
             }
-
-            bool propertiesOpen = propertiesWindow->isOpen();
-            if (ImGui::MenuItem(Properties::WINDOW_NAME, nullptr, &propertiesOpen)) {
-                propertiesWindow->setOpen(propertiesOpen);
+            break;
+        }
+        case AppMenuCommand::ClearRecentProjects:
+            AppSettings::clearRecentProjects();
+            break;
+        case AppMenuCommand::SaveProject:
+            project.saveProject(true);
+            break;
+        case AppMenuCommand::SaveProjectAs:
+            registerProjectSaveDialog([](){});
+            break;
+        case AppMenuCommand::Save:
+            saveFunc();
+            break;
+        case AppMenuCommand::SaveAll:
+            saveAllFunc();
+            break;
+        case AppMenuCommand::ExportProject:
+            exportWindow.open(&project);
+            break;
+        case AppMenuCommand::Exit:
+            exit();
+            break;
+        case AppMenuCommand::Undo:
+            if (lastFocusedWindow == LastFocusedWindow::Resources) {
+                project.getProjectCommandHistory()->undo();
+                resourcesWindow->refreshCurrentDirectory();
+            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
+                codeEditor->undoLastFocused();
+            } else if (lastFocusedWindow != LastFocusedWindow::AI && project.getSelectedScene()) {
+                CommandHandle::get(project.getSelectedSceneId())->undo();
             }
-
-            bool resourcesOpen = resourcesWindow->isOpen();
-            if (ImGui::MenuItem(ResourcesWindow::WINDOW_NAME, nullptr, &resourcesOpen)) {
-                resourcesWindow->setOpen(resourcesOpen);
+            break;
+        case AppMenuCommand::Redo:
+            if (lastFocusedWindow == LastFocusedWindow::Resources) {
+                project.getProjectCommandHistory()->redo();
+                resourcesWindow->refreshCurrentDirectory();
+            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
+                codeEditor->redoLastFocused();
+            } else if (lastFocusedWindow != LastFocusedWindow::AI && project.getSelectedScene()) {
+                CommandHandle::get(project.getSelectedSceneId())->redo();
             }
-
-            bool outputOpen = outputWindow->isOpen();
-            if (ImGui::MenuItem(OutputWindow::WINDOW_NAME, nullptr, &outputOpen)) {
-                outputWindow->setOpen(outputOpen);
-            }
-
-            bool animationOpen = animationWindow->isOpen();
-            if (ImGui::MenuItem(AnimationWindow::WINDOW_NAME, nullptr, &animationOpen)) {
-                animationWindow->setOpen(animationOpen);
-            }
-
-            bool terrainOpen = terrainEditWindow->isOpen();
-            if (ImGui::MenuItem(TerrainEditWindow::WINDOW_NAME, nullptr, &terrainOpen)) {
-                terrainEditWindow->setOpen(terrainOpen);
-            }
-
-            bool aiChatOpen = aiChatWindow->isOpen();
-            if (ImGui::MenuItem(AiChatWindow::WINDOW_NAME, nullptr, &aiChatOpen)) {
-                aiChatWindow->setOpen(aiChatOpen);
-            }
-
-            ImGui::Separator();
-            // Reflect the saved preference, not the live imgui flag: on Wayland the
-            // flag can't be activated until a restart forces X11, but the menu should
-            // still show the user's choice as enabled.
-            bool multiViewport = AppSettings::getMultiViewportEnabled();
-            if (ImGui::MenuItem("Detachable Windows", nullptr, &multiViewport)) {
-                AppSettings::setMultiViewportEnabled(multiViewport);
-                AppSettings::saveSettings();
-
-                // Activate the live flag only where extra OS windows actually work.
-                // Wayland can't reposition windows, so leave it off until restart.
-                if (multiViewport && !Backend::isRunningOnWayland())
-                    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-                else
-                    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
-
+            break;
+        case AppMenuCommand::ToggleStructure:
+            structureWindow->setOpen(!structureWindow->isOpen());
+            break;
+        case AppMenuCommand::ToggleProperties:
+            propertiesWindow->setOpen(!propertiesWindow->isOpen());
+            break;
+        case AppMenuCommand::ToggleResources:
+            resourcesWindow->setOpen(!resourcesWindow->isOpen());
+            break;
+        case AppMenuCommand::ToggleOutput:
+            outputWindow->setOpen(!outputWindow->isOpen());
+            break;
+        case AppMenuCommand::ToggleAnimation:
+            animationWindow->setOpen(!animationWindow->isOpen());
+            break;
+        case AppMenuCommand::ToggleTerrain:
+            terrainEditWindow->setOpen(!terrainEditWindow->isOpen());
+            break;
+        case AppMenuCommand::ToggleAiChat:
+            aiChatWindow->setOpen(!aiChatWindow->isOpen());
+            break;
+        case AppMenuCommand::ToggleDetachableWindows: {
+            const bool multiViewport = !AppSettings::getMultiViewportEnabled();
+            AppSettings::setMultiViewportEnabled(multiViewport);
+            AppSettings::saveSettings();
+            if (multiViewport && !Backend::isRunningOnWayland())
+                ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+            else
+                ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
 #ifdef __linux__
-                if (multiViewport) {
-                    if (Backend::isRunningOnWayland())
-                        registerAlert("Restart Required",
-                            "Detachable windows will take effect after you restart the editor.",
-                            "Note: This feature may encounter issues on Linux.");
-                    else
-                        registerAlert("Experimental Feature",
-                            "Detachable windows are now enabled.",
-                            "Note: This feature may encounter issues on Linux.");
-                }
+            if (multiViewport) {
+                if (Backend::isRunningOnWayland())
+                    registerAlert("Restart Required",
+                        "Detachable windows will take effect after you restart the editor.",
+                        "Note: This feature may encounter issues on Linux.");
+                else
+                    registerAlert("Experimental Feature",
+                        "Detachable windows are now enabled.",
+                        "Note: This feature may encounter issues on Linux.");
+            }
 #endif
-            }
-
-            ImGui::Separator();
-            if (ImGui::MenuItem("Reset Layout")) {
-                structureWindow->setOpen(true);
-                propertiesWindow->setOpen(true);
-                resourcesWindow->setOpen(true);
-                outputWindow->setOpen(true);
-                animationWindow->setOpen(true);
-                terrainEditWindow->setOpen(false);
-                aiChatWindow->setOpen(true);
-                buildDockspace(true);
-            }
-            ImGui::EndMenu();
+            break;
         }
-        if (ImGui::BeginMenu("Project")) {
-            if (ImGui::MenuItem("Project Settings...")) {
-                projectSettingsWindow.open(&project);
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Clear Trash")) {
-                project.clearTrash();
-            }
-            if (ImGui::MenuItem("Clear Shader Cache")) {
-                std::filesystem::path cacheDir = getUserShaderCacheDir();
-                if (std::filesystem::exists(cacheDir)) {
-                    std::filesystem::remove_all(cacheDir);
-                }
-            }
-            ImGui::EndMenu();
+        case AppMenuCommand::ResetLayout:
+            structureWindow->setOpen(true);
+            propertiesWindow->setOpen(true);
+            resourcesWindow->setOpen(true);
+            outputWindow->setOpen(true);
+            animationWindow->setOpen(true);
+            terrainEditWindow->setOpen(false);
+            aiChatWindow->setOpen(true);
+            buildDockspace(true);
+            break;
+        case AppMenuCommand::ProjectSettings:
+            projectSettingsWindow.open(&project);
+            break;
+        case AppMenuCommand::ClearTrash:
+            project.clearTrash();
+            break;
+        case AppMenuCommand::ClearShaderCache: {
+            const std::filesystem::path cacheDir = getUserShaderCacheDir();
+            if (std::filesystem::exists(cacheDir)) std::filesystem::remove_all(cacheDir);
+            break;
         }
-        if (ImGui::BeginMenu("Scene")) {
-            ImGui::BeginDisabled(!canRun);
-            if (ImGui::MenuItem("Run", "F5")) {
-                project.start(selectedSceneId);
-            }
-            ImGui::EndDisabled();
-
-            ImGui::BeginDisabled(!canPause);
-            if (ImGui::MenuItem("Pause", "F6")) {
-                project.pause(selectedSceneId);
-            }
-            ImGui::EndDisabled();
-
-            ImGui::BeginDisabled(!canResume);
-            if (ImGui::MenuItem("Resume", "F5")) {
-                project.resume(selectedSceneId);
-            }
-            ImGui::EndDisabled();
-
-            ImGui::BeginDisabled(!canStop);
-            if (ImGui::MenuItem("Stop", "F7")) {
-                project.stop(selectedSceneId);
-            }
-            ImGui::EndDisabled();
-
-            ImGui::Separator();
-
-            ImGui::BeginDisabled(!canRemove);
-            if (ImGui::MenuItem("Remove")) {
-                project.checkUnsavedAndExecute(selectedSceneId, [this, selectedSceneId]() {
-                    project.removeScene(selectedSceneId);
+        case AppMenuCommand::RunScene:
+            if (project.getSelectedScene() && !project.isAnyScenePlaying())
+                project.start(project.getSelectedSceneId());
+            break;
+        case AppMenuCommand::PauseScene:
+            if (SceneProject* scene = project.getSelectedScene();
+                scene && scene->playState == ScenePlayState::PLAYING)
+                project.pause(project.getSelectedSceneId());
+            break;
+        case AppMenuCommand::ResumeScene:
+            if (SceneProject* scene = project.getSelectedScene();
+                scene && scene->playState == ScenePlayState::PAUSED)
+                project.resume(project.getSelectedSceneId());
+            break;
+        case AppMenuCommand::StopScene:
+            if (SceneProject* scene = project.getSelectedScene(); scene &&
+                scene->playState != ScenePlayState::SAVING &&
+                (scene->playState == ScenePlayState::PLAYING ||
+                 scene->playState == ScenePlayState::PAUSED ||
+                 scene->playState == ScenePlayState::LOADING))
+                project.stop(project.getSelectedSceneId());
+            break;
+        case AppMenuCommand::RemoveScene: {
+            const uint32_t sceneId = project.getSelectedSceneId();
+            if (project.getSelectedScene() && !project.isAnyScenePlaying() &&
+                project.getScenes().size() > 1) {
+                project.checkUnsavedAndExecute(sceneId, [this, sceneId]() {
+                    project.removeScene(sceneId);
                 });
             }
-            ImGui::EndDisabled();
-
-            ImGui::EndMenu();
+            break;
         }
-        if (ImGui::BeginMenu("Help")) {
-            if (ImGui::MenuItem("About Doriax")) {
-                registerAlert("About Doriax", "Doriax Engine\n\nVersion: " DORIAX_EDITOR_VERSION "\n\nDeveloped by Eduardo Doria");
+        case AppMenuCommand::About:
+            registerAlert("About Doriax",
+                "Doriax Engine\n\nVersion: " DORIAX_EDITOR_VERSION "\n\nDeveloped by Eduardo Doria");
+            break;
+    }
+}
+
+void editor::App::showImGuiMenuItems(const std::vector<PlatformMenuItem>& items){
+    for (const PlatformMenuItem& item : items) {
+        if (item.type == PlatformMenuItemType::Separator) {
+            ImGui::Separator();
+        } else if (item.type == PlatformMenuItemType::Submenu) {
+            if (ImGui::BeginMenu(item.label.c_str(), item.enabled)) {
+                showImGuiMenuItems(item.children);
+                ImGui::EndMenu();
             }
-            ImGui::EndMenu();
+        } else if (ImGui::MenuItem(
+                       imguiMenuLabel(item),
+                       item.shortcut.empty() ? nullptr : item.shortcut.c_str(),
+                       item.checked, item.enabled)) {
+            executeMenuCommand(item.command);
+        }
+    }
+}
+
+void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
+    if (ImGui::BeginMainMenuBar()) {
+        for (const PlatformMenuItem& topLevel : menu.menus) {
+            if (ImGui::BeginMenu(topLevel.label.c_str(), topLevel.enabled)) {
+                showImGuiMenuItems(topLevel.children);
+                ImGui::EndMenu();
+            }
         }
         ImGui::EndMainMenuBar();
     }
+}
 
-    // Restore previous style
-    //ImGui::PopStyleVar(2);
+void editor::App::showMenu(){
+    PlatformMenuModel menu = buildMenuModel();
+    const float nativeMenuHeight = Backend::setMainMenu(
+        menu, [this](const PlatformMenuCommand& command) {
+            executeMenuCommand(command);
+        });
+    if (nativeMenuHeight > 0.0f) {
+        const ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground |
+            ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
+            ImGuiWindowFlags_NoNav;
+        ImGui::BeginViewportSideBar("##NativeMainMenuSpace", ImGui::GetMainViewport(),
+                                    ImGuiDir_Up, nativeMenuHeight, flags);
+        ImGui::End();
+        return;
+    }
+    showImGuiMenu(menu);
 }
 
 void editor::App::showFooter(){

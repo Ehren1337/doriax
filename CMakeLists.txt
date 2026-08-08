@@ -43,7 +43,11 @@ set(GRAPHIC_BACKEND "glcore")
 set(ENABLE_OPT OFF CACHE BOOL "Enables spirv-opt capability if present" FORCE)
 
 if(NOT API_BACKEND)
-    set(API_BACKEND "glfw")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(API_BACKEND "linux")
+    else()
+        set(API_BACKEND "glfw")
+    endif()
 endif()
 message(STATUS "API backend is set to ${API_BACKEND}")
 
@@ -128,7 +132,21 @@ endif()
 set(BACKEND_SOURCES)
 set(BACKEND_LIBS)
 
-if(API_BACKEND STREQUAL "glfw")
+if(API_BACKEND STREQUAL "linux")
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "API_BACKEND=linux is only available on Linux")
+    endif()
+    find_package(X11 REQUIRED COMPONENTS Xrandr)
+
+    list(APPEND BACKEND_SOURCES
+        ${EDITOR_DIR}/backend/BackendLinux.cpp
+    )
+
+    list(APPEND BACKEND_LIBS
+        X11::X11
+        X11::Xrandr
+    )
+elseif(API_BACKEND STREQUAL "glfw")
     find_package(glfw3 REQUIRED)
 
     if(NOT DEFINED GLFW_LIBRARIES)
@@ -143,9 +161,7 @@ if(API_BACKEND STREQUAL "glfw")
     list(APPEND BACKEND_LIBS
         ${GLFW_LIBRARIES}
     )
-endif()
-
-if(API_BACKEND STREQUAL "sdl")
+elseif(API_BACKEND STREQUAL "sdl")
     find_package(SDL3 REQUIRED)
 
     list(APPEND BACKEND_SOURCES
@@ -156,6 +172,8 @@ if(API_BACKEND STREQUAL "sdl")
     list(APPEND BACKEND_LIBS
         ${SDL3_LIBRARIES}
     )
+else()
+    message(FATAL_ERROR "Unknown API_BACKEND '${API_BACKEND}' (expected linux, glfw, or sdl)")
 endif()
 
 set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
@@ -247,7 +265,9 @@ include_directories (${DORIAX_ROOT}/core/shader)
 include_directories (${DORIAX_ROOT}/core/subsystem)
 include_directories (${DORIAX_ROOT}/core/texture)
 include_directories (${DORIAX_ROOT}/core/util)
-include_directories (${DORIAX_ROOT}/platform/glfw) # GamepadMappings.h for BackendGLFW
+if(API_BACKEND STREQUAL "glfw")
+    include_directories (${DORIAX_ROOT}/platform/glfw) # GamepadMappings.h for BackendGLFW
+endif()
 include_directories (${DORIAX_ROOT}/renders)
 
 include_directories (${SHADERCOMPILER_ROOT}/src)
