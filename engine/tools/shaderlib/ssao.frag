@@ -31,11 +31,10 @@ uniform u_fs_ssaoParams {
 #include "includes/depth_util.glsl"
 #include "includes/octahedral.glsl"
 
+// No per-backend depth range here: the depth buffer packs 0.5*z/w + 0.5 taken
+// before the API clip-space fixup, so [-1,1] always matches invProjection.
 vec3 reconstructViewPos(vec2 uv, float depth01){
     vec3 ndc = vec3(uv * 2.0 - 1.0, depth01 * 2.0 - 1.0);
-    #ifdef IS_VULKAN
-        ndc.z = depth01; // clip space is already [0,1]
-    #endif
     vec4 view = ssao.invProjection * vec4(ndc, 1.0);
     return view.xyz / view.w;
 }

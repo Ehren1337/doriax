@@ -33,6 +33,11 @@ float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softn
     float theta = atan(lightToFrag.y, lightToFrag.x); // [-pi, pi]
     float u = theta / (2.0 * M_PI) + 0.5;
     float v = (row + 0.5) * lighting2d.atlasInfo.y;
+    #ifndef IS_GLSL
+        // rows are placed with sokol's bottom-left viewport convention, same as
+        // the 3D shadow atlas (see getShadowAtlasUV)
+        v = 1.0 - v;
+    #endif
 
     int radius = int(lighting2d.atlasInfo.w);
     if (radius <= 0){

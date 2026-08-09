@@ -391,7 +391,6 @@ namespace doriax{
 		static bool samplesCameraTarget(const CameraComponent& camera, const MeshComponent& mesh);
 		static bool samplesCameraTarget(const CameraComponent& camera, const Texture& texture);
 		bool isRenderingFlipped(const CameraComponent& camera) const;
-		bool isDepthColorYFlipped(const CameraComponent& camera) const;
 		bool isFixedResolutionActive() const;
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
 

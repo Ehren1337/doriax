@@ -9,11 +9,11 @@
 // Output: rgb = reflected color, a = reflection coverage/mask in [0,1]. The
 // physical reflectance (Fresnel / GGX BRDF) is applied later by the composite.
 //
-// Orientation: the G-buffer is bottom-up while the scene color follows its
-// destination; misc.z says whether the two differ by a Y flip. This fragment
-// writes the SSR buffer in scene-color (composite) space: the G-buffer
-// coordinate for this fragment is the flipped texcoord, and a hit's scene
-// color is sampled back in scene-color space.
+// Orientation: the G-buffer keeps the target's own orientation while the scene
+// color was rendered with the destination's flip, so on GL offscreen targets the
+// two differ by a Y flip (misc.z). This fragment writes the SSR buffer in
+// scene-color (composite) space: the G-buffer coordinate for this fragment is the
+// flipped texcoord, and a hit's scene color is sampled back in scene-color space.
 
 #ifndef SSR_MAX_STEPS
 #define SSR_MAX_STEPS 128
@@ -45,11 +45,10 @@ float sampleDepth(vec2 uv){
     return decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), uv));
 }
 
+// No per-backend depth range here: the G-buffer packs 0.5*z/w + 0.5 taken before
+// the API clip-space fixup, so [-1,1] always matches invProjection.
 vec3 reconstructViewPos(vec2 uv, float depth01){
     vec3 ndc = vec3(uv * 2.0 - 1.0, depth01 * 2.0 - 1.0);
-    #ifdef IS_VULKAN
-        ndc.z = depth01; // clip space is already [0,1]
-    #endif
     vec4 view = ssr.invProjection * vec4(ndc, 1.0);
     return view.xyz / view.w;
 }

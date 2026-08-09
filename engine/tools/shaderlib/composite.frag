@@ -62,11 +62,9 @@ vec3 rotateEnv(vec3 dir, float angle){
     return vec3(c * dir.x - s * dir.z, dir.y, s * dir.x + c * dir.z);
 }
 
+// See ssr.frag: the packed depth is backend-independent, so no depth-range branch.
 vec3 reconstructViewPos(vec2 uv, float depth01){
     vec3 ndc = vec3(uv * 2.0 - 1.0, depth01 * 2.0 - 1.0);
-    #ifdef IS_VULKAN
-        ndc.z = depth01;
-    #endif
     vec4 view = comp.invProjection * vec4(ndc, 1.0);
     return view.xyz / view.w;
 }

@@ -232,19 +232,12 @@ void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, Te
 
 bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, CullingMode cullingMode, WindingOrder windingOrder){
 
-    // depth.vert/gbuffer.vert negate clip-space Y outside GL and Vulkan to keep the
-    // depth buffer bottom-up, and mirroring clip space reverses the triangle winding
-    WindingOrder depthWinding = windingOrder;
-    if (!Engine::isOpenGL() && Engine::getGraphicBackend() != GraphicBackend::VULKAN){
-        depthWinding = (windingOrder == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
-    }
-
     if (pipelines & (int)PipelineType::PIP_DEPTH) {
         sg_pipeline_desc pip_depth_desc = pipeline_desc;
 
         if (enableFaceCulling){
             pip_depth_desc.cull_mode = getCullMode(cullingMode);
-            pip_depth_desc.face_winding = getFaceWinding(depthWinding);
+            pip_depth_desc.face_winding = getFaceWinding(windingOrder);
         }
 
         pip_depth_desc.sample_count = 1;
@@ -271,7 +264,7 @@ bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, CullingMode
 
         if (enableFaceCulling){
             pip_shadow_depth_desc.cull_mode = getCullMode(cullingMode);
-            pip_shadow_depth_desc.face_winding = getFaceWinding(depthWinding);
+            pip_shadow_depth_desc.face_winding = getFaceWinding(windingOrder);
         }
 
         pip_shadow_depth_desc.sample_count = 1;
@@ -301,7 +294,7 @@ bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, CullingMode
 
         if (enableFaceCulling){
             pip_gbuffer_desc.cull_mode = getCullMode(cullingMode);
-            pip_gbuffer_desc.face_winding = getFaceWinding(depthWinding);
+            pip_gbuffer_desc.face_winding = getFaceWinding(windingOrder);
         }
 
         pip_gbuffer_desc.sample_count = 1;

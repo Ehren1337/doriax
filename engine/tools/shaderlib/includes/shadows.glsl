@@ -68,9 +68,10 @@ vec2 cubeFaceUV(vec3 dir, int face) {
 
 vec2 getShadowAtlasUV(vec4 rect, vec2 uv) {
     vec2 atlasUV = rect.xy + uv * rect.zw;
-    #ifdef IS_VULKAN
-        // Sokol exposes bottom-left viewport coordinates, while Vulkan samples
-        // render targets from the top-left.
+    #ifndef IS_GLSL
+        // Slots are placed with sokol's bottom-left viewport convention, but only
+        // GL stores and samples render targets bottom-up. The flip is applied to
+        // the whole-atlas coordinate, so it relocates the slot as well.
         atlasUV.y = 1.0 - atlasUV.y;
     #endif
     return atlasUV;
