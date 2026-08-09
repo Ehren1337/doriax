@@ -69,7 +69,7 @@ jobs:
       - name: Install dependencies on Windows
         if: startsWith(matrix.config.os, 'windows')
         run: |
-          choco install ninja cmake
+          choco install ninja cmake vulkan-sdk
           ninja --version
           cmake --version
 
@@ -91,7 +91,7 @@ jobs:
           cmake --version
 
       - name: Download and install GLFW
-        if: ${{ !startsWith(matrix.config.os, 'ubuntu') }}
+        if: startsWith(matrix.config.os, 'macos')
         shell: bash
         env:
           CC: ${{ matrix.config.cc }}

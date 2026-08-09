@@ -22,9 +22,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
         endif()
     endif()
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
-        list(APPEND SOKOL_LINK_LIBRARIES
-            vulkan-1
-        )
+        if(TARGET Vulkan::Vulkan)
+            list(APPEND SOKOL_LINK_LIBRARIES
+                Vulkan::Vulkan
+            )
+        else()
+            list(APPEND SOKOL_LINK_LIBRARIES
+                vulkan-1
+            )
+        endif()
     endif()
 endif()
 
@@ -37,9 +43,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
-        list(APPEND SOKOL_LINK_LIBRARIES
-            vulkan
-        )
+        if(TARGET Vulkan::Vulkan)
+            list(APPEND SOKOL_LINK_LIBRARIES
+                Vulkan::Vulkan
+            )
+        else()
+            list(APPEND SOKOL_LINK_LIBRARIES
+                vulkan
+            )
+        endif()
     endif()
 
     find_package(Threads REQUIRED)

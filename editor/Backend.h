@@ -32,8 +32,9 @@ namespace doriax::editor{
         // take effect, since the backend is chosen at startup from the saved setting.
         static bool isRunningOnWayland();
 
-        // Installs or updates the application menu. Returns the native menu bar
-        // height, or zero when App should render its ImGui fallback.
+        // Installs or updates the application menu. A positive result reserves
+        // that much client space, a negative result means the menu lives in the
+        // non-client area, and zero asks App to render its ImGui fallback.
         static float setMainMenu(const PlatformMenuModel& menu, PlatformMenuCallback callback);
 
         static ImTextureID getImGuiTexture(TextureRender* texture);

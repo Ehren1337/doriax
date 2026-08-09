@@ -44,13 +44,15 @@ set(ENABLE_OPT OFF CACHE BOOL "Enables spirv-opt capability if present" FORCE)
 if(NOT API_BACKEND)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set(API_BACKEND "linux")
+    elseif(WIN32)
+        set(API_BACKEND "win")
     else()
         set(API_BACKEND "glfw")
     endif()
 endif()
 message(STATUS "API backend is set to ${API_BACKEND}")
 
-if(API_BACKEND STREQUAL "linux")
+if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
     set(GRAPHIC_BACKEND "vulkan")
 else()
     set(GRAPHIC_BACKEND "glcore")
@@ -154,6 +156,26 @@ if(API_BACKEND STREQUAL "linux")
         Vulkan::Vulkan
     )
     add_definitions("-DVK_USE_PLATFORM_XLIB_KHR")
+elseif(API_BACKEND STREQUAL "win")
+    if(NOT WIN32)
+        message(FATAL_ERROR "API_BACKEND=win is only available on Windows")
+    endif()
+    find_package(Vulkan REQUIRED)
+
+    list(APPEND BACKEND_SOURCES
+        ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp
+        ${EDITOR_DIR}/backend/BackendWin.cpp
+    )
+
+    list(APPEND BACKEND_LIBS
+        Vulkan::Vulkan
+        user32
+        gdi32
+        dwmapi
+        shell32
+    )
+    add_definitions("-DVK_USE_PLATFORM_WIN32_KHR")
 elseif(API_BACKEND STREQUAL "glfw")
     find_package(OpenGL REQUIRED)
     find_package(glfw3 REQUIRED)
@@ -183,7 +205,7 @@ elseif(API_BACKEND STREQUAL "sdl")
         ${SDL3_LIBRARIES}
     )
 else()
-    message(FATAL_ERROR "Unknown API_BACKEND '${API_BACKEND}' (expected linux, glfw, or sdl)")
+    message(FATAL_ERROR "Unknown API_BACKEND '${API_BACKEND}' (expected linux, win, glfw, or sdl)")
 endif()
 
 set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)

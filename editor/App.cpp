@@ -572,6 +572,8 @@ void editor::App::showMenu(){
         menu, [this](const PlatformMenuCommand& command) {
             executeMenuCommand(command);
         });
+    if (nativeMenuHeight < 0.0f)
+        return;
     if (nativeMenuHeight > 0.0f) {
         const ImGuiWindowFlags flags = ImGuiWindowFlags_NoBackground |
             ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |

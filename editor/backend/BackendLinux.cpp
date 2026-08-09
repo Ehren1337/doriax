@@ -2,6 +2,7 @@
 #include "EditorHost.h"
 
 #include "Engine.h"
+#include "SystemRender.h"
 
 #include "imgui_internal.h"
 #include "imgui_impl_vulkan.h"
@@ -2850,7 +2851,7 @@ int editor::Backend::init(int argc, char* argv[]) {
             render.setClearColor(Vector4(0.45f, 0.55f, 0.60f, 1.00f));
             render.startRenderPass(windowWidth, windowHeight);
             render.endRenderPass();
-            sg_commit();
+            SystemRender::commit();
             frameSubmitted = submitMainFrame(ImGui::GetDrawData());
         }
 
