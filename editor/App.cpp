@@ -1952,7 +1952,7 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      using the engine's native texture Y orientation.
     // v17: projective shadows use a depth-only atlas with a comparison sampler.
     // v18: vec3 vertex colors on meshes — v_color is promoted to vec4 under instancing.
-    // v19: Vulkan shadow atlas lookups and fullscreen texture orientation fixes.
+    // v19: Vulkan shadow atlas lookups and screen-space depth/texture orientation fixes.
     return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v19";
 }
 

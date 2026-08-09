@@ -32,9 +32,10 @@ uniform u_fs_ssaoParams {
 #include "includes/octahedral.glsl"
 
 // No per-backend depth range here: the depth buffer packs 0.5*z/w + 0.5 taken
-// before the API clip-space fixup, so [-1,1] always matches invProjection.
+// before the API clip-space fixup, so [-1,1] always matches invProjection. Y does
+// need the per-backend mapping, see depth_util.glsl.
 vec3 reconstructViewPos(vec2 uv, float depth01){
-    vec3 ndc = vec3(uv * 2.0 - 1.0, depth01 * 2.0 - 1.0);
+    vec3 ndc = vec3(uv.x * 2.0 - 1.0, depthUVToNDCY(uv.y), depth01 * 2.0 - 1.0);
     vec4 view = ssao.invProjection * vec4(ndc, 1.0);
     return view.xyz / view.w;
 }
@@ -91,7 +92,7 @@ void main(){
 
         vec4 offset = ssao.projection * vec4(samplePos, 1.0);
         offset.xyz /= offset.w;
-        vec2 sampleUV = offset.xy * 0.5 + 0.5;
+        vec2 sampleUV = vec2(offset.x * 0.5 + 0.5, ndcYToDepthUV(offset.y));
 
         if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0)
             continue;

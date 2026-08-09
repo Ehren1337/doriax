@@ -46,9 +46,10 @@ float sampleDepth(vec2 uv){
 }
 
 // No per-backend depth range here: the G-buffer packs 0.5*z/w + 0.5 taken before
-// the API clip-space fixup, so [-1,1] always matches invProjection.
+// the API clip-space fixup, so [-1,1] always matches invProjection. Y does need
+// the per-backend mapping, see depth_util.glsl.
 vec3 reconstructViewPos(vec2 uv, float depth01){
-    vec3 ndc = vec3(uv * 2.0 - 1.0, depth01 * 2.0 - 1.0);
+    vec3 ndc = vec3(uv.x * 2.0 - 1.0, depthUVToNDCY(uv.y), depth01 * 2.0 - 1.0);
     vec4 view = ssr.invProjection * vec4(ndc, 1.0);
     return view.xyz / view.w;
 }
@@ -57,7 +58,8 @@ vec3 reconstructViewPos(vec2 uv, float depth01){
 bool projectToUV(vec3 viewPos, out vec2 uv){
     vec4 clip = ssr.projection * vec4(viewPos, 1.0);
     if (clip.w <= 0.0) return false;
-    uv = (clip.xy / clip.w) * 0.5 + 0.5;
+    vec2 ndc = clip.xy / clip.w;
+    uv = vec2(ndc.x * 0.5 + 0.5, ndcYToDepthUV(ndc.y));
     return true;
 }
 
