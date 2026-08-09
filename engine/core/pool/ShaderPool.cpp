@@ -110,9 +110,9 @@ std::vector<std::string>& ShaderPool::getMissingShaders(){
     return *missingshaders;
 };
 
-// Keys whose last build attempt failed. The editor pool stops re-invoking the builder
-// for these (the compile is expensive and spams errors every frame) until the failure is
-// cleared by remove()/destroyCustomShaders() — i.e. after the shader source changes.
+// Keys whose last build or backend resource creation failed. The editor pool stops
+// re-invoking the builder for these (the compile is expensive and spams errors every
+// frame) until the failure is cleared by remove()/destroyCustomShaders().
 static std::set<ShaderKey>& failedShaders(){
     static std::set<ShaderKey>* set = new std::set<ShaderKey>();
     return *set;
@@ -487,17 +487,27 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint32_t pr
         return shared;
     }
 
+    // The build can succeed and the backend still reject the shader (Metal compiles
+    // the native library here). Retire the handle so its pool slot is released.
+    if (shared && shared->isFailed()) {
+        shared->destroyShader();
+        failedShaders().insert(shaderKey);
+        Log::error("Shader resource creation failed: %s",
+                   getShaderStr(shaderType, properties, customId).c_str());
+        return shared;
+    }
+
     if (!shared) {
         shared = std::make_shared<ShaderRender>();
     }
 
     if (!shared->isCreated()) {
+        // A previous attempt failed: don't retry every frame (it recompiles and spams
+        // errors). Retried once remove()/destroyCustomShaders() clears the failure.
+        if (failedShaders().count(shaderKey)) {
+            return shared;
+        }
         if (shaderBuilderFn) {
-            // A previous attempt failed to compile: don't re-invoke the builder every
-            // frame (it recompiles and spams errors). Retried once the failure is cleared.
-            if (failedShaders().count(shaderKey)) {
-                return shared;
-            }
             ShaderBuildResult result = shaderBuilderFn(shaderKey);
             if (result.state == ResourceLoadState::Finished) {
                 shared->createShader(result.data);

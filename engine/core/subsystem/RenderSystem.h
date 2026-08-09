@@ -122,17 +122,17 @@ namespace doriax{
 		Matrix4 projection;
 		Matrix4 invProjection;
 		Vector4 params; // x=maxDistance, y=thickness, z=intensity, w=maxSteps
-		Vector4 misc;   // xy=1/depthTextureSize, z=flip scene-color Y (GL), w=glossy-blur amount
+		Vector4 misc;   // xy=1/depthTextureSize, z=flip depth<->scene-color Y, w=glossy-blur amount
 	} fs_ssr_t;
 
 	typedef struct fs_ssr_blur_t {
-		Vector4 params; // xy=1/textureSize, z=max radius(pixels), w=flip gbuffer Y (GL)
+		Vector4 params; // xy=1/textureSize, z=max radius(pixels), w=flip G-buffer Y
 	} fs_ssr_blur_t;
 
 	typedef struct fs_composite_t {
 		Matrix4 invProjection;
 		Matrix4 invView;
-		Vector4 params;   // x=intensity, y=flip gbuffer Y (GL), z=debug, w=unused
+		Vector4 params;   // x=intensity, y=flip G-buffer Y, z=debug, w=unused
 		Vector4 envColor; // rgb = env color (linear), w = env rotation (radians)
 	} fs_composite_t;
 
@@ -391,6 +391,7 @@ namespace doriax{
 		static bool samplesCameraTarget(const CameraComponent& camera, const MeshComponent& mesh);
 		static bool samplesCameraTarget(const CameraComponent& camera, const Texture& texture);
 		bool isRenderingFlipped(const CameraComponent& camera) const;
+		bool isDepthColorYFlipped(const CameraComponent& camera) const;
 		bool isFixedResolutionActive() const;
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
 

@@ -312,8 +312,8 @@ void main() {
         #ifdef USE_SSAO
             // Screen-space AO modulates only the ambient/indirect term (computed
             // above); the direct punctual lighting added below is unaffected.
-            // The AO buffer is in logical orientation, so flip Y when the color pass
-            // renders flipped (GL offscreen, viewportInfo.w=1) to line it up here.
+            // The AO buffer is in depth orientation, so flip Y when that differs
+            // from the color target (viewportInfo.w=1).
             vec2 ssaoUV = gl_FragCoord.xy * lighting.viewportInfo.xy;
             if (lighting.viewportInfo.w > 0.5) ssaoUV.y = 1.0 - ssaoUV.y;
             float screenAO = texture(sampler2D(u_ssaoTexture, u_ssao_smp), ssaoUV).r;

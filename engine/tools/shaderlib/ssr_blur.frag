@@ -24,15 +24,15 @@ uniform texture2D u_gbufferTexture;
 uniform sampler u_gbuffer_smp;
 
 uniform u_fs_ssrBlurParams {
-    vec4 params; // xy = 1/textureSize, z = max radius (pixels), w = flip gbuffer Y (GL)
+    vec4 params; // xy = 1/textureSize, z = max radius (pixels), w = flip G-buffer Y
 } blur;
 
 void main(){
     vec2 texel = blur.params.xy;
 
     // Per-pixel roughness drives the blur amount: a mirror (roughness 0) stays sharp,
-    // a rough surface blurs out to the full radius. The G-buffer is in depth space
-    // (Y-flipped vs this composite-space pass on GL), so sample it with the same flip.
+    // a rough surface blurs out to the full radius. The G-buffer is in depth space,
+    // so sample it with the flip this composite-space pass was given.
     vec2 g = v_texcoord;
     if (blur.params.w > 0.5) g.y = 1.0 - g.y;
     float roughness = texture(sampler2D(u_gbufferTexture, u_gbuffer_smp), g).b;

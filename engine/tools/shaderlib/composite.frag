@@ -14,8 +14,8 @@
 // reconstruct multiple per-object cubemap bindings without a deferred probe atlas.
 //
 // A fullscreen pass fragment at v_texcoord t writes destination texel t and samples
-// scene/SSR (composite space) at t. The G-buffer is in depth space (Y-flipped vs
-// composite on GL), so it is sampled at the flipped coordinate.
+// scene/SSR (composite space) at t. The G-buffer is in depth space, sampled at
+// the flipped coordinate when params.y says the two spaces differ.
 
 in vec2 v_texcoord;
 out vec4 frag_color;
@@ -36,7 +36,7 @@ uniform sampler u_GGXEnv_smp;
 uniform u_fs_compositeParams {
     mat4 invProjection;
     mat4 invView;
-    vec4 params;    // x = intensity, y = flip gbuffer Y (GL), z = debug, w = unused
+    vec4 params;    // x = intensity, y = flip G-buffer Y, z = debug, w = unused
     vec4 envColor;  // rgb = env color (linear), w = env rotation (radians)
 } comp;
 

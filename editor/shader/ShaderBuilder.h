@@ -38,6 +38,7 @@ namespace doriax::editor {
         ShaderStorageBufferType mapStorageType(shadercompiler::storage_buffer_type_t type);
         ShaderStageType mapStageType(shadercompiler::stage_type_t type);
         ShaderLang mapLang(shadercompiler::lang_type_t lang);
+        static void setBackendLang(shadercompiler::args_t& args);
 
         ShaderData convertToShaderData(
             const std::vector<shadercompiler::spirvcross_t>& spirvcrossvec,

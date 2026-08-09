@@ -52,6 +52,10 @@ bool ShaderRender::isCreated(){
     return backend.isCreated();
 }
 
+bool ShaderRender::isFailed(){
+    return backend.isFailed();
+}
+
 void ShaderRender::cleanupShader(void* data){
     ShaderRender* self = static_cast<ShaderRender*>(data);
     self->shaderData.releaseSourceData(); //Keep only reflection info

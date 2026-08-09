@@ -120,6 +120,12 @@ sg_sampler_type SokolShader::samplerToSokolType(SamplerType type){
 }
 
 bool SokolShader::createShader(ShaderData& shaderData){
+    // A failed shader still holds its Sokol pool slot, so release the old handle
+    // instead of overwriting it and leaking the slot on every retry.
+    if (shader.id != SG_INVALID_ID) {
+        destroyShader();
+    }
+
     sg_shader_desc shader_desc = {0};
     sg_shader_stage shader_stage = SG_SHADERSTAGE_NONE;
 
@@ -317,6 +323,14 @@ void SokolShader::destroyShader(){
 bool SokolShader::isCreated(){
     if (shader.id != SG_INVALID_ID && sg_isvalid()) {
         return sg_query_shader_state(shader) == SG_RESOURCESTATE_VALID;
+    }
+
+    return false;
+}
+
+bool SokolShader::isFailed(){
+    if (shader.id != SG_INVALID_ID && sg_isvalid()) {
+        return sg_query_shader_state(shader) == SG_RESOURCESTATE_FAILED;
     }
 
     return false;

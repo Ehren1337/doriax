@@ -45,7 +45,7 @@ std::string editor::Platform::getShaderPath(){
 }
 
 sg_environment editor::Platform::getSokolEnvironment(){
-    #if defined(SOKOL_VULKAN)
+    #if defined(SOKOL_VULKAN) || defined(SOKOL_METAL)
     return Backend::getSokolEnvironment();
     #else
     return System::getSokolEnvironment();
@@ -53,7 +53,7 @@ sg_environment editor::Platform::getSokolEnvironment(){
 }
 
 sg_swapchain editor::Platform::getSokolSwapchain(){
-    #if defined(SOKOL_VULKAN)
+    #if defined(SOKOL_VULKAN) || defined(SOKOL_METAL)
     return Backend::getSokolSwapchain();
     #else
     return System::getSokolSwapchain();

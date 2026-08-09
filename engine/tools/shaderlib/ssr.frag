@@ -9,11 +9,10 @@
 // Output: rgb = reflected color, a = reflection coverage/mask in [0,1]. The
 // physical reflectance (Fresnel / GGX BRDF) is applied later by the composite.
 //
-// Orientation: the G-buffer is rendered un-flipped (logical) while the scene
-// color was rendered with the destination's flip. On GL (framebuffer
-// destination) the two differ by a Y flip, captured by misc.z. This fragment
+// Orientation: the G-buffer is bottom-up while the scene color follows its
+// destination; misc.z says whether the two differ by a Y flip. This fragment
 // writes the SSR buffer in scene-color (composite) space: the G-buffer
-// coordinate for this fragment is the Y-flipped texcoord, and a hit's scene
+// coordinate for this fragment is the flipped texcoord, and a hit's scene
 // color is sampled back in scene-color space.
 
 #ifndef SSR_MAX_STEPS

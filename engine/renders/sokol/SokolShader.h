@@ -36,6 +36,7 @@ namespace doriax{
         bool createShader(ShaderData& shaderData);
         void destroyShader();
         bool isCreated();
+        bool isFailed();
 
         sg_shader get();
     };

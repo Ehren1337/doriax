@@ -270,6 +270,36 @@ ShaderLang editor::ShaderBuilder::mapLang(shadercompiler::lang_type_t lang) {
     }
 }
 
+// Target selection must stay in step with ShaderPool::getShaderLangStr(), which
+// names the cache file the result is stored under.
+void editor::ShaderBuilder::setBackendLang(shadercompiler::args_t& args) {
+    switch (Engine::getGraphicBackend()) {
+        case GraphicBackend::METAL:
+            args.lang = shadercompiler::LANG_MSL;
+            args.version = 21;
+            args.platform = (Engine::getPlatform() == Platform::iOS)
+                ? shadercompiler::SHADER_IOS : shadercompiler::SHADER_MACOS;
+            break;
+        case GraphicBackend::D3D11:
+            args.lang = shadercompiler::LANG_HLSL;
+            args.version = 50;
+            break;
+        case GraphicBackend::VULKAN:
+            args.lang = shadercompiler::LANG_SPIRV;
+            args.version = 10;
+            break;
+        case GraphicBackend::GLES3:
+            args.lang = shadercompiler::LANG_GLSL;
+            args.version = 300;
+            args.es = true;
+            break;
+        default:
+            args.lang = shadercompiler::LANG_GLSL;
+            args.version = 410;
+            break;
+    }
+}
+
 // Implementation of convertToShaderData
 ShaderData editor::ShaderBuilder::convertToShaderData(
     const std::vector<shadercompiler::spirvcross_t>& spirvcrossvec,
@@ -709,13 +739,7 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
     args.isValid = true;
     args.useBuffers = true;
     args.fileBuffers = editor::shaderMap;
-    if (Engine::getGraphicBackend() == GraphicBackend::VULKAN) {
-        args.lang = shadercompiler::LANG_SPIRV;
-        args.version = 10;
-    } else {
-        args.lang = shadercompiler::LANG_GLSL;
-        args.version = 410;
-    }
+    setBackendLang(args);
 
     // Capture the GLSL compiler log so failures surface in the editor output window
     // (otherwise the details only reach stderr/app output).

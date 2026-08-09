@@ -39,7 +39,7 @@ namespace doriax::editor{
 
         static ImTextureID getImGuiTexture(TextureRender* texture);
 
-        #if defined(SOKOL_VULKAN)
+        #if defined(SOKOL_VULKAN) || defined(SOKOL_METAL)
         static sg_environment getSokolEnvironment();
         static sg_swapchain getSokolSwapchain();
         #endif

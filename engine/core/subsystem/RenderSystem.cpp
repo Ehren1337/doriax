@@ -782,8 +782,8 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
     }
 
     // inverse viewport size, used by USE_SSAO to convert gl_FragCoord to a screen UV.
-    // .z = SSAO debug flag (output raw AO); .w = rendering-flipped flag (the AO buffer
-    // is in logical orientation, so flip Y on sample when the color pass is flipped).
+    // .z = SSAO debug flag (output raw AO); .w = flip Y on sample, because the AO
+    // buffer follows the depth space rather than the color target's.
     float vpW = Engine::getViewRect().getWidth();
     float vpH = Engine::getViewRect().getHeight();
     if (isFixedResolutionActive() && !camera.renderToTexture){
@@ -795,7 +795,7 @@ void RenderSystem::processLights(int numLights, CameraComponent& camera, Transfo
         (vpW > 0.0f) ? 1.0f / vpW : 0.0f,
         (vpH > 0.0f) ? 1.0f / vpH : 0.0f,
         scene->isSSAODebug() ? 1.0f : 0.0f,
-        isRenderingFlipped(camera) ? 1.0f : 0.0f);
+        isDepthColorYFlipped(camera) ? 1.0f : 0.0f);
 
     // Setting intensity of other lights to zero
     for (int i = numLights; i < MAX_LIGHTS; i++){
@@ -3642,12 +3642,10 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     if (w == 0 || h == 0)
         return;
 
-    // The depth buffer is in logical orientation; the offscreen scene color was
-    // rendered with the same flip the destination would have used. On GL (with a
-    // framebuffer destination) the two differ by a Y flip; the same flag also makes
-    // the composite store an upright image. isRenderingFlipped captures exactly this
-    // (true only on GL when targeting a framebuffer, which SSR requires).
-    float flipGL = isRenderingFlipped(camera) ? 1.0f : 0.0f;
+    // The G-buffer is bottom-up while the offscreen scene color follows its
+    // destination; the march, the roughness blur and the composite all use this
+    // single flag to pair the same screen pixel across the two spaces.
+    float flipDepthColorY = isDepthColorYFlipped(camera) ? 1.0f : 0.0f;
     Matrix4 renderProj = camera.projectionMatrix;
 
     // --- 1. ssr pass: march the depth buffer, sample offscreen scene color ---
@@ -3655,7 +3653,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     fs_ssr.invProjection = renderProj.inverse();
     fs_ssr.params = Vector4(scene->getSSRMaxDistance(), scene->getSSRThickness(), scene->getSSRIntensity(), (float)scene->getSSRMaxSteps());
     // misc.w = glossy-blur amount, used only to scale the march jitter (0 => sharp, no jitter)
-    fs_ssr.misc = Vector4(1.0f / (float)w, 1.0f / (float)h, flipGL, scene->getSSRBlur());
+    fs_ssr.misc = Vector4(1.0f / (float)w, 1.0f / (float)h, flipDepthColorY, scene->getSSRBlur());
 
     ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
     ssrPassRender.startRenderPass(&ssrFramebuffer.getRender());
@@ -3679,7 +3677,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     if (scene->getSSRBlur() > 0.001f && scene->getSSRDebugMode() == 0){
         // blurRadius is the MAX radius (full roughness); the blur shader scales it
         // per-pixel by the G-buffer roughness. w = flip (gbuffer is in depth space).
-        fs_ssr_blur.params = Vector4(1.0f / (float)w, 1.0f / (float)h, blurRadius, flipGL);
+        fs_ssr_blur.params = Vector4(1.0f / (float)w, 1.0f / (float)h, blurRadius, flipDepthColorY);
 
         ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
         ssrPassRender.startRenderPass(&ssrBlurFramebuffer.getRender());
@@ -3701,7 +3699,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     // reflection already in the scene is not double-counted.
     fs_composite.invProjection = renderProj.inverse();
     fs_composite.invView = camera.viewMatrix.inverse();
-    fs_composite.params = Vector4(scene->getSSRIntensity(), flipGL, (float)scene->getSSRDebugMode(), 0.0f);
+    fs_composite.params = Vector4(scene->getSSRIntensity(), flipDepthColorY, (float)scene->getSSRDebugMode(), 0.0f);
 
     // environment color/rotation, matching mesh.frag's lighting.envColor; the prefiltered
     // GGX map comes from the sky (fall back to a black cube when there is no IBL sky)
@@ -5764,6 +5762,13 @@ bool RenderSystem::isRenderingFlipped(const CameraComponent& camera) const{
     // projection makes framebuffer textures top-left origin on every backend.
     // Must match the PIP_RTT pipeline selection (its winding is reversed on GL).
     return (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive()) && Engine::isOpenGL();
+}
+
+bool RenderSystem::isDepthColorYFlipped(const CameraComponent& camera) const{
+    // depth.vert/gbuffer.vert negate clip-space Y outside GL and Vulkan, keeping the
+    // depth buffer bottom-up while the color pass follows its destination's origin
+    return isRenderingFlipped(camera)
+        || (!Engine::isOpenGL() && Engine::getGraphicBackend() != GraphicBackend::VULKAN);
 }
 
 bool RenderSystem::isFixedResolutionActive() const{

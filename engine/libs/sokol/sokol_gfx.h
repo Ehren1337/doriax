@@ -15166,7 +15166,12 @@ _SOKOL_PRIVATE void _sg_mtl_init_caps(void) {
         _sg.limits.max_texture_bindings_per_stage = _sg_min(96, SG_MAX_VIEW_BINDSLOTS); // since iPhone8
     #endif
     _sg.limits.max_storage_image_bindings_per_stage = _sg.limits.max_texture_bindings_per_stage;    // shared with texture bindings
-    _sg.limits.max_storage_buffer_bindings_per_stage = _sg_min(_SG_MTL_MAX_STAGE_BUFFER_BINDINGS - (SG_MAX_VERTEXBUFFER_BINDSLOTS + SG_MAX_UNIFORMBLOCK_BINDSLOTS), SG_MAX_VIEW_BINDSLOTS);
+    // only the per-stage UB range is reserved here; subtracting the public
+    // SG_MAX_UNIFORMBLOCK_BINDSLOTS made this -1 and failed every shader
+    _sg.limits.max_storage_buffer_bindings_per_stage = _sg_min(
+        _SG_MTL_MAX_STAGE_BUFFER_BINDINGS -
+            (SG_MAX_VERTEXBUFFER_BINDSLOTS + _SG_MTL_MAX_STAGE_UB_BINDINGS),
+        SG_MAX_VIEW_BINDSLOTS);
     _sg.limits.max_color_attachments = _sg_min(8, SG_MAX_COLOR_ATTACHMENTS);
     _sg.limits.max_vertex_attrs = SG_MAX_VERTEX_ATTRIBUTES;
 

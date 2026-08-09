@@ -46,6 +46,8 @@ if(NOT API_BACKEND)
         set(API_BACKEND "linux")
     elseif(WIN32)
         set(API_BACKEND "win")
+    elseif(APPLE)
+        set(API_BACKEND "mac")
     else()
         set(API_BACKEND "glfw")
     endif()
@@ -54,6 +56,8 @@ message(STATUS "API backend is set to ${API_BACKEND}")
 
 if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
     set(GRAPHIC_BACKEND "vulkan")
+elseif(API_BACKEND STREQUAL "mac")
+    set(GRAPHIC_BACKEND "metal")
 else()
     set(GRAPHIC_BACKEND "glcore")
 endif()
@@ -176,6 +180,40 @@ elseif(API_BACKEND STREQUAL "win")
         shell32
     )
     add_definitions("-DVK_USE_PLATFORM_WIN32_KHR")
+elseif(API_BACKEND STREQUAL "mac")
+    if(NOT APPLE)
+        message(FATAL_ERROR "API_BACKEND=mac is only available on macOS")
+    endif()
+
+    list(APPEND BACKEND_SOURCES
+        ${IMGUI_DIR}/backends/imgui_impl_osx.mm
+        ${IMGUI_DIR}/backends/imgui_impl_metal.mm
+        ${EDITOR_DIR}/backend/BackendMac.mm
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/apple/DoriaxGameController.mm
+    )
+
+    list(APPEND BACKEND_LIBS
+        "-framework AppKit"
+        "-framework CoreGraphics"
+        "-framework GameController"
+        "-framework Metal"
+        "-framework MetalKit"
+        "-framework QuartzCore"
+    )
+
+    set_source_files_properties(
+        ${IMGUI_DIR}/backends/imgui_impl_osx.mm
+        ${IMGUI_DIR}/backends/imgui_impl_metal.mm
+        ${EDITOR_DIR}/backend/BackendMac.mm
+        ${EDITOR_DIR}/util/GraphicUtils.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/apple/DoriaxGameController.mm
+        PROPERTIES
+        COMPILE_FLAGS "-fobjc-arc"
+    )
+    set_source_files_properties(
+        ${EDITOR_DIR}/util/GraphicUtils.cpp
+        PROPERTIES LANGUAGE OBJCXX
+    )
 elseif(API_BACKEND STREQUAL "glfw")
     find_package(OpenGL REQUIRED)
     find_package(glfw3 REQUIRED)
@@ -205,7 +243,7 @@ elseif(API_BACKEND STREQUAL "sdl")
         ${SDL3_LIBRARIES}
     )
 else()
-    message(FATAL_ERROR "Unknown API_BACKEND '${API_BACKEND}' (expected linux, win, glfw, or sdl)")
+    message(FATAL_ERROR "Unknown API_BACKEND '${API_BACKEND}' (expected linux, win, mac, glfw, or sdl)")
 endif()
 
 set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
@@ -218,6 +256,8 @@ add_definitions("-DNO_LUA_INIT")
 #add_definitions("-DNO_CPP_INIT")
 if(GRAPHIC_BACKEND STREQUAL "vulkan")
     add_definitions("-DSOKOL_VULKAN")
+elseif(GRAPHIC_BACKEND STREQUAL "metal")
+    add_definitions("-DSOKOL_METAL")
 else()
     add_definitions("-DSOKOL_GLCORE")
 endif()
@@ -303,6 +343,8 @@ include_directories (${DORIAX_ROOT}/core/texture)
 include_directories (${DORIAX_ROOT}/core/util)
 if(API_BACKEND STREQUAL "glfw")
     include_directories (${DORIAX_ROOT}/platform/glfw) # GamepadMappings.h for BackendGLFW
+elseif(API_BACKEND STREQUAL "mac")
+    include_directories (${DORIAX_ROOT}/platform/apple)
 endif()
 include_directories (${DORIAX_ROOT}/renders)
 
@@ -323,7 +365,7 @@ set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui_widgets.cpp
 )
 
-if(NOT GRAPHIC_BACKEND STREQUAL "vulkan")
+if(GRAPHIC_BACKEND STREQUAL "glcore")
     list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
 endif()
 
@@ -508,6 +550,8 @@ function(configure_doriax_editor_target target_name)
 
         CXX_STANDARD 17
         CXX_STANDARD_REQUIRED ON
+        OBJCXX_STANDARD 17
+        OBJCXX_STANDARD_REQUIRED ON
     )
 
     if(APPLE)

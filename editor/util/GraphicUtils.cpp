@@ -16,6 +16,7 @@
 
 #if defined(SOKOL_METAL)
     #include <TargetConditionals.h>
+    #import <Metal/Metal.h>
 #endif
 
 #if defined(SOKOL_D3D11)
