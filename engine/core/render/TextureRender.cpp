@@ -67,6 +67,22 @@ const void* TextureRender::getD3D11Handler() const{
     return backend.getD3D11Handler();
 }
 
+const void* TextureRender::getVulkanHandler() const{
+    return backend.getVulkanHandler();
+}
+
+const void* TextureRender::getVulkanImageHandler() const{
+    return backend.getVulkanImageHandler();
+}
+
+uint32_t TextureRender::getViewId() const{
+    return backend.getViewId();
+}
+
+bool TextureRender::isViewValid(uint32_t viewId){
+    return SokolTexture::isViewValid(viewId);
+}
+
 bool TextureRender::isCreated(){
     return backend.isCreated();
 }

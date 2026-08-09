@@ -940,7 +940,7 @@ Texture* editor::Properties::findThumbnail(const std::string& path) {
 void editor::Properties::drawImageWithBorderAndRounding(Texture* texture, const ImVec2& size, float rounding, ImU32 border_col, float border_thickness, bool flipY) {
     if (!texture) return;
 
-    ImTextureID tex_id = (ImTextureID)(intptr_t)texture->getRender()->getGLHandler();
+    ImTextureID tex_id = Backend::getImGuiTexture(texture->getRender());
     int texWidth = texture->getWidth();
     int texHeight = texture->getHeight();
 
@@ -1719,7 +1719,7 @@ bool editor::Properties::drawSpriteFramePreview(Texture* texture, const Rect& re
     ImU32 borderColor = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
 
     drawList->AddRectFilled(p_min, p_max, ImGui::GetColorU32(Theme::Colors::filenameLabel), rounding, ImDrawFlags_RoundCornersAll);
-    drawList->AddImageRounded((ImTextureID)(intptr_t)texture->getRender()->getGLHandler(), imageMin, imageMax, uv0, uv1, IM_COL32_WHITE, rounding, ImDrawFlags_RoundCornersAll);
+    drawList->AddImageRounded(Backend::getImGuiTexture(texture->getRender()), imageMin, imageMax, uv0, uv1, IM_COL32_WHITE, rounding, ImDrawFlags_RoundCornersAll);
     drawList->AddRect(p_min, p_max, borderColor, rounding, ImDrawFlags_RoundCornersAll, 1.0f);
 
     ImGui::InvisibleButton(itemId, size);
@@ -1791,7 +1791,7 @@ void editor::Properties::drawNinePatchesPreview(const ImageComponent& img, Textu
     ImVec2 cursor = ImGui::GetCursorScreenPos();
 
     // Draw the image with the calculated size
-    ImGui::Image(thumbTexture->getRender()->getGLHandler(), ImVec2(displayWidth, displayHeight));
+    ImGui::Image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(displayWidth, displayHeight));
 
     // Get draw list for custom rendering
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -3497,7 +3497,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             drawImageWithBorderAndRounding(thumbTexture, ImVec2(thumbSize, thumbSize), ImGui::GetStyle().FrameRounding, border_col);
             if (ImGui::IsItemHovered()) {
                 ImGui::BeginTooltip();
-                ImGui::Image(thumbTexture->getRender()->getGLHandler(), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
+                ImGui::Image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
                 ImGui::EndTooltip();
             }
         } else if (isCameraTexture && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
@@ -3736,7 +3736,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                 drawImageWithBorderAndRounding(thumbTexture, ImVec2(thumbSize, thumbSize), ImGui::GetStyle().FrameRounding, border_col);
                 if (ImGui::IsItemHovered()) {
                     ImGui::BeginTooltip();
-                    ImGui::Image(thumbTexture->getRender()->getGLHandler(), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
+                    ImGui::Image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
                     ImGui::EndTooltip();
                 }
                 dragMax = ImGui::GetItemRectMax();
@@ -3849,7 +3849,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                     drawImageWithBorderAndRounding(thumbTexture, ImVec2(thumbSize, thumbSize), ImGui::GetStyle().FrameRounding, border_col);
                     if (ImGui::IsItemHovered()) {
                         ImGui::BeginTooltip();
-                        ImGui::Image(thumbTexture->getRender()->getGLHandler(), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
+                        ImGui::Image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
                         ImGui::EndTooltip();
                     }
                     dragMax = ImGui::GetItemRectMax();
@@ -3973,7 +3973,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
         Texture texRender = getMaterialPreview(newValue, id, receiveIBL);
         float thumbSize = ImGui::GetFrameHeight() * 3;
-        ImGui::Image(texRender.getRender()->getGLHandler(), ImVec2(thumbSize, thumbSize));
+        ImGui::Image(Backend::getImGuiTexture(texRender.getRender()), ImVec2(thumbSize, thumbSize));
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
             materialButtonGroups[id] = !materialButtonGroups[id];
         }
@@ -4101,7 +4101,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             float availWidth = ImGui::GetCurrentWindow()->Size.x;
             float xPos = (availWidth - imageDragSize) * 0.5f;
             ImGui::SetCursorPosX(xPos);
-            ImGui::Image(texRender.getRender()->getGLHandler(), ImVec2(imageDragSize, imageDragSize));
+            ImGui::Image(Backend::getImGuiTexture(texRender.getRender()), ImVec2(imageDragSize, imageDragSize));
             ImGui::EndDragDropSource();
         }
 
@@ -5266,7 +5266,7 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
         bool updatedPreview = false;
 
         Texture texRender = shapePreviewRender.getTexture();
-        ImGui::Image(texRender.getRender()->getGLHandler(), ImVec2(secondColSize, secondColSize));
+        ImGui::Image(Backend::getImGuiTexture(texRender.getRender()), ImVec2(secondColSize, secondColSize));
         ImGui::SetNextItemWidth(-1);
         if (ImGui::Combo("##geometry_type", &shapeParams.geometryType, geometryTypes, IM_ARRAYSIZE(geometryTypes))) {
             updatedPreview = true;
@@ -5657,7 +5657,7 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
             drawImageWithBorderAndRounding(thumbTexture, ImVec2(thumbSize, thumbSize), ImGui::GetStyle().FrameRounding, border_col);
             if (ImGui::IsItemHovered()) {
                 ImGui::BeginTooltip();
-                ImGui::Image(thumbTexture->getRender()->getGLHandler(), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
+                ImGui::Image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
                 ImGui::EndTooltip();
             }
         }

@@ -26,6 +26,9 @@ namespace doriax::editor{
         std::string getLuaPath() override;
         std::string getShaderPath() override;
 
+        sg_environment getSokolEnvironment() override;
+        sg_swapchain getSokolSwapchain() override;
+
         void setMouseMode(MouseMode mode) override;
 
         void quit() override;

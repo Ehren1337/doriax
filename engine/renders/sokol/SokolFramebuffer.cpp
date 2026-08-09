@@ -91,6 +91,8 @@ bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int
     bool created = isCreated();
     if (!created) {
         destroyFramebuffer();
+    }else{
+        initializeAttachments(faces);
     }
 
     return created;
@@ -122,6 +124,8 @@ bool SokolFramebuffer::createDepthOnlyFramebuffer(int width, int height, Texture
     bool created = isCreated();
     if (!created){
         destroyFramebuffer();
+    }else{
+        initializeAttachments(1);
     }
 
     return created;
@@ -176,9 +180,36 @@ bool SokolFramebuffer::createFramebufferMRT(int width, int height, TextureFilter
     bool created = isCreated();
     if (!created) {
         destroyFramebuffer();
+    }else{
+        initializeAttachments(1);
     }
 
     return created;
+}
+
+void SokolFramebuffer::initializeAttachments(size_t faces){
+#if defined(SOKOL_VULKAN)
+    // A camera texture can be sampled before its camera has rendered once.
+    // Give new attachments defined contents and a shader-readable layout.
+    sg_pass pass = {};
+    for (int i = 0; i < numColorAttachments; i++){
+        pass.action.colors[i].store_action = SG_STOREACTION_STORE;
+    }
+    pass.action.depth.store_action = SG_STOREACTION_STORE;
+
+    for (size_t face = 0; face < faces; face++){
+        pass.attachments = get(face);
+        if (Engine::isAsyncThread()){
+            SokolCmdQueue::add_command_begin_pass(pass);
+            SokolCmdQueue::add_command_end_pass();
+        }else{
+            sg_begin_pass(pass);
+            sg_end_pass();
+        }
+    }
+#else
+    (void)faces;
+#endif
 }
 
 void SokolFramebuffer::destroyFramebuffer(){

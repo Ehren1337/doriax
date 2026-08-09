@@ -953,7 +953,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
             }
 
             // --- Resolve icon/thumbnail common path ------------------------
-            ImTextureID fileIconImage = (ImTextureID)file.icon;
+            ImTextureID fileIconImage = Backend::getImGuiTexture(file.icon);
             float dispW = static_cast<float>(iconSize);
             float dispH = static_cast<float>(iconSize);
 
@@ -1506,15 +1506,15 @@ void editor::ResourcesWindow::scanDirectory(const fs::path& path) {
         lastWriteTime = {};
     }
 
-    intptr_t folderIconH = (intptr_t)folderIcon.getRender()->getGLHandler();
-    intptr_t fileIconH = (intptr_t)fileIcon.getRender()->getGLHandler();
-    intptr_t sceneIconH = (intptr_t)sceneIcon.getRender()->getGLHandler();
-    intptr_t entityIconH = (intptr_t)entityIcon.getRender()->getGLHandler();
-    intptr_t sourceIconH = (intptr_t)sourceIcon.getRender()->getGLHandler();
-    intptr_t headerIconH = (intptr_t)headerIcon.getRender()->getGLHandler();
-    intptr_t luaIconH = (intptr_t)luaIcon.getRender()->getGLHandler();
-    intptr_t audioIconH = (intptr_t)audioIcon.getRender()->getGLHandler();
-    intptr_t fontIconH = (intptr_t)fontIcon.getRender()->getGLHandler();
+    TextureRender* folderIconH = folderIcon.getRender();
+    TextureRender* fileIconH = fileIcon.getRender();
+    TextureRender* sceneIconH = sceneIcon.getRender();
+    TextureRender* entityIconH = entityIcon.getRender();
+    TextureRender* sourceIconH = sourceIcon.getRender();
+    TextureRender* headerIconH = headerIcon.getRender();
+    TextureRender* luaIconH = luaIcon.getRender();
+    TextureRender* audioIconH = audioIcon.getRender();
+    TextureRender* fontIconH = fontIcon.getRender();
 
     files.clear();
 
@@ -1537,8 +1537,8 @@ void editor::ResourcesWindow::scanDirectory(const fs::path& path) {
 
         FileEntry fileEntry;
         fileEntry.name = entry.path().filename().string();
-    std::error_code entryEc;
-    fileEntry.isDirectory = entry.is_directory(entryEc) && !entryEc;
+        std::error_code entryEc;
+        fileEntry.isDirectory = entry.is_directory(entryEc) && !entryEc;
         fileEntry.icon = fileEntry.isDirectory ? folderIconH : fileIconH;
         fileEntry.hasThumbnail = false;
 
@@ -2194,7 +2194,7 @@ ImTextureID editor::ResourcesWindow::getThumbnailTexture(const FileEntry& entry,
     cached.lastUsedFrame = ImGui::GetFrameCount();
 
     if (cached.failed) {
-        return (ImTextureID)0;
+        return ImTextureID{};
     }
 
     TextureRender* render = cached.texture.getRender();
@@ -2203,13 +2203,13 @@ ImTextureID editor::ResourcesWindow::getThumbnailTexture(const FileEntry& entry,
         // marked as failed so we don't retry every frame. LRU eviction will
         // drop it eventually, allowing a retry on a later visit.
         cached.failed = true;
-        return (ImTextureID)0;
+        return ImTextureID{};
     }
 
     outWidth = static_cast<int>(cached.texture.getWidth());
     outHeight = static_cast<int>(cached.texture.getHeight());
 
-    return (ImTextureID)(intptr_t)render->getGLHandler();
+    return Backend::getImGuiTexture(render);
 }
 
 void editor::ResourcesWindow::evictThumbnailTexture(const std::string& thumbnailKey) {

@@ -100,10 +100,6 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-The Linux editor uses its native X11/GLX backend (and XWayland on Wayland
-desktops), so source builds need the X11, XRandR, and OpenGL development
-packages. GLFW remains the window backend on Windows and macOS.
-
 The root project builds `doriax-editor`. On single-config generators the executable is typically created under `build/`. On multi-config generators such as Visual Studio, look under the configuration subdirectory. Platform-specific setup is still being refreshed under the Doriax name.
 
 ## Examples

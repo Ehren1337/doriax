@@ -36,6 +36,13 @@ namespace doriax::editor{
         // height, or zero when App should render its ImGui fallback.
         static float setMainMenu(const PlatformMenuModel& menu, PlatformMenuCallback callback);
 
+        static ImTextureID getImGuiTexture(TextureRender* texture);
+
+        #if defined(SOKOL_VULKAN)
+        static sg_environment getSokolEnvironment();
+        static sg_swapchain getSokolSwapchain();
+        #endif
+
         static void updateWindowTitle(const std::string& projectName);
 
         static void* getNFDWindowHandle();

@@ -45,7 +45,7 @@ namespace doriax::editor {
         std::string extension;
         FileType type = FileType::NONE;
         bool isDirectory;
-        intptr_t icon;
+        TextureRender* icon = nullptr;
         bool hasThumbnail;
         std::string thumbnailPath;
     };

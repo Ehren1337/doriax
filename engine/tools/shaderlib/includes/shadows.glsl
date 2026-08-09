@@ -66,6 +66,16 @@ vec2 cubeFaceUV(vec3 dir, int face) {
     return uv * 0.5 + 0.5;
 }
 
+vec2 getShadowAtlasUV(vec4 rect, vec2 uv) {
+    vec2 atlasUV = rect.xy + uv * rect.zw;
+    #ifdef IS_VULKAN
+        // Sokol exposes bottom-left viewport coordinates, while Vulkan samples
+        // render targets from the top-left.
+        atlasUV.y = 1.0 - atlasUV.y;
+    #endif
+    return atlasUV;
+}
+
 vec4 getShadowCubeMap(int baseIndex, vec3 coords) {
     vec3 dir = normalize(coords);
     int face = directionToCubeFace(dir);
@@ -75,13 +85,13 @@ vec4 getShadowCubeMap(int baseIndex, vec3 coords) {
     // half-texel inset keeps the lookup inside this cube-face tile (no cross-face bleed)
     vec2 inset = 0.5 / vec2(uPointShadows.bias_texSize_nearFar[slot].y);
     uv = clamp(uv, inset, 1.0 - inset);
-    vec2 atlasUV = rect.xy + uv * rect.zw;
+    vec2 atlasUV = getShadowAtlasUV(rect, uv);
     return texture(sampler2D(u_shadowPointAtlas, u_shadowPointAtlas_smp), atlasUV);
 }
 
 float shadowCompare(int shadowMapIndex, float currentDepth, float bias, vec2 texCoords){
     vec4 rect = uShadows.atlasRect[shadowMapIndex];
-    vec2 atlasUV = rect.xy + texCoords * rect.zw;
+    vec2 atlasUV = getShadowAtlasUV(rect, texCoords);
     float visibility = texture(
         sampler2DShadow(u_shadowAtlas, u_shadowAtlas_smp),
         vec3(atlasUV, currentDepth - bias));

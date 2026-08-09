@@ -38,7 +38,6 @@ if(APPLE)
 endif()
 
 set(DORIAX_SHARED ON)
-set(GRAPHIC_BACKEND "glcore")
 
 set(ENABLE_OPT OFF CACHE BOOL "Enables spirv-opt capability if present" FORCE)
 
@@ -50,6 +49,13 @@ if(NOT API_BACKEND)
     endif()
 endif()
 message(STATUS "API backend is set to ${API_BACKEND}")
+
+if(API_BACKEND STREQUAL "linux")
+    set(GRAPHIC_BACKEND "vulkan")
+else()
+    set(GRAPHIC_BACKEND "glcore")
+endif()
+message(STATUS "Graphic backend is set to ${GRAPHIC_BACKEND}")
 
 if(POLICY CMP0072)
   cmake_policy(SET CMP0072 NEW) # NEW for GLVND, OLD for legacy OpenGL
@@ -115,8 +121,6 @@ if(WIN32)
     )
 endif()
 
-# Find OpenGL
-find_package(OpenGL REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # The AI HTTP client uses the native WinHTTP backend on Windows (no external
@@ -137,16 +141,21 @@ if(API_BACKEND STREQUAL "linux")
         message(FATAL_ERROR "API_BACKEND=linux is only available on Linux")
     endif()
     find_package(X11 REQUIRED COMPONENTS Xrandr)
+    find_package(Vulkan REQUIRED)
 
     list(APPEND BACKEND_SOURCES
+        ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp
         ${EDITOR_DIR}/backend/BackendLinux.cpp
     )
 
     list(APPEND BACKEND_LIBS
         X11::X11
         X11::Xrandr
+        Vulkan::Vulkan
     )
+    add_definitions("-DVK_USE_PLATFORM_XLIB_KHR")
 elseif(API_BACKEND STREQUAL "glfw")
+    find_package(OpenGL REQUIRED)
     find_package(glfw3 REQUIRED)
 
     if(NOT DEFINED GLFW_LIBRARIES)
@@ -162,6 +171,7 @@ elseif(API_BACKEND STREQUAL "glfw")
         ${GLFW_LIBRARIES}
     )
 elseif(API_BACKEND STREQUAL "sdl")
+    find_package(OpenGL REQUIRED)
     find_package(SDL3 REQUIRED)
 
     list(APPEND BACKEND_SOURCES
@@ -184,7 +194,11 @@ add_definitions("-DDORIAX_CRASH_GUARD")
 
 add_definitions("-DNO_LUA_INIT")
 #add_definitions("-DNO_CPP_INIT")
-add_definitions("-DSOKOL_GLCORE")
+if(GRAPHIC_BACKEND STREQUAL "vulkan")
+    add_definitions("-DSOKOL_VULKAN")
+else()
+    add_definitions("-DSOKOL_GLCORE")
+endif()
 add_definitions("-DWITH_MINIAUDIO") # For SoLoud
 set(NFD_PORTAL ON CACHE BOOL "Use xdg-desktop-portal instead of GTK") # For NFD
 
@@ -285,8 +299,11 @@ set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
+
+if(NOT GRAPHIC_BACKEND STREQUAL "vulkan")
+    list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
+endif()
 
 include_directories (${EDITOR_DIR})
 

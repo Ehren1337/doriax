@@ -25,6 +25,8 @@ namespace doriax{
         sg_image generateMipmaps(const sg_image_desc* desc_);
         void createTextureView(const char* label);
 
+        static const void* getVulkanView(sg_view view);
+        static const void* getVulkanImage(sg_image image);
         static void cleanupMipmapTexture(void* data);
 
     public:
@@ -54,6 +56,11 @@ namespace doriax{
         uint32_t getGLHandler() const;
         const void* getMetalHandler() const;
         const void* getD3D11Handler() const;
+        const void* getVulkanHandler() const;
+        const void* getVulkanImageHandler() const;
+
+        uint32_t getViewId() const;
+        static bool isViewValid(uint32_t viewId);
 
         bool isCreated();
 

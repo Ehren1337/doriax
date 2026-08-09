@@ -44,6 +44,22 @@ std::string editor::Platform::getShaderPath(){
     return (project->getProjectPath() / "shaders").string();
 }
 
+sg_environment editor::Platform::getSokolEnvironment(){
+    #if defined(SOKOL_VULKAN)
+    return Backend::getSokolEnvironment();
+    #else
+    return System::getSokolEnvironment();
+    #endif
+}
+
+sg_swapchain editor::Platform::getSokolSwapchain(){
+    #if defined(SOKOL_VULKAN)
+    return Backend::getSokolSwapchain();
+    #else
+    return System::getSokolSwapchain();
+    #endif
+}
+
 void editor::Platform::setMouseMode(MouseMode mode){
     Backend::setMouseMode(mode);
 }

@@ -1,4 +1,5 @@
 #include "TextureSlicerToolDialog.h"
+#include "Backend.h"
 #include "external/IconsFontAwesome6.h"
 #include <cstring>
 #include <algorithm>
@@ -341,7 +342,7 @@ void TextureSlicerToolDialog::show() {
                 IM_COL32(40, 40, 40, 255));
 
             if (!m_previewTexture.empty() && m_previewTexture.getRender()) {
-                drawList->AddImage(m_previewTexture.getRender()->getGLHandler(), imageMin, imageMax);
+                drawList->AddImage(Backend::getImGuiTexture(m_previewTexture.getRender()), imageMin, imageMax);
             }
 
             drawList->AddRect(imageMin, imageMax, IM_COL32(100, 100, 100, 255));

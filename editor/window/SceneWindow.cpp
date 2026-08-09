@@ -2064,7 +2064,7 @@ void editor::SceneWindow::show() {
                     sceneProject.needUpdateRender = true;
                 }
 
-                ImTextureID previewTex = (ImTextureID)(intptr_t)sceneProject.sceneRender->getTexture().getGLHandler();
+                ImTextureID previewTex = Backend::getImGuiTexture(&sceneProject.sceneRender->getTexture());
                 ImVec2 canvasAvail = ImGui::GetContentRegionAvail();
 
                 if (isCameraPreview) {

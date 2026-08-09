@@ -1,9 +1,11 @@
 #include "GraphicUtils.h"
 
 #include "Out.h"
+#include "System.h"
 #include "stb_image_write.h"
 #include "util/STBText.h"
 
+#include <cstring>
 #include <future>
 #include <thread>
 #include <utility>
@@ -56,6 +58,10 @@
         #define GL_COLOR_ATTACHMENT0 0x8CE0
         #endif
     #endif
+#endif
+
+#if defined(SOKOL_VULKAN)
+    #include <vulkan/vulkan.h>
 #endif
 
 using namespace doriax;
@@ -115,6 +121,168 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
             glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
             glBindTexture(GL_TEXTURE_2D, 0);
         #endif
+    #endif
+
+    #if defined(SOKOL_VULKAN)
+        sg_environment environment = System::instance().getSokolEnvironment();
+        VkPhysicalDevice physicalDevice = reinterpret_cast<VkPhysicalDevice>(
+            const_cast<void*>(environment.vulkan.physical_device));
+        VkDevice device = reinterpret_cast<VkDevice>(
+            const_cast<void*>(environment.vulkan.device));
+        VkQueue queue = reinterpret_cast<VkQueue>(
+            const_cast<void*>(environment.vulkan.queue));
+        VkImage image = reinterpret_cast<VkImage>(const_cast<void*>(
+            framebuffer->getRender().getColorTexture().getVulkanImageHandler()));
+        const VkDeviceSize dataSize = static_cast<VkDeviceSize>(width) * height * 4;
+        VkBuffer stagingBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
+        VkCommandPool commandPool = VK_NULL_HANDLE;
+
+        auto cleanupVulkan = [&]() {
+            if (commandPool != VK_NULL_HANDLE)
+                vkDestroyCommandPool(device, commandPool, nullptr);
+            if (stagingBuffer != VK_NULL_HANDLE)
+                vkDestroyBuffer(device, stagingBuffer, nullptr);
+            if (stagingMemory != VK_NULL_HANDLE)
+                vkFreeMemory(device, stagingMemory, nullptr);
+        };
+
+        if (physicalDevice == VK_NULL_HANDLE || device == VK_NULL_HANDLE ||
+            queue == VK_NULL_HANDLE || image == VK_NULL_HANDLE ||
+            vkQueueWaitIdle(queue) != VK_SUCCESS) {
+            Out::error("Engine failure: Vulkan framebuffer readback is unavailable");
+            return false;
+        }
+
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = dataSize;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS) {
+            Out::error("Engine failure: Could not create Vulkan readback buffer");
+            return false;
+        }
+
+        VkMemoryRequirements requirements{};
+        vkGetBufferMemoryRequirements(device, stagingBuffer, &requirements);
+        VkPhysicalDeviceMemoryProperties memoryProperties{};
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+        uint32_t memoryType = UINT32_MAX;
+        const VkMemoryPropertyFlags wanted =
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+            if ((requirements.memoryTypeBits & (1u << i)) &&
+                (memoryProperties.memoryTypes[i].propertyFlags & wanted) == wanted) {
+                memoryType = i;
+                break;
+            }
+        }
+        if (memoryType == UINT32_MAX) {
+            cleanupVulkan();
+            Out::error("Engine failure: No host-visible Vulkan readback memory");
+            return false;
+        }
+
+        VkMemoryAllocateInfo memoryInfo{};
+        memoryInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        memoryInfo.allocationSize = requirements.size;
+        memoryInfo.memoryTypeIndex = memoryType;
+        if (vkAllocateMemory(device, &memoryInfo, nullptr, &stagingMemory) != VK_SUCCESS ||
+            vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0) != VK_SUCCESS) {
+            cleanupVulkan();
+            Out::error("Engine failure: Could not allocate Vulkan readback memory");
+            return false;
+        }
+
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        poolInfo.queueFamilyIndex = environment.vulkan.queue_family_index;
+        if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+            cleanupVulkan();
+            Out::error("Engine failure: Could not create Vulkan readback command pool");
+            return false;
+        }
+
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        VkCommandBufferAllocateInfo commandInfo{};
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        commandInfo.commandPool = commandPool;
+        commandInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandInfo.commandBufferCount = 1;
+        if (vkAllocateCommandBuffers(device, &commandInfo, &commandBuffer) != VK_SUCCESS) {
+            cleanupVulkan();
+            Out::error("Engine failure: Could not allocate Vulkan readback command buffer");
+            return false;
+        }
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+            cleanupVulkan();
+            Out::error("Engine failure: Could not begin Vulkan readback command buffer");
+            return false;
+        }
+
+        VkImageMemoryBarrier toTransfer{};
+        toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toTransfer.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        toTransfer.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.image = image;
+        toTransfer.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        toTransfer.subresourceRange.levelCount = 1;
+        toTransfer.subresourceRange.layerCount = 1;
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTransfer);
+
+        VkBufferImageCopy copy{};
+        copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        copy.imageSubresource.layerCount = 1;
+        copy.imageExtent = {width, height, 1};
+        vkCmdCopyImageToBuffer(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               stagingBuffer, 1, &copy);
+
+        VkImageMemoryBarrier toTexture = toTransfer;
+        toTexture.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        toTexture.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        toTexture.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toTexture.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &toTexture);
+        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+            cleanupVulkan();
+            Out::error("Engine failure: Could not end Vulkan readback command buffer");
+            return false;
+        }
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+        if (vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS ||
+            vkQueueWaitIdle(queue) != VK_SUCCESS) {
+            cleanupVulkan();
+            Out::error("Engine failure: Vulkan framebuffer readback failed");
+            return false;
+        }
+
+        void* mapped = nullptr;
+        if (vkMapMemory(device, stagingMemory, 0, dataSize, 0, &mapped) != VK_SUCCESS) {
+            cleanupVulkan();
+            Out::error("Engine failure: Could not map Vulkan readback memory");
+            return false;
+        }
+        pixels = new uint8_t[static_cast<size_t>(dataSize)];
+        std::memcpy(pixels, mapped, static_cast<size_t>(dataSize));
+        vkUnmapMemory(device, stagingMemory);
+        cleanupVulkan();
+        needDelete = true;
     #endif
 
     #if defined(SOKOL_METAL)

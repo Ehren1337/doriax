@@ -356,7 +356,7 @@ void editor::ImageViewerWindow::drawImage(Instance& instance) {
         }
 
         drawList->AddImage(
-            (ImTextureID)(intptr_t)render->getGLHandler(),
+            Backend::getImGuiTexture(render),
             imageMin,
             imageMax
         );

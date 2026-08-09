@@ -28,6 +28,8 @@ namespace doriax{
 
         int numColorAttachments;
 
+        void initializeAttachments(size_t faces);
+
     public:
         SokolFramebuffer();
         SokolFramebuffer(const SokolFramebuffer& rhs);

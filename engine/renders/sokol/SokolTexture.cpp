@@ -3,7 +3,6 @@
 //
 
 #include "SokolTexture.h"
-
 #include "Log.h"
 #include "SokolCmdQueue.h"
 #include "render/SystemRender.h"
@@ -12,7 +11,52 @@
 #include <cstring>
 #include <cstdlib>
 
+#if defined(DORIAX_EDITOR) && defined(SOKOL_VULKAN)
+#include <vulkan/vulkan.h>
+
+namespace {
+VkResult createSokolImage(VkDevice device, const VkImageCreateInfo* createInfo,
+                          const VkAllocationCallbacks* allocator, VkImage* image);
+}
+
+#define vkCreateImage createSokolImage
+
+#include "../../libs/sokol/sokol.cpp"
+
+#undef vkCreateImage
+
+namespace {
+VkResult createSokolImage(VkDevice device, const VkImageCreateInfo* createInfo,
+                          const VkAllocationCallbacks* allocator, VkImage* image) {
+    VkImageCreateInfo info = *createInfo;
+    if (info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+        info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    return vkCreateImage(device, &info, allocator, image);
+}
+}
+#endif
+
 using namespace doriax;
+
+const void* SokolTexture::getVulkanView(sg_view view) {
+#if defined(DORIAX_EDITOR) && defined(SOKOL_VULKAN)
+    const _sg_view_t* resource = _sg_lookup_view(view.id);
+    return resource ? reinterpret_cast<const void*>(resource->vk.img_view) : nullptr;
+#else
+    (void)view;
+    return nullptr;
+#endif
+}
+
+const void* SokolTexture::getVulkanImage(sg_image image) {
+#if defined(DORIAX_EDITOR) && defined(SOKOL_VULKAN)
+    const _sg_image_t* resource = _sg_lookup_image(image.id);
+    return resource ? reinterpret_cast<const void*>(resource->vk.img) : nullptr;
+#else
+    (void)image;
+    return nullptr;
+#endif
+}
 
 SokolTexture::SokolTexture(){
     image.id = SG_INVALID_ID;
@@ -475,6 +519,31 @@ const void* SokolTexture::getD3D11Handler() const{
     }
 
     return nullptr;
+}
+
+const void* SokolTexture::getVulkanHandler() const{
+    if (view.id != SG_INVALID_ID && sg_isvalid()){
+        return getVulkanView(view);
+    }
+
+    return nullptr;
+}
+
+const void* SokolTexture::getVulkanImageHandler() const{
+    if (image.id != SG_INVALID_ID && sg_isvalid()){
+        return getVulkanImage(image);
+    }
+
+    return nullptr;
+}
+
+uint32_t SokolTexture::getViewId() const{
+    return view.id;
+}
+
+bool SokolTexture::isViewValid(uint32_t viewId){
+    if (viewId == SG_INVALID_ID || !sg_isvalid()) return false;
+    return sg_query_view_state({viewId}) == SG_RESOURCESTATE_VALID;
 }
 
 bool SokolTexture::isCreated(){

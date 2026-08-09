@@ -709,8 +709,13 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
     args.isValid = true;
     args.useBuffers = true;
     args.fileBuffers = editor::shaderMap;
-    args.lang = shadercompiler::LANG_GLSL;
-    args.version = 410;
+    if (Engine::getGraphicBackend() == GraphicBackend::VULKAN) {
+        args.lang = shadercompiler::LANG_SPIRV;
+        args.version = 10;
+    } else {
+        args.lang = shadercompiler::LANG_GLSL;
+        args.version = 410;
+    }
 
     // Capture the GLSL compiler log so failures surface in the editor output window
     // (otherwise the details only reach stderr/app output).
@@ -812,7 +817,8 @@ std::filesystem::path editor::ShaderBuilder::getShaderCachePath(ShaderKey shader
     ShaderType shaderType = ShaderPool::getShaderTypeFromKey(shaderKey);
     uint32_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
     uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
-    std::string basename = ShaderPool::getShaderStr(shaderType, properties, customId) + "_glsl410";
+    std::string basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
+                           "_" + ShaderPool::getShaderLangStr();
 
     return App::getUserShaderCacheDir() / (basename + ".sdat");
 }

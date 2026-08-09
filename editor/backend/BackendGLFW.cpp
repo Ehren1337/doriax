@@ -538,6 +538,10 @@ float editor::Backend::setMainMenu(const PlatformMenuModel&, PlatformMenuCallbac
     return 0.0f;
 }
 
+ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {
+    return texture ? static_cast<ImTextureID>(texture->getGLHandler()) : ImTextureID{};
+}
+
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
     if (projectName.empty()) {
         title = "Empty project - Doriax Engine";
