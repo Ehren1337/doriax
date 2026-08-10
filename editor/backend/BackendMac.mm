@@ -266,8 +266,10 @@ void applyRelativeMouseData() {
         return;
     }
     backend->virtualMouseX += backend->rawMouseX;
-    // AppKit reports positive Y upward; ImGui's coordinate system points down.
-    backend->virtualMouseY -= backend->rawMouseY;
+    // Unlike scrollingDeltaY, the deltaY of a move/drag event comes from the
+    // CGEvent delta, which points down like ImGui's coordinates. Accumulate it
+    // as-is; negating here inverted the look drag against Linux and Windows.
+    backend->virtualMouseY += backend->rawMouseY;
     backend->rawMouseX = backend->rawMouseY = 0.0;
     ImGui::GetIO().AddMousePosEvent(
         static_cast<float>(backend->virtualMouseX),
