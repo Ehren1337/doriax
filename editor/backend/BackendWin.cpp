@@ -1,10 +1,10 @@
 #include "Backend.h"
 #include "EditorHost.h"
+#include "backend/EditorFrame.h"
+#include "backend/renderer/Renderer.h"
 
 #include "Engine.h"
-#include "SystemRender.h"
 
-#include "imgui_impl_vulkan.h"
 #include "imgui_impl_win32.h"
 
 #include "nfd.hpp"
@@ -20,9 +20,12 @@
 #include <shellapi.h>
 #include <xinput.h>
 
+#if defined(SOKOL_VULKAN)
+#include <vulkan/vulkan.h>
+#endif
+
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cfloat>
 #include <cstdint>
@@ -55,7 +58,12 @@ constexpr UINT LIVE_RESIZE_INTERVAL_MS = 16;
 constexpr int GAMEPAD_COUNT = XUSER_MAX_COUNT;
 constexpr int GAMEPAD_BUTTON_COUNT = 15;
 constexpr int GAMEPAD_AXIS_COUNT = 6;
-constexpr uint32_t IMGUI_RENDER_BUFFER_COUNT = 15;
+#if defined(SOKOL_VULKAN)
+constexpr UINT WINDOW_CLASS_STYLE = CS_HREDRAW | CS_VREDRAW;
+#else
+// OpenGL keeps a device context per window, which needs a private DC
+constexpr UINT WINDOW_CLASS_STYLE = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+#endif
 
 struct Gamepad {
     bool connected = false;
@@ -101,17 +109,8 @@ struct WinBackendData {
     HMODULE xinputLibrary = nullptr;
     XInputGetStateProc xinputGetState = nullptr;
     std::array<Gamepad, GAMEPAD_COUNT> gamepads;
-
-    VkInstance instanceVk = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
-    VkQueue queue = VK_NULL_HANDLE;
-    uint32_t queueFamily = UINT32_MAX;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    ImGui_ImplVulkanH_Window swapchain;
-    std::vector<VkSemaphore> sokolFinishedSemaphores;
-    std::unordered_map<uint32_t, VkDescriptorSet> imguiTextures;
-    bool swapchainRebuild = false;
+    std::unique_ptr<editor::Renderer> renderer;
+    editor::EditorFrame editorFrame;
 };
 
 WinBackendData* backend = nullptr;
@@ -151,11 +150,6 @@ void createThemedImGuiWindow(ImGuiViewport* viewport) {
     if (backend && backend->createImGuiWindow)
         backend->createImGuiWindow(viewport);
     applyDarkWindowTheme(static_cast<HWND>(viewport->PlatformHandleRaw));
-}
-
-double monotonicSeconds() {
-    using Clock = std::chrono::steady_clock;
-    return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
 }
 
 std::wstring utf8ToWide(const std::string& text) {
@@ -639,7 +633,7 @@ bool initializeWindow(int width, int height, bool maximized) {
         LR_DEFAULTSIZE | LR_SHARED));
     WNDCLASSEXW windowClass{};
     windowClass.cbSize = sizeof(windowClass);
-    windowClass.style = CS_HREDRAW | CS_VREDRAW;
+    windowClass.style = WINDOW_CLASS_STYLE;
     windowClass.lpfnWndProc = windowProc;
     windowClass.hInstance = backend->instance;
     windowClass.hIcon = icon;
@@ -719,8 +713,11 @@ void shutdownWindow() {
     nativeWindowHandle = {};
 }
 
-int createViewportSurface(ImGuiViewport* viewport, ImU64 instance,
-                          const void* allocator, ImU64* surface) {
+// Window-system half of the renderer, see renderer/Renderer.h
+#if defined(SOKOL_VULKAN)
+
+int createSurface(ImGuiViewport* viewport, ImU64 instance, const void* allocator,
+                  ImU64* surface) {
     VkWin32SurfaceCreateInfoKHR info{};
     info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
     info.hinstance = backend->instance;
@@ -731,475 +728,189 @@ int createViewportSurface(ImGuiViewport* viewport, ImU64 instance,
         reinterpret_cast<VkSurfaceKHR*>(surface)));
 }
 
-bool hasDeviceExtension(VkPhysicalDevice device, const char* name) {
-    uint32_t count = 0;
-    if (vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr) != VK_SUCCESS)
-        return false;
-    std::vector<VkExtensionProperties> extensions(count);
-    if (vkEnumerateDeviceExtensionProperties(
-            device, nullptr, &count, extensions.data()) != VK_SUCCESS)
-        return false;
-    for (const VkExtensionProperties& extension : extensions)
-        if (std::strcmp(extension.extensionName, name) == 0) return true;
-    return false;
+bool initImGuiPlatform() {
+    return ImGui_ImplWin32_Init(backend->window);
 }
 
-bool supportsVulkanDevice(VkPhysicalDevice device, uint32_t& queueFamily) {
-    VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(device, &properties);
-    if (properties.apiVersion < VK_API_VERSION_1_3 ||
-        !hasDeviceExtension(device, VK_KHR_SWAPCHAIN_EXTENSION_NAME) ||
-        !hasDeviceExtension(device, VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
-        return false;
+void installViewportHooks(ImGuiPlatformIO&) {}
 
-    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer{};
-    descriptorBuffer.sType =
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
-    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicState{};
-    extendedDynamicState.sType =
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
-    extendedDynamicState.pNext = &descriptorBuffer;
-    VkPhysicalDeviceVulkan12Features vulkan12{};
-    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-    vulkan12.pNext = &extendedDynamicState;
-    VkPhysicalDeviceVulkan13Features vulkan13{};
-    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    vulkan13.pNext = &vulkan12;
-    VkPhysicalDeviceFeatures2 features{};
-    features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    features.pNext = &vulkan13;
-    vkGetPhysicalDeviceFeatures2(device, &features);
-    if (!features.features.samplerAnisotropy || !features.features.dualSrcBlend ||
-        !vulkan12.bufferDeviceAddress || !vulkan13.dynamicRendering ||
-        !vulkan13.synchronization2 || !extendedDynamicState.extendedDynamicState ||
-        !descriptorBuffer.descriptorBuffer)
-        return false;
+editor::RendererPlatform rendererPlatform() {
+    editor::RendererPlatform platform;
+    platform.surfaceExtension = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
+    platform.createSurface = createSurface;
+    platform.requestRedraw = []() { backend->redrawRequested = true; };
+    return platform;
+}
 
-    uint32_t count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
-    std::vector<VkQueueFamilyProperties> families(count);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families.data());
-    const VkQueueFlags required =
-        VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
-    for (uint32_t index = 0; index < count; ++index) {
-        VkBool32 present = VK_FALSE;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, index, backend->surface, &present);
-        if ((families[index].queueFlags & required) == required && present) {
-            queueFamily = index;
-            return true;
+#else // SOKOL_GLCORE
+
+using CreateContextAttribsProc = HGLRC (WINAPI*)(HDC, HGLRC, const int*);
+using SwapIntervalProc = BOOL (WINAPI*)(int);
+
+constexpr int WGL_CONTEXT_MAJOR_VERSION = 0x2091;
+constexpr int WGL_CONTEXT_MINOR_VERSION = 0x2092;
+constexpr int WGL_CONTEXT_PROFILE_MASK = 0x9126;
+constexpr int WGL_CONTEXT_CORE_PROFILE_BIT = 0x00000001;
+
+HGLRC glContext = nullptr;
+int pixelFormat = 0;
+SwapIntervalProc swapIntervalEXT = nullptr;
+void (*imguiDestroyWindow)(ImGuiViewport*) = nullptr;
+std::unordered_map<HWND, HDC> windowContexts;
+
+template <typename T>
+T wglProc(const char* name) {
+    PROC address = wglGetProcAddress(name);
+    if (!address || address == reinterpret_cast<PROC>(1) ||
+        address == reinterpret_cast<PROC>(2) ||
+        address == reinterpret_cast<PROC>(3) ||
+        address == reinterpret_cast<PROC>(-1))
+        return nullptr;
+    return reinterpret_cast<T>(address);
+}
+
+PIXELFORMATDESCRIPTOR pixelFormatDescriptor() {
+    PIXELFORMATDESCRIPTOR descriptor{};
+    descriptor.nSize = sizeof(descriptor);
+    descriptor.nVersion = 1;
+    descriptor.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    descriptor.iPixelType = PFD_TYPE_RGBA;
+    descriptor.cColorBits = 32;
+    descriptor.cDepthBits = 24;
+    descriptor.cStencilBits = 8;
+    return descriptor;
+}
+
+// Every window takes the main window's pixel format and keeps its own DC
+HDC deviceContextOf(ImGuiViewport* viewport) {
+    HWND window = viewport ? static_cast<HWND>(viewport->PlatformHandleRaw)
+                           : backend->window;
+    if (!window) return nullptr;
+    auto existing = windowContexts.find(window);
+    if (existing != windowContexts.end()) return existing->second;
+
+    HDC deviceContext = GetDC(window);
+    if (!deviceContext) return nullptr;
+    const int existingFormat = GetPixelFormat(deviceContext);
+    if (existingFormat == 0) {
+        PIXELFORMATDESCRIPTOR descriptor = pixelFormatDescriptor();
+        if (!SetPixelFormat(deviceContext, pixelFormat, &descriptor)) {
+            ReleaseDC(window, deviceContext);
+            return nullptr;
         }
+    } else if (existingFormat != pixelFormat) {
+        ReleaseDC(window, deviceContext);
+        return nullptr;
     }
-    return false;
+    windowContexts.emplace(window, deviceContext);
+    return deviceContext;
 }
 
-bool createVulkanDevice() {
-    VkApplicationInfo application{};
-    application.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    application.pApplicationName = "Doriax Engine Editor";
-    application.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    application.pEngineName = "Doriax";
-    application.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    application.apiVersion = VK_API_VERSION_1_3;
-
-    std::vector<const char*> extensions = {
-        VK_KHR_SURFACE_EXTENSION_NAME,
-        VK_KHR_WIN32_SURFACE_EXTENSION_NAME
-    };
-    uint32_t extensionCount = 0;
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateInstanceExtensionProperties(
-        nullptr, &extensionCount, availableExtensions.data());
-    for (const VkExtensionProperties& extension : availableExtensions) {
-        if (std::strcmp(extension.extensionName,
-                        VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
-            extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-            break;
-        }
+void destroyViewportWindow(ImGuiViewport* viewport) {
+    HWND window = static_cast<HWND>(viewport->PlatformHandleRaw);
+    auto existing = windowContexts.find(window);
+    if (existing != windowContexts.end()) {
+        ReleaseDC(window, existing->second);
+        windowContexts.erase(existing);
     }
-
-    VkInstanceCreateInfo instanceInfo{};
-    instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instanceInfo.pApplicationInfo = &application;
-    instanceInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    instanceInfo.ppEnabledExtensionNames = extensions.data();
-    VkResult result = vkCreateInstance(&instanceInfo, nullptr, &backend->instanceVk);
-    if (result != VK_SUCCESS) {
-        std::fprintf(stderr, "Error: Could not create Vulkan instance (%d).\n", result);
-        return false;
-    }
-
-    VkWin32SurfaceCreateInfoKHR surfaceInfo{};
-    surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    surfaceInfo.hinstance = backend->instance;
-    surfaceInfo.hwnd = backend->window;
-    result = vkCreateWin32SurfaceKHR(
-        backend->instanceVk, &surfaceInfo, nullptr, &backend->surface);
-    if (result != VK_SUCCESS) {
-        std::fprintf(stderr, "Error: Could not create Vulkan Win32 surface (%d).\n",
-                     result);
-        return false;
-    }
-
-    uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(backend->instanceVk, &deviceCount, nullptr);
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(
-        backend->instanceVk, &deviceCount, devices.data());
-    for (VkPhysicalDevice device : devices) {
-        uint32_t family = UINT32_MAX;
-        if (!supportsVulkanDevice(device, family)) continue;
-        backend->physicalDevice = device;
-        backend->queueFamily = family;
-        VkPhysicalDeviceProperties properties{};
-        vkGetPhysicalDeviceProperties(device, &properties);
-        if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) break;
-    }
-    if (backend->physicalDevice == VK_NULL_HANDLE) {
-        std::fprintf(stderr,
-            "Error: Vulkan 1.3 with swapchain and descriptor-buffer support is required.\n");
-        return false;
-    }
-
-    VkPhysicalDeviceFeatures2 supported{};
-    supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    vkGetPhysicalDeviceFeatures2(backend->physicalDevice, &supported);
-
-    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer{};
-    descriptorBuffer.sType =
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
-    descriptorBuffer.descriptorBuffer = VK_TRUE;
-    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicState{};
-    extendedDynamicState.sType =
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
-    extendedDynamicState.pNext = &descriptorBuffer;
-    extendedDynamicState.extendedDynamicState = VK_TRUE;
-    VkPhysicalDeviceVulkan12Features vulkan12{};
-    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-    vulkan12.pNext = &extendedDynamicState;
-    vulkan12.bufferDeviceAddress = VK_TRUE;
-    VkPhysicalDeviceVulkan13Features vulkan13{};
-    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    vulkan13.pNext = &vulkan12;
-    vulkan13.dynamicRendering = VK_TRUE;
-    vulkan13.synchronization2 = VK_TRUE;
-    VkPhysicalDeviceFeatures2 requiredFeatures{};
-    requiredFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    requiredFeatures.pNext = &vulkan13;
-    requiredFeatures.features.samplerAnisotropy = VK_TRUE;
-    requiredFeatures.features.dualSrcBlend = VK_TRUE;
-    requiredFeatures.features.textureCompressionBC =
-        supported.features.textureCompressionBC;
-    requiredFeatures.features.textureCompressionETC2 =
-        supported.features.textureCompressionETC2;
-    requiredFeatures.features.textureCompressionASTC_LDR =
-        supported.features.textureCompressionASTC_LDR;
-
-    const float priority = 1.0f;
-    VkDeviceQueueCreateInfo queueInfo{};
-    queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueInfo.queueFamilyIndex = backend->queueFamily;
-    queueInfo.queueCount = 1;
-    queueInfo.pQueuePriorities = &priority;
-    const char* deviceExtensions[] = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME
-    };
-    VkDeviceCreateInfo deviceInfo{};
-    deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceInfo.pNext = &requiredFeatures;
-    deviceInfo.queueCreateInfoCount = 1;
-    deviceInfo.pQueueCreateInfos = &queueInfo;
-    deviceInfo.enabledExtensionCount = 2;
-    deviceInfo.ppEnabledExtensionNames = deviceExtensions;
-    result = vkCreateDevice(
-        backend->physicalDevice, &deviceInfo, nullptr, &backend->device);
-    if (result != VK_SUCCESS) {
-        std::fprintf(stderr, "Error: Could not create Vulkan device (%d).\n", result);
-        return false;
-    }
-    vkGetDeviceQueue(backend->device, backend->queueFamily, 0, &backend->queue);
-    return true;
+    if (imguiDestroyWindow) imguiDestroyWindow(viewport);
 }
 
-VkPresentModeKHR choosePresentMode(bool synchronized) {
-    if (synchronized) {
-        const VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
-        return ImGui_ImplVulkanH_SelectPresentMode(
-            backend->physicalDevice, backend->surface, &mode, 1);
-    }
-    const VkPresentModeKHR modes[] = {
-        VK_PRESENT_MODE_IMMEDIATE_KHR,
-        VK_PRESENT_MODE_MAILBOX_KHR,
-        VK_PRESENT_MODE_FIFO_KHR
-    };
-    return ImGui_ImplVulkanH_SelectPresentMode(
-        backend->physicalDevice, backend->surface, modes, 3);
+// InitForOpenGL gives viewport windows the private DC their context needs
+bool initImGuiPlatform() {
+    return ImGui_ImplWin32_InitForOpenGL(backend->window);
 }
 
-void checkVkResult(VkResult result) {
-    if (result < 0) std::fprintf(stderr, "Vulkan error: %d\n", result);
+void installViewportHooks(ImGuiPlatformIO& platformIo) {
+    imguiDestroyWindow = platformIo.Platform_DestroyWindow;
+    platformIo.Platform_DestroyWindow = destroyViewportWindow;
 }
 
-void destroySokolSemaphores() {
-    for (VkSemaphore semaphore : backend->sokolFinishedSemaphores)
-        vkDestroySemaphore(backend->device, semaphore, nullptr);
-    backend->sokolFinishedSemaphores.clear();
-}
-
-void rebuildImGuiPipeline() {
-    VkFormat format = backend->swapchain.SurfaceFormat.format;
-    VkPipelineRenderingCreateInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachmentFormats = &format;
-
-    ImGui_ImplVulkan_PipelineInfo pipelineInfo{};
-    pipelineInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    pipelineInfo.PipelineRenderingCreateInfo = renderingInfo;
-    ImGui_ImplVulkan_CreateMainPipeline(&pipelineInfo);
-}
-
-bool createMainSwapchain(int width, int height, bool synchronized) {
-    if (width <= 0 || height <= 0) return false;
-    if (backend->device != VK_NULL_HANDLE) {
-        const VkResult result = vkDeviceWaitIdle(backend->device);
-        if (result != VK_SUCCESS) {
-            checkVkResult(result);
+editor::RendererPlatform rendererPlatform() {
+    editor::RendererPlatform platform;
+    platform.createContext = []() {
+        HDC deviceContext = GetDC(backend->window);
+        if (!deviceContext) {
+            std::fprintf(stderr, "Error: Could not acquire the OpenGL device context.\n");
             return false;
         }
-    }
-    destroySokolSemaphores();
-
-    ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    const VkFormat previousFormat = window.SurfaceFormat.format;
-    window.UseDynamicRendering = true;
-    window.Surface = backend->surface;
-    const VkFormat formats[] = {
-        VK_FORMAT_B8G8R8A8_UNORM,
-        VK_FORMAT_R8G8B8A8_UNORM
-    };
-    window.SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(
-        backend->physicalDevice, window.Surface, formats, 2,
-        VK_COLORSPACE_SRGB_NONLINEAR_KHR);
-    window.PresentMode = choosePresentMode(synchronized);
-    ImGui_ImplVulkanH_CreateOrResizeWindow(
-        backend->instanceVk, backend->physicalDevice, backend->device,
-        &window, backend->queueFamily, nullptr, width, height, 2, 0);
-    if (ImGui::GetIO().BackendRendererUserData != nullptr &&
-        previousFormat != window.SurfaceFormat.format)
-        rebuildImGuiPipeline();
-
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    backend->sokolFinishedSemaphores.resize(window.SemaphoreCount);
-    for (VkSemaphore& semaphore : backend->sokolFinishedSemaphores) {
-        if (vkCreateSemaphore(
-                backend->device, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
-            std::fprintf(stderr,
-                         "Error: Could not create Vulkan frame semaphore.\n");
+        PIXELFORMATDESCRIPTOR descriptor = pixelFormatDescriptor();
+        pixelFormat = ChoosePixelFormat(deviceContext, &descriptor);
+        if (!pixelFormat || !SetPixelFormat(deviceContext, pixelFormat, &descriptor)) {
+            std::fprintf(stderr, "Error: No OpenGL pixel format available.\n");
+            ReleaseDC(backend->window, deviceContext);
             return false;
         }
-    }
-    backend->swapchainRebuild = false;
-    backend->redrawRequested = true;
-    return true;
-}
+        windowContexts.emplace(backend->window, deviceContext);
 
-bool failMainFrame(VkResult result) {
-    checkVkResult(result);
-    backend->swapchainRebuild = true;
-    return false;
-}
-
-void removeInvalidImGuiTextures() {
-    if (!backend || backend->device == VK_NULL_HANDLE) return;
-    bool deviceIdle = false;
-    for (auto texture = backend->imguiTextures.begin();
-         texture != backend->imguiTextures.end();) {
-        if (TextureRender::isViewValid(texture->first)) {
-            ++texture;
-            continue;
+        // wglCreateContextAttribsARB is only reachable through a current context
+        HGLRC legacy = wglCreateContext(deviceContext);
+        if (!legacy) {
+            std::fprintf(stderr, "Error: Could not create an OpenGL context.\n");
+            return false;
         }
-        if (!deviceIdle) {
-            vkDeviceWaitIdle(backend->device);
-            deviceIdle = true;
+        if (!wglMakeCurrent(deviceContext, legacy)) {
+            wglDeleteContext(legacy);
+            std::fprintf(stderr, "Error: Could not activate the OpenGL context.\n");
+            return false;
         }
-        ImGui_ImplVulkan_RemoveTexture(texture->second);
-        texture = backend->imguiTextures.erase(texture);
-    }
+        auto createContext = wglProc<CreateContextAttribsProc>(
+            "wglCreateContextAttribsARB");
+        if (createContext) {
+            const int attributes[] = {
+                WGL_CONTEXT_MAJOR_VERSION, 4,
+                WGL_CONTEXT_MINOR_VERSION, 1,
+                WGL_CONTEXT_PROFILE_MASK, WGL_CONTEXT_CORE_PROFILE_BIT,
+                0
+            };
+            glContext = createContext(deviceContext, nullptr, attributes);
+        }
+        wglMakeCurrent(nullptr, nullptr);
+        if (!glContext) {
+            wglDeleteContext(legacy);
+            std::fprintf(stderr, "Error: Could not create an OpenGL 4.1 core context.\n");
+            return false;
+        }
+        wglDeleteContext(legacy);
+        if (!wglMakeCurrent(deviceContext, glContext)) {
+            std::fprintf(stderr, "Error: Could not activate the OpenGL 4.1 context.\n");
+            return false;
+        }
+        swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
+        return true;
+    };
+    platform.destroyContext = []() {
+        if (glContext) {
+            wglMakeCurrent(nullptr, nullptr);
+            wglDeleteContext(glContext);
+            glContext = nullptr;
+        }
+        for (const auto& entry : windowContexts) ReleaseDC(entry.first, entry.second);
+        windowContexts.clear();
+        swapIntervalEXT = nullptr;
+        pixelFormat = 0;
+    };
+    platform.makeCurrent = [](ImGuiViewport* viewport) {
+        HDC deviceContext = deviceContextOf(viewport);
+        if (!deviceContext || !wglMakeCurrent(deviceContext, glContext))
+            std::fprintf(stderr, "Error: Could not activate an OpenGL viewport.\n");
+    };
+    platform.swapBuffers = [](ImGuiViewport* viewport) {
+        HDC deviceContext = deviceContextOf(viewport);
+        if (!deviceContext || !wglMakeCurrent(deviceContext, glContext)) {
+            std::fprintf(stderr, "Error: Could not activate an OpenGL viewport.\n");
+            return;
+        }
+        if (viewport && swapIntervalEXT) swapIntervalEXT(0);
+        SwapBuffers(deviceContext);
+    };
+    platform.setSwapInterval = [](int interval) {
+        if (swapIntervalEXT) swapIntervalEXT(interval);
+    };
+    return platform;
 }
 
-bool initializeImGuiVulkan() {
-    VkFormat format = backend->swapchain.SurfaceFormat.format;
-    VkPipelineRenderingCreateInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachmentFormats = &format;
-
-    ImGui_ImplVulkan_InitInfo info{};
-    info.ApiVersion = VK_API_VERSION_1_3;
-    info.Instance = backend->instanceVk;
-    info.PhysicalDevice = backend->physicalDevice;
-    info.Device = backend->device;
-    info.QueueFamily = backend->queueFamily;
-    info.Queue = backend->queue;
-    info.DescriptorPoolSize = 8192;
-    info.MinImageCount = 2;
-    // ImGui's swapchain helper accepts at most 15 images. Allocating the full
-    // render-buffer ring keeps it valid across present-mode changes.
-    info.ImageCount = IMGUI_RENDER_BUFFER_COUNT;
-    info.UseDynamicRendering = true;
-    info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    info.PipelineInfoMain.PipelineRenderingCreateInfo = renderingInfo;
-    info.PipelineInfoForViewports.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    info.CheckVkResultFn = checkVkResult;
-    return ImGui_ImplVulkan_Init(&info);
-}
-
-bool acquireMainFrame() {
-    ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    ImGui_ImplVulkanH_FrameSemaphores& semaphores =
-        window.FrameSemaphores[window.SemaphoreIndex];
-    VkResult result = vkAcquireNextImageKHR(
-        backend->device, window.Swapchain, UINT64_MAX,
-        semaphores.ImageAcquiredSemaphore, VK_NULL_HANDLE, &window.FrameIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        backend->swapchainRebuild = true;
-        return false;
-    }
-    if (result == VK_SUBOPTIMAL_KHR) backend->swapchainRebuild = true;
-    else if (result != VK_SUCCESS) return failMainFrame(result);
-
-    ImGui_ImplVulkanH_Frame& frame = window.Frames[window.FrameIndex];
-    result = vkWaitForFences(
-        backend->device, 1, &frame.Fence, VK_TRUE, UINT64_MAX);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-    return true;
-}
-
-bool submitMainFrame(ImDrawData* drawData) {
-    ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    ImGui_ImplVulkanH_Frame& frame = window.Frames[window.FrameIndex];
-    const uint32_t semaphoreIndex = window.SemaphoreIndex;
-    VkSemaphore waitSemaphore = backend->sokolFinishedSemaphores[semaphoreIndex];
-    VkSemaphore signalSemaphore =
-        window.FrameSemaphores[semaphoreIndex].RenderCompleteSemaphore;
-
-    VkResult result = vkResetCommandPool(backend->device, frame.CommandPool, 0);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    result = vkBeginCommandBuffer(frame.CommandBuffer, &beginInfo);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-
-    VkImageMemoryBarrier beginBarrier{};
-    beginBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    beginBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    beginBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    beginBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    beginBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    beginBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    beginBarrier.image = frame.Backbuffer;
-    beginBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    beginBarrier.subresourceRange.levelCount = 1;
-    beginBarrier.subresourceRange.layerCount = 1;
-    vkCmdPipelineBarrier(
-        frame.CommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
-        0, nullptr, 0, nullptr, 1, &beginBarrier);
-
-    VkRenderingAttachmentInfo attachment{};
-    attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    attachment.imageView = frame.BackbufferView;
-    attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    VkRenderingInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    renderingInfo.renderArea.extent.width = window.Width;
-    renderingInfo.renderArea.extent.height = window.Height;
-    renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachments = &attachment;
-    vkCmdBeginRendering(frame.CommandBuffer, &renderingInfo);
-    ImGui_ImplVulkan_RenderDrawData(drawData, frame.CommandBuffer);
-    vkCmdEndRendering(frame.CommandBuffer);
-
-    VkImageMemoryBarrier endBarrier{};
-    endBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    endBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    endBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    endBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    endBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    endBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    endBarrier.image = frame.Backbuffer;
-    endBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    endBarrier.subresourceRange.levelCount = 1;
-    endBarrier.subresourceRange.layerCount = 1;
-    vkCmdPipelineBarrier(
-        frame.CommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
-        0, nullptr, 0, nullptr, 1, &endBarrier);
-
-    result = vkEndCommandBuffer(frame.CommandBuffer);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-    result = vkResetFences(backend->device, 1, &frame.Fence);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &waitSemaphore;
-    submitInfo.pWaitDstStageMask = &waitStage;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &frame.CommandBuffer;
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &signalSemaphore;
-    result = vkQueueSubmit(backend->queue, 1, &submitInfo, frame.Fence);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-    return true;
-}
-
-void presentMainFrame() {
-    ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    ImGui_ImplVulkanH_FrameSemaphores& semaphores =
-        window.FrameSemaphores[window.SemaphoreIndex];
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &semaphores.RenderCompleteSemaphore;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &window.Swapchain;
-    presentInfo.pImageIndices = &window.FrameIndex;
-    VkResult result = vkQueuePresentKHR(backend->queue, &presentInfo);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-        backend->swapchainRebuild = true;
-    else if (result != VK_SUCCESS) {
-        checkVkResult(result);
-        backend->swapchainRebuild = true;
-    }
-    window.SemaphoreIndex = (window.SemaphoreIndex + 1) % window.SemaphoreCount;
-}
-
-void shutdownVulkan() {
-    if (backend->device != VK_NULL_HANDLE) vkDeviceWaitIdle(backend->device);
-    destroySokolSemaphores();
-    if (backend->swapchain.Swapchain != VK_NULL_HANDLE)
-        ImGui_ImplVulkanH_DestroyWindow(
-            backend->instanceVk, backend->device, &backend->swapchain, nullptr);
-    if (backend->surface != VK_NULL_HANDLE)
-        vkDestroySurfaceKHR(backend->instanceVk, backend->surface, nullptr);
-    if (backend->device != VK_NULL_HANDLE)
-        vkDestroyDevice(backend->device, nullptr);
-    if (backend->instanceVk != VK_NULL_HANDLE)
-        vkDestroyInstance(backend->instanceVk, nullptr);
-    backend->surface = VK_NULL_HANDLE;
-    backend->device = VK_NULL_HANDLE;
-    backend->instanceVk = VK_NULL_HANDLE;
-}
+#endif
 
 void getClientSize(int& width, int& height) {
     RECT rect{};
@@ -1247,10 +958,9 @@ int editor::Backend::init(int argc, char* argv[]) {
         return -1;
     }
 
-    CameraRender render;
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    if (!ImGui_ImplWin32_Init(backend->window)) {
+    if (!initImGuiPlatform()) {
         ImGui::DestroyContext();
         NFD_Quit();
         shutdownWindow();
@@ -1259,146 +969,60 @@ int editor::Backend::init(int argc, char* argv[]) {
     ImGuiPlatformIO& platformIO = ImGui::GetPlatformIO();
     backend->createImGuiWindow = platformIO.Platform_CreateWindow;
     platformIO.Platform_CreateWindow = createThemedImGuiWindow;
-    platformIO.Platform_CreateVkSurface = createViewportSurface;
+    installViewportHooks(platformIO);
 
     app.setup();
     int clientWidth = 0;
     int clientHeight = 0;
     getClientSize(clientWidth, clientHeight);
-    if (!createVulkanDevice() ||
-        !createMainSwapchain(clientWidth, clientHeight, true) ||
-        !initializeImGuiVulkan()) {
-        ImGui::GetPlatformIO().Platform_CreateVkSurface = nullptr;
+    backend->renderer = std::make_unique<editor::Renderer>();
+    if (!backend->renderer->init(
+            rendererPlatform(), clientWidth, clientHeight, true)) {
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
         NFD_Quit();
-        shutdownVulkan();
+        backend->renderer.reset();
         shutdownWindow();
         return -1;
     }
+
+    backend->editorFrame.init(*backend->renderer, app, []() {
+        ImGui_ImplWin32_NewFrame();
+        applyRelativeMouseData();
+    });
 
     app.engineInit(argc, argv);
     // Keep the initial hide soft so ImGui can restore the normal editor cursor.
     SetCursor(nullptr);
     app.engineViewLoaded();
 
-    Project* activeProject = app.getProject();
-    bool currentFrameSync = true;
     app.setWakeCallback([]() {
         if (backend && backend->window)
             PostMessageW(backend->window, WM_DORIAX_WAKE, 0, 0);
     });
 
-    double lastActivityTime = monotonicSeconds();
-    constexpr double IDLE_ENTER_DELAY = 0.5;
     bool frameInProgress = false;
 
     auto renderFrame = [&](bool forceRedraw) {
         if (frameInProgress || backend->shouldClose) return;
         frameInProgress = true;
-        const double frameStart = monotonicSeconds();
-        const bool idleFrame = !forceRedraw &&
-            frameStart - lastActivityTime > IDLE_ENTER_DELAY;
         pollGamepads();
-
-        const bool minimized = IsIconic(backend->window) != FALSE;
-        const bool focused = appHasFocus();
-        const bool playSessionActive = activeProject->isPlaySessionActive();
-        const bool frameSync = !playSessionActive || activeProject->isVSyncEnabled();
-        setMouseControlSuspended(playSessionActive &&
-                                 !activeProject->isMainScenePlaying());
         updateCursorClip();
 
-        int windowWidth = 0;
-        int windowHeight = 0;
-        getClientSize(windowWidth, windowHeight);
-        const bool desiredFrameSync = focused && frameSync;
-        if (!minimized && windowWidth > 0 && windowHeight > 0 &&
-            (backend->swapchainRebuild ||
-             windowWidth != backend->swapchain.Width ||
-             windowHeight != backend->swapchain.Height ||
-             desiredFrameSync != currentFrameSync)) {
-            if (!createMainSwapchain(
-                    windowWidth, windowHeight, desiredFrameSync)) {
-                backend->shouldClose = true;
-                frameInProgress = false;
-                return;
-            }
-            currentFrameSync = desiredFrameSync;
-        }
-
-        const bool renderRequested = forceRedraw || playSessionActive ||
-                                     !idleFrame || backend->redrawRequested ||
-                                     app.hasPendingMainThreadTasks();
-        const bool renderMainFrame = !minimized && renderRequested;
-        const bool frameReady = renderMainFrame && acquireMainFrame();
-
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        applyRelativeMouseData();
-        ImGui::NewFrame();
-
-        if (frameReady) {
-            app.engineRender();
-        } else {
-            app.processMainThreadTasks();
-        }
-
-        app.show();
-        bool activityThisFrame = false;
-        {
-            ImGuiIO& io = ImGui::GetIO();
-            bool typing = io.InputQueueCharacters.Size > 0;
-            for (int key = ImGuiKey_Keyboard_BEGIN;
-                 !typing && key < ImGuiKey_Keyboard_END; ++key)
-                typing = ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
-            const bool activity =
-                io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
-                io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
-                ImGui::IsAnyMouseDown() || typing || io.WantTextInput ||
-                ImGui::IsAnyItemActive() || app.didRenderScene() ||
-                app.hasPendingMainThreadTasks() || backend->redrawRequested;
-            backend->redrawRequested = false;
-            if (activity) lastActivityTime = monotonicSeconds();
-            activityThisFrame = activity;
-        }
-
-        ImGui::Render();
-        bool frameSubmitted = false;
-        if (frameReady) {
-            // App::show() may create preview framebuffers. Initialize those before
-            // opening the swapchain pass so Sokol never sees nested passes.
-            render.setClearColor(Vector4(0.45f, 0.55f, 0.60f, 1.00f));
-            render.startRenderPass(windowWidth, windowHeight);
-            render.endRenderPass();
-            SystemRender::commit();
-            frameSubmitted = submitMainFrame(ImGui::GetDrawData());
-        }
-
-        const bool submitFailed = frameReady && !frameSubmitted;
-        if (!submitFailed &&
-            (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)) {
-            ImGui::UpdatePlatformWindows();
-            if (renderRequested || activityThisFrame)
-                ImGui::RenderPlatformWindowsDefault();
-        }
-
-        if (frameSubmitted) presentMainFrame();
-        removeInvalidImGuiTextures();
-
-        if (!focused || minimized) {
-            const int sleepMs = static_cast<int>(
-                (backend->framePeriod - (monotonicSeconds() - frameStart)) * 1000.0);
-            if (sleepMs > 0) Sleep(static_cast<DWORD>(sleepMs));
-        }
+        editor::EditorFrameState state{backend->redrawRequested};
+        state.framePeriod = backend->framePeriod;
+        state.forceRedraw = forceRedraw;
+        state.minimized = IsIconic(backend->window) != FALSE;
+        state.focused = appHasFocus();
+        getClientSize(state.width, state.height);
+        if (!backend->editorFrame.run(state))
+            backend->shouldClose = true;
         frameInProgress = false;
     };
 
     backend->liveResizeFrame = [&]() { renderFrame(true); };
     while (!backend->shouldClose) {
-        const bool idleFrame =
-            monotonicSeconds() - lastActivityTime > IDLE_ENTER_DELAY;
-        processMessages(idleFrame);
+        processMessages(backend->editorFrame.isIdle());
         if (backend->shouldClose) break;
         renderFrame(false);
     }
@@ -1412,14 +1036,12 @@ int editor::Backend::init(int argc, char* argv[]) {
     getClientSize(width, height);
     app.saveWindowSettings(width, height, IsZoomed(backend->window) != FALSE);
 
-    vkDeviceWaitIdle(backend->device);
-    ImGui_ImplVulkan_Shutdown();
-    ImGui::GetPlatformIO().Platform_CreateVkSurface = nullptr;
+    backend->renderer->shutdownImGui();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
     app.engineViewDestroyed();
     NFD_Quit();
-    shutdownVulkan();
+    backend->renderer.reset();
     shutdownWindow();
     app.engineShutdown();
     return 0;
@@ -1513,57 +1135,23 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
 
 ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {
     if (!texture || !texture->isCreated()) return ImTextureID{};
-    const uint32_t viewId = texture->getViewId();
-    auto existing = backend->imguiTextures.find(viewId);
-    if (existing != backend->imguiTextures.end())
-        return (ImTextureID)existing->second;
-    VkImageView imageView = reinterpret_cast<VkImageView>(
-        const_cast<void*>(texture->getVulkanHandler()));
-    if (imageView == VK_NULL_HANDLE) return ImTextureID{};
-    VkDescriptorSet descriptor = ImGui_ImplVulkan_AddTexture(
-        imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    backend->imguiTextures.emplace(viewId, descriptor);
-    return (ImTextureID)descriptor;
+    return backend->renderer->getTexture(texture);
 }
 
+#if defined(SOKOL_VULKAN)
+
 sg_environment editor::Backend::getSokolEnvironment() {
-    sg_environment environment{};
-    environment.defaults.sample_count = 1;
-    environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
-    environment.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    environment.vulkan.instance = backend->instanceVk;
-    environment.vulkan.physical_device = backend->physicalDevice;
-    environment.vulkan.device = backend->device;
-    environment.vulkan.queue = backend->queue;
-    environment.vulkan.queue_family_index = backend->queueFamily;
-    return environment;
+    return backend->renderer->getSokolEnvironment();
 }
 
 sg_swapchain editor::Backend::getSokolSwapchain() {
-    const ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    const ImGui_ImplVulkanH_Frame& frame = window.Frames[window.FrameIndex];
-    const ImGui_ImplVulkanH_FrameSemaphores& semaphores =
-        window.FrameSemaphores[window.SemaphoreIndex];
-    sg_swapchain swapchain{};
-    swapchain.width = window.Width;
-    swapchain.height = window.Height;
-    swapchain.sample_count = 1;
-    swapchain.color_format = window.SurfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM
-        ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_BGRA8;
-    swapchain.depth_format = SG_PIXELFORMAT_NONE;
-    swapchain.vulkan.render_image = frame.Backbuffer;
-    swapchain.vulkan.render_view = frame.BackbufferView;
-    swapchain.vulkan.present_complete_semaphore =
-        semaphores.ImageAcquiredSemaphore;
-    swapchain.vulkan.render_finished_semaphore =
-        backend->sokolFinishedSemaphores[window.SemaphoreIndex];
-    return swapchain;
+    return backend->renderer->getSokolSwapchain();
 }
 
+#endif
+
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
-    title = projectName.empty()
-        ? "Empty project - Doriax Engine"
-        : projectName + " - Doriax Engine";
+    title = editor::EditorFrame::formatWindowTitle(projectName);
     if (backend && backend->window) {
         const std::wstring wideTitle = utf8ToWide(title);
         SetWindowTextW(backend->window, wideTitle.c_str());

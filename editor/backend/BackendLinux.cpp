@@ -1,11 +1,16 @@
 #include "Backend.h"
 #include "EditorHost.h"
+#include "backend/EditorFrame.h"
+#include "backend/renderer/Renderer.h"
 
 #include "Engine.h"
-#include "SystemRender.h"
 
 #include "imgui_internal.h"
-#include "imgui_impl_vulkan.h"
+#if defined(SOKOL_VULKAN)
+#include <vulkan/vulkan.h>
+#else
+#include <GL/glx.h>
+#endif
 
 #include "nfd.hpp"
 
@@ -61,7 +66,6 @@ constexpr int MENU_BAR_HEIGHT = 27;
 constexpr int MENU_ITEM_HEIGHT = 25;
 constexpr int MENU_SEPARATOR_HEIGHT = 9;
 constexpr int MENU_HORIZONTAL_PADDING = 12;
-constexpr uint32_t IMGUI_RENDER_BUFFER_COUNT = 15;
 
 struct NativeWindow {
     Window handle = None;
@@ -205,17 +209,8 @@ struct LinuxBackendData {
     double nextGamepadScan = 0.0;
     std::array<Gamepad, GAMEPAD_COUNT> gamepads;
     NativeMenu menu;
-
-    VkInstance instance = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
-    VkQueue queue = VK_NULL_HANDLE;
-    uint32_t queueFamily = UINT32_MAX;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    ImGui_ImplVulkanH_Window swapchain;
-    std::vector<VkSemaphore> sokolFinishedSemaphores;
-    std::unordered_map<uint32_t, VkDescriptorSet> imguiTextures;
-    bool swapchainRebuild = false;
+    std::unique_ptr<editor::Renderer> renderer;
+    editor::EditorFrame editorFrame;
 };
 
 LinuxBackendData* backend = nullptr;
@@ -910,13 +905,15 @@ NativeWindow* createNativeWindow(int x, int y, int width, int height,
     attributes.colormap = XCreateColormap(
         backend->display, backend->root, backend->visual, AllocNone);
     attributes.event_mask = WINDOW_EVENT_MASK;
+    // border_pixel is required whenever the visual differs from the root's
+    attributes.border_pixel = 0;
     result->colormap = attributes.colormap;
     result->handle = XCreateWindow(
         backend->display, backend->root, x, y,
         static_cast<unsigned int>(std::max(width, 1)),
         static_cast<unsigned int>(std::max(height, 1)), 0,
         backend->visualDepth, InputOutput, backend->visual,
-        CWColormap | CWEventMask, &attributes);
+        CWColormap | CWBorderPixel | CWEventMask, &attributes);
     if (!result->handle) {
         XFreeColormap(backend->display, result->colormap);
         delete result;
@@ -2038,19 +2035,6 @@ void alphaViewport(ImGuiViewport* viewport, float alpha) {
                     reinterpret_cast<const unsigned char*>(&opacity), 1);
 }
 
-int createViewportSurface(ImGuiViewport* viewport, ImU64 instance,
-                          const void* allocator, ImU64* surface) {
-    auto* window = static_cast<NativeWindow*>(viewport->PlatformUserData);
-    VkXlibSurfaceCreateInfoKHR info{};
-    info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
-    info.dpy = backend->display;
-    info.window = window->handle;
-    return static_cast<int>(vkCreateXlibSurfaceKHR(
-        reinterpret_cast<VkInstance>(instance), &info,
-        static_cast<const VkAllocationCallbacks*>(allocator),
-        reinterpret_cast<VkSurfaceKHR*>(surface)));
-}
-
 void setupMainViewport() {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     viewport->PlatformUserData = backend->mainWindow;
@@ -2084,7 +2068,6 @@ bool initImGuiPlatform() {
     platformIo.Platform_GetWindowMinimized = viewportMinimized;
     platformIo.Platform_SetWindowTitle = titleViewport;
     platformIo.Platform_SetWindowAlpha = alphaViewport;
-    platformIo.Platform_CreateVkSurface = createViewportSurface;
 
     setupMainViewport();
     updateMonitors();
@@ -2114,7 +2097,6 @@ void shutdownImGuiPlatform() {
     platformIo.Platform_GetWindowMinimized = nullptr;
     platformIo.Platform_SetWindowTitle = nullptr;
     platformIo.Platform_SetWindowAlpha = nullptr;
-    platformIo.Platform_CreateVkSurface = nullptr;
     io.BackendPlatformName = nullptr;
     io.BackendPlatformUserData = nullptr;
     io.BackendFlags &= ~(ImGuiBackendFlags_HasMouseCursors |
@@ -2138,464 +2120,188 @@ void newImGuiFrame() {
     updateMouseCursor();
 }
 
-bool hasDeviceExtension(VkPhysicalDevice device, const char* name) {
-    uint32_t count = 0;
-    if (vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr) != VK_SUCCESS)
-        return false;
-    std::vector<VkExtensionProperties> extensions(count);
-    if (vkEnumerateDeviceExtensionProperties(device, nullptr, &count, extensions.data()) != VK_SUCCESS)
-        return false;
-    for (const VkExtensionProperties& extension : extensions)
-        if (std::strcmp(extension.extensionName, name) == 0) return true;
-    return false;
-}
+// Window-system half of the renderer, see renderer/Renderer.h
+#if defined(SOKOL_VULKAN)
 
-bool supportsVulkanDevice(VkPhysicalDevice device, uint32_t& queueFamily) {
-    VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(device, &properties);
-    if (properties.apiVersion < VK_API_VERSION_1_3 ||
-        !hasDeviceExtension(device, VK_KHR_SWAPCHAIN_EXTENSION_NAME) ||
-        !hasDeviceExtension(device, VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
-        return false;
-
-    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer{};
-    descriptorBuffer.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
-    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicState{};
-    extendedDynamicState.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
-    extendedDynamicState.pNext = &descriptorBuffer;
-    VkPhysicalDeviceVulkan12Features vulkan12{};
-    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-    vulkan12.pNext = &extendedDynamicState;
-    VkPhysicalDeviceVulkan13Features vulkan13{};
-    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    vulkan13.pNext = &vulkan12;
-    VkPhysicalDeviceFeatures2 features{};
-    features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    features.pNext = &vulkan13;
-    vkGetPhysicalDeviceFeatures2(device, &features);
-    if (!features.features.samplerAnisotropy || !features.features.dualSrcBlend ||
-        !vulkan12.bufferDeviceAddress || !vulkan13.dynamicRendering ||
-        !vulkan13.synchronization2 || !extendedDynamicState.extendedDynamicState ||
-        !descriptorBuffer.descriptorBuffer)
-        return false;
-
-    uint32_t count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
-    std::vector<VkQueueFamilyProperties> families(count);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families.data());
-    const VkQueueFlags required =
-        VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
-    for (uint32_t i = 0; i < count; ++i) {
-        VkBool32 present = VK_FALSE;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, backend->surface, &present);
-        if ((families[i].queueFlags & required) == required && present) {
-            queueFamily = i;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool createVulkanDevice() {
-    VkApplicationInfo application{};
-    application.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    application.pApplicationName = "Doriax Engine Editor";
-    application.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    application.pEngineName = "Doriax";
-    application.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    application.apiVersion = VK_API_VERSION_1_3;
-
-    std::vector<const char*> extensions = {
-        VK_KHR_SURFACE_EXTENSION_NAME,
-        VK_KHR_XLIB_SURFACE_EXTENSION_NAME
-    };
-    uint32_t extensionCount = 0;
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateInstanceExtensionProperties(
-        nullptr, &extensionCount, availableExtensions.data());
-    for (const VkExtensionProperties& extension : availableExtensions) {
-        if (std::strcmp(extension.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0) {
-            extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-            break;
-        }
-    }
-
-    VkInstanceCreateInfo instanceInfo{};
-    instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instanceInfo.pApplicationInfo = &application;
-    instanceInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    instanceInfo.ppEnabledExtensionNames = extensions.data();
-    VkResult result = vkCreateInstance(&instanceInfo, nullptr, &backend->instance);
-    if (result != VK_SUCCESS) {
-        std::fprintf(stderr, "Error: Could not create Vulkan instance (%d).\n", result);
-        return false;
-    }
-
-    VkXlibSurfaceCreateInfoKHR surfaceInfo{};
-    surfaceInfo.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
-    surfaceInfo.dpy = backend->display;
-    surfaceInfo.window = backend->mainWindow->handle;
-    result = vkCreateXlibSurfaceKHR(
-        backend->instance, &surfaceInfo, nullptr, &backend->surface);
-    if (result != VK_SUCCESS) {
-        std::fprintf(stderr, "Error: Could not create Vulkan X11 surface (%d).\n", result);
-        return false;
-    }
-
-    uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(backend->instance, &deviceCount, nullptr);
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(backend->instance, &deviceCount, devices.data());
-    for (VkPhysicalDevice device : devices) {
-        uint32_t family = UINT32_MAX;
-        if (!supportsVulkanDevice(device, family)) continue;
-        backend->physicalDevice = device;
-        backend->queueFamily = family;
-        VkPhysicalDeviceProperties properties{};
-        vkGetPhysicalDeviceProperties(device, &properties);
-        if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) break;
-    }
-    if (backend->physicalDevice == VK_NULL_HANDLE) {
-        std::fprintf(stderr,
-            "Error: Vulkan 1.3 with swapchain and descriptor-buffer support is required.\n");
-        return false;
-    }
-
-    VkPhysicalDeviceFeatures2 supported{};
-    supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    vkGetPhysicalDeviceFeatures2(backend->physicalDevice, &supported);
-
-    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBuffer{};
-    descriptorBuffer.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
-    descriptorBuffer.descriptorBuffer = VK_TRUE;
-    VkPhysicalDeviceExtendedDynamicStateFeaturesEXT extendedDynamicState{};
-    extendedDynamicState.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
-    extendedDynamicState.pNext = &descriptorBuffer;
-    extendedDynamicState.extendedDynamicState = VK_TRUE;
-    VkPhysicalDeviceVulkan12Features vulkan12{};
-    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-    vulkan12.pNext = &extendedDynamicState;
-    vulkan12.bufferDeviceAddress = VK_TRUE;
-    VkPhysicalDeviceVulkan13Features vulkan13{};
-    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    vulkan13.pNext = &vulkan12;
-    vulkan13.dynamicRendering = VK_TRUE;
-    vulkan13.synchronization2 = VK_TRUE;
-    VkPhysicalDeviceFeatures2 requiredFeatures{};
-    requiredFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    requiredFeatures.pNext = &vulkan13;
-    requiredFeatures.features.samplerAnisotropy = VK_TRUE;
-    requiredFeatures.features.dualSrcBlend = VK_TRUE;
-    requiredFeatures.features.textureCompressionBC = supported.features.textureCompressionBC;
-    requiredFeatures.features.textureCompressionETC2 = supported.features.textureCompressionETC2;
-    requiredFeatures.features.textureCompressionASTC_LDR =
-        supported.features.textureCompressionASTC_LDR;
-
-    const float priority = 1.0f;
-    VkDeviceQueueCreateInfo queueInfo{};
-    queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueInfo.queueFamilyIndex = backend->queueFamily;
-    queueInfo.queueCount = 1;
-    queueInfo.pQueuePriorities = &priority;
-    const char* deviceExtensions[] = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME
-    };
-    VkDeviceCreateInfo deviceInfo{};
-    deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceInfo.pNext = &requiredFeatures;
-    deviceInfo.queueCreateInfoCount = 1;
-    deviceInfo.pQueueCreateInfos = &queueInfo;
-    deviceInfo.enabledExtensionCount = 2;
-    deviceInfo.ppEnabledExtensionNames = deviceExtensions;
-    result = vkCreateDevice(
-        backend->physicalDevice, &deviceInfo, nullptr, &backend->device);
-    if (result != VK_SUCCESS) {
-        std::fprintf(stderr, "Error: Could not create Vulkan device (%d).\n", result);
-        return false;
-    }
-    vkGetDeviceQueue(backend->device, backend->queueFamily, 0, &backend->queue);
+bool selectVisual() {
+    backend->visual = DefaultVisual(backend->display, backend->screen);
+    backend->visualDepth = DefaultDepth(backend->display, backend->screen);
     return true;
 }
 
-VkPresentModeKHR choosePresentMode(bool synchronized) {
-    if (synchronized) {
-        const VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
-        return ImGui_ImplVulkanH_SelectPresentMode(
-            backend->physicalDevice, backend->surface, &mode, 1);
+int createSurface(ImGuiViewport* viewport, ImU64 instance, const void* allocator,
+                  ImU64* surface) {
+    auto* window = static_cast<NativeWindow*>(viewport->PlatformUserData);
+    VkXlibSurfaceCreateInfoKHR info{};
+    info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+    info.dpy = backend->display;
+    info.window = window->handle;
+    return static_cast<int>(vkCreateXlibSurfaceKHR(
+        reinterpret_cast<VkInstance>(instance), &info,
+        static_cast<const VkAllocationCallbacks*>(allocator),
+        reinterpret_cast<VkSurfaceKHR*>(surface)));
+}
+
+editor::RendererPlatform rendererPlatform() {
+    editor::RendererPlatform platform;
+    platform.surfaceExtension = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
+    platform.createSurface = createSurface;
+    platform.requestRedraw = []() { backend->redrawRequested = true; };
+    return platform;
+}
+
+#else // SOKOL_GLCORE
+
+using CreateContextAttribsProc =
+    GLXContext (*)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
+using SwapIntervalProc = void (*)(Display*, GLXDrawable, int);
+
+GLXFBConfig framebufferConfig = nullptr;
+GLXContext glContext = nullptr;
+SwapIntervalProc swapIntervalEXT = nullptr;
+bool glxContextError = false;
+
+template <typename T>
+T glxProc(const char* name) {
+    return reinterpret_cast<T>(
+        glXGetProcAddressARB(reinterpret_cast<const GLubyte*>(name)));
+}
+
+bool hasGlxExtension(const char* name) {
+    const char* extensions = glXQueryExtensionsString(
+        backend->display, backend->screen);
+    if (!extensions || !name || !*name || std::strchr(name, ' ')) return false;
+
+    const size_t length = std::strlen(name);
+    for (const char* match = extensions; (match = std::strstr(match, name));
+         match += length) {
+        const bool startsToken = match == extensions || match[-1] == ' ';
+        const bool endsToken = match[length] == '\0' || match[length] == ' ';
+        if (startsToken && endsToken) return true;
     }
-    const VkPresentModeKHR modes[] = {
-        VK_PRESENT_MODE_IMMEDIATE_KHR,
-        VK_PRESENT_MODE_MAILBOX_KHR,
-        VK_PRESENT_MODE_FIFO_KHR
+    return false;
+}
+
+int recordGlxContextError(Display*, XErrorEvent*) {
+    glxContextError = true;
+    return 0;
+}
+
+Window drawableOf(ImGuiViewport* viewport) {
+    if (!viewport) return backend->mainWindow->handle;
+    return static_cast<NativeWindow*>(viewport->PlatformUserData)->handle;
+}
+
+// One configuration for every window, so a single context serves all of them
+bool selectVisual() {
+    static const int attributes[] = {
+        GLX_X_RENDERABLE, True,
+        GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+        GLX_RENDER_TYPE, GLX_RGBA_BIT,
+        GLX_DOUBLEBUFFER, True,
+        GLX_RED_SIZE, 8,
+        GLX_GREEN_SIZE, 8,
+        GLX_BLUE_SIZE, 8,
+        GLX_DEPTH_SIZE, 24,
+        GLX_STENCIL_SIZE, 8,
+        None
     };
-    return ImGui_ImplVulkanH_SelectPresentMode(
-        backend->physicalDevice, backend->surface, modes, 3);
+    int count = 0;
+    GLXFBConfig* configs = glXChooseFBConfig(
+        backend->display, backend->screen, attributes, &count);
+    if (!configs || count == 0) {
+        if (configs) XFree(configs);
+        std::fprintf(stderr, "Error: No GLX framebuffer configuration available.\n");
+        return false;
+    }
+    framebufferConfig = configs[0];
+    XVisualInfo* info = glXGetVisualFromFBConfig(backend->display, framebufferConfig);
+    XFree(configs);
+    if (!info) {
+        std::fprintf(stderr, "Error: No X visual for the GLX configuration.\n");
+        return false;
+    }
+    backend->visual = info->visual;
+    backend->visualDepth = info->depth;
+    XFree(info);
+    return true;
 }
 
-void checkVkResult(VkResult result) {
-    if (result < 0)
-        std::fprintf(stderr, "Vulkan error: %d\n", result);
-}
-
-void destroySokolSemaphores() {
-    for (VkSemaphore semaphore : backend->sokolFinishedSemaphores)
-        vkDestroySemaphore(backend->device, semaphore, nullptr);
-    backend->sokolFinishedSemaphores.clear();
-}
-
-bool initializeImGuiVulkan();
-
-void rebuildImGuiPipeline() {
-    VkFormat format = backend->swapchain.SurfaceFormat.format;
-    VkPipelineRenderingCreateInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachmentFormats = &format;
-
-    ImGui_ImplVulkan_PipelineInfo pipelineInfo{};
-    pipelineInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    pipelineInfo.PipelineRenderingCreateInfo = renderingInfo;
-    ImGui_ImplVulkan_CreateMainPipeline(&pipelineInfo);
-}
-
-bool createMainSwapchain(int width, int height, bool synchronized) {
-    if (width <= 0 || height <= 0) return false;
-    if (backend->device != VK_NULL_HANDLE) {
-        const VkResult result = vkDeviceWaitIdle(backend->device);
-        if (result != VK_SUCCESS) {
-            checkVkResult(result);
+editor::RendererPlatform rendererPlatform() {
+    editor::RendererPlatform platform;
+    platform.createContext = []() {
+        if (!hasGlxExtension("GLX_ARB_create_context")) {
+            std::fprintf(stderr, "Error: GLX_ARB_create_context is required.\n");
             return false;
         }
-    }
-    destroySokolSemaphores();
-
-    ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    const VkFormat previousFormat = window.SurfaceFormat.format;
-    window.UseDynamicRendering = true;
-    window.Surface = backend->surface;
-    const VkFormat formats[] = {
-        VK_FORMAT_B8G8R8A8_UNORM,
-        VK_FORMAT_R8G8B8A8_UNORM
-    };
-    window.SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(
-        backend->physicalDevice, window.Surface, formats, 2,
-        VK_COLORSPACE_SRGB_NONLINEAR_KHR);
-    window.PresentMode = choosePresentMode(synchronized);
-    ImGui_ImplVulkanH_CreateOrResizeWindow(
-        backend->instance, backend->physicalDevice, backend->device,
-        &window, backend->queueFamily, nullptr, width, height, 2, 0);
-    if (ImGui::GetIO().BackendRendererUserData != nullptr &&
-        previousFormat != window.SurfaceFormat.format)
-        rebuildImGuiPipeline();
-
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    backend->sokolFinishedSemaphores.resize(window.SemaphoreCount);
-    for (VkSemaphore& semaphore : backend->sokolFinishedSemaphores) {
-        if (vkCreateSemaphore(backend->device, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
-            std::fprintf(stderr, "Error: Could not create Vulkan frame semaphore.\n");
+        auto createContext = glxProc<CreateContextAttribsProc>("glXCreateContextAttribsARB");
+        if (!createContext) {
+            std::fprintf(stderr, "Error: GLX_ARB_create_context is required.\n");
             return false;
         }
-    }
-    backend->swapchainRebuild = false;
-    backend->redrawRequested = true;
-    return true;
-}
-
-bool failMainFrame(VkResult result) {
-    checkVkResult(result);
-    backend->swapchainRebuild = true;
-    return false;
-}
-
-void removeInvalidImGuiTextures() {
-    if (!backend || backend->device == VK_NULL_HANDLE) return;
-
-    bool deviceIdle = false;
-    for (auto texture = backend->imguiTextures.begin();
-         texture != backend->imguiTextures.end();) {
-        if (TextureRender::isViewValid(texture->first)) {
-            ++texture;
-            continue;
+        const int attributes[] = {
+            GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
+            GLX_CONTEXT_MINOR_VERSION_ARB, 1,
+            GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+            None
+        };
+        // Some drivers report an unsupported profile with an X error instead
+        // of returning null
+        XSync(backend->display, False);
+        glxContextError = false;
+        XErrorHandler previousHandler = XSetErrorHandler(recordGlxContextError);
+        glContext = createContext(
+            backend->display, framebufferConfig, nullptr, True, attributes);
+        XSync(backend->display, False);
+        XSetErrorHandler(previousHandler);
+        if (glxContextError || !glContext) {
+            if (glContext) glXDestroyContext(backend->display, glContext);
+            glContext = nullptr;
+            std::fprintf(stderr, "Error: Could not create an OpenGL 4.1 core context.\n");
+            return false;
         }
-        if (!deviceIdle) {
-            vkDeviceWaitIdle(backend->device);
-            deviceIdle = true;
+        if (!glXMakeCurrent(
+                backend->display, backend->mainWindow->handle, glContext)) {
+            std::fprintf(stderr, "Error: Could not activate the OpenGL context.\n");
+            glXDestroyContext(backend->display, glContext);
+            glContext = nullptr;
+            return false;
         }
-        ImGui_ImplVulkan_RemoveTexture(texture->second);
-        texture = backend->imguiTextures.erase(texture);
-    }
+        if (hasGlxExtension("GLX_EXT_swap_control"))
+            swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
+        return true;
+    };
+    platform.destroyContext = []() {
+        if (glContext) {
+            glXMakeCurrent(backend->display, None, nullptr);
+            glXDestroyContext(backend->display, glContext);
+            glContext = nullptr;
+        }
+        swapIntervalEXT = nullptr;
+        framebufferConfig = nullptr;
+    };
+    platform.makeCurrent = [](ImGuiViewport* viewport) {
+        if (!glXMakeCurrent(backend->display, drawableOf(viewport), glContext))
+            std::fprintf(stderr, "Error: Could not activate an OpenGL viewport.\n");
+    };
+    platform.swapBuffers = [](ImGuiViewport* viewport) {
+        const Window drawable = drawableOf(viewport);
+        if (!glXMakeCurrent(backend->display, drawable, glContext)) {
+            std::fprintf(stderr, "Error: Could not activate an OpenGL viewport.\n");
+            return;
+        }
+        if (viewport && swapIntervalEXT)
+            swapIntervalEXT(backend->display, drawable, 0);
+        glXSwapBuffers(backend->display, drawable);
+    };
+    platform.setSwapInterval = [](int interval) {
+        if (swapIntervalEXT)
+            swapIntervalEXT(backend->display, backend->mainWindow->handle, interval);
+    };
+    return platform;
 }
 
-bool initializeImGuiVulkan() {
-    VkFormat format = backend->swapchain.SurfaceFormat.format;
-    VkPipelineRenderingCreateInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachmentFormats = &format;
-
-    ImGui_ImplVulkan_InitInfo info{};
-    info.ApiVersion = VK_API_VERSION_1_3;
-    info.Instance = backend->instance;
-    info.PhysicalDevice = backend->physicalDevice;
-    info.Device = backend->device;
-    info.QueueFamily = backend->queueFamily;
-    info.Queue = backend->queue;
-    info.DescriptorPoolSize = 8192;
-    info.MinImageCount = 2;
-    // ImGui's swapchain helper accepts at most 15 images. Allocating the full
-    // render-buffer ring keeps it valid across present-mode changes.
-    info.ImageCount = IMGUI_RENDER_BUFFER_COUNT;
-    info.UseDynamicRendering = true;
-    info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    info.PipelineInfoMain.PipelineRenderingCreateInfo = renderingInfo;
-    info.PipelineInfoForViewports.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    info.CheckVkResultFn = checkVkResult;
-    if (!ImGui_ImplVulkan_Init(&info)) return false;
-    return true;
-}
-
-bool acquireMainFrame() {
-    ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    ImGui_ImplVulkanH_FrameSemaphores& semaphores =
-        window.FrameSemaphores[window.SemaphoreIndex];
-    VkResult result = vkAcquireNextImageKHR(
-        backend->device, window.Swapchain, UINT64_MAX,
-        semaphores.ImageAcquiredSemaphore, VK_NULL_HANDLE, &window.FrameIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        backend->swapchainRebuild = true;
-        return false;
-    }
-    if (result == VK_SUBOPTIMAL_KHR) backend->swapchainRebuild = true;
-    else if (result != VK_SUCCESS) return failMainFrame(result);
-
-    ImGui_ImplVulkanH_Frame& frame = window.Frames[window.FrameIndex];
-    result = vkWaitForFences(backend->device, 1, &frame.Fence, VK_TRUE, UINT64_MAX);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-    return true;
-}
-
-bool submitMainFrame(ImDrawData* drawData) {
-    ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    ImGui_ImplVulkanH_Frame& frame = window.Frames[window.FrameIndex];
-    const uint32_t semaphoreIndex = window.SemaphoreIndex;
-    VkSemaphore waitSemaphore = backend->sokolFinishedSemaphores[semaphoreIndex];
-    VkSemaphore signalSemaphore =
-        window.FrameSemaphores[semaphoreIndex].RenderCompleteSemaphore;
-
-    VkResult result = vkResetCommandPool(backend->device, frame.CommandPool, 0);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    result = vkBeginCommandBuffer(frame.CommandBuffer, &beginInfo);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-
-    VkImageMemoryBarrier beginBarrier{};
-    beginBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    beginBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    beginBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    beginBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    beginBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    beginBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    beginBarrier.image = frame.Backbuffer;
-    beginBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    beginBarrier.subresourceRange.levelCount = 1;
-    beginBarrier.subresourceRange.layerCount = 1;
-    vkCmdPipelineBarrier(
-        frame.CommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
-        0, nullptr, 0, nullptr, 1, &beginBarrier);
-
-    VkRenderingAttachmentInfo attachment{};
-    attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    attachment.imageView = frame.BackbufferView;
-    attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    VkRenderingInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    renderingInfo.renderArea.extent.width = window.Width;
-    renderingInfo.renderArea.extent.height = window.Height;
-    renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachments = &attachment;
-    vkCmdBeginRendering(frame.CommandBuffer, &renderingInfo);
-    ImGui_ImplVulkan_RenderDrawData(drawData, frame.CommandBuffer);
-    vkCmdEndRendering(frame.CommandBuffer);
-
-    VkImageMemoryBarrier endBarrier{};
-    endBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    endBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    endBarrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    endBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    endBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    endBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    endBarrier.image = frame.Backbuffer;
-    endBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    endBarrier.subresourceRange.levelCount = 1;
-    endBarrier.subresourceRange.layerCount = 1;
-    vkCmdPipelineBarrier(
-        frame.CommandBuffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
-        0, nullptr, 0, nullptr, 1, &endBarrier);
-
-    result = vkEndCommandBuffer(frame.CommandBuffer);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-    result = vkResetFences(backend->device, 1, &frame.Fence);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = &waitSemaphore;
-    submitInfo.pWaitDstStageMask = &waitStage;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &frame.CommandBuffer;
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &signalSemaphore;
-    result = vkQueueSubmit(backend->queue, 1, &submitInfo, frame.Fence);
-    if (result != VK_SUCCESS) return failMainFrame(result);
-    return true;
-}
-
-void presentMainFrame() {
-    ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    ImGui_ImplVulkanH_FrameSemaphores& semaphores =
-        window.FrameSemaphores[window.SemaphoreIndex];
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &semaphores.RenderCompleteSemaphore;
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &window.Swapchain;
-    presentInfo.pImageIndices = &window.FrameIndex;
-    VkResult result = vkQueuePresentKHR(backend->queue, &presentInfo);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-        backend->swapchainRebuild = true;
-    else if (result != VK_SUCCESS) {
-        checkVkResult(result);
-        backend->swapchainRebuild = true;
-    }
-    window.SemaphoreIndex = (window.SemaphoreIndex + 1) % window.SemaphoreCount;
-}
-
-void shutdownVulkan() {
-    if (backend->device != VK_NULL_HANDLE) vkDeviceWaitIdle(backend->device);
-    destroySokolSemaphores();
-    if (backend->swapchain.Swapchain != VK_NULL_HANDLE)
-        ImGui_ImplVulkanH_DestroyWindow(
-            backend->instance, backend->device, &backend->swapchain, nullptr);
-    if (backend->surface != VK_NULL_HANDLE)
-        vkDestroySurfaceKHR(backend->instance, backend->surface, nullptr);
-    if (backend->device != VK_NULL_HANDLE)
-        vkDestroyDevice(backend->device, nullptr);
-    if (backend->instance != VK_NULL_HANDLE)
-        vkDestroyInstance(backend->instance, nullptr);
-}
+#endif
 
 bool initializeX11(int width, int height) {
     XInitThreads();
@@ -2616,8 +2322,7 @@ bool initializeX11(int width, int height) {
         backend->randrEventBase = -1;
     }
 
-    backend->visual = DefaultVisual(backend->display, backend->screen);
-    backend->visualDepth = DefaultDepth(backend->display, backend->screen);
+    if (!selectVisual()) return false;
 
     backend->wmDelete = atom("WM_DELETE_WINDOW");
     backend->wmProtocols = atom("WM_PROTOCOLS");
@@ -2741,22 +2446,24 @@ int editor::Backend::init(int argc, char* argv[]) {
         return -1;
     }
 
-    CameraRender render;
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     initImGuiPlatform();
 
     app.setup();
-    if (!createVulkanDevice() ||
-        !createMainSwapchain(initialWidth, initialHeight, true) ||
-        !initializeImGuiVulkan()) {
+    backend->renderer = std::make_unique<editor::Renderer>();
+    if (!backend->renderer->init(
+            rendererPlatform(), initialWidth, initialHeight, true)) {
         shutdownImGuiPlatform();
         ImGui::DestroyContext();
         NFD_Quit();
-        shutdownVulkan();
+        backend->renderer.reset();
         shutdownX11();
         return -1;
     }
+
+    backend->editorFrame.init(*backend->renderer, app, newImGuiFrame);
+
     app.engineInit(argc, argv);
     // Match GLFW/SDL soft hide at startup: keep the OS cursor manageable by
     // ImGui. hideEditorCursor() sets NoMouseCursorChange and would leave the
@@ -2765,9 +2472,6 @@ int editor::Backend::init(int argc, char* argv[]) {
                   backend->invisibleCursor);
     app.engineViewLoaded();
 
-    Project* activeProject = app.getProject();
-    bool currentFrameSync = true;
-
     app.setWakeCallback([]() {
         if (!backend || backend->wakePipe[1] < 0) return;
         const char byte = 1;
@@ -2775,102 +2479,19 @@ int editor::Backend::init(int argc, char* argv[]) {
         (void)ignored;
     });
 
-    double lastActivityTime = monotonicSeconds();
-    constexpr double IDLE_ENTER_DELAY = 0.5;
     constexpr double IDLE_WAIT_TIMEOUT = 0.1;
 
     while (!backend->shouldClose) {
-        const double frameStart = monotonicSeconds();
-        const bool idleFrame = frameStart - lastActivityTime > IDLE_ENTER_DELAY;
-        processEvents(idleFrame ? IDLE_WAIT_TIMEOUT : 0.0);
+        processEvents(backend->editorFrame.isIdle() ? IDLE_WAIT_TIMEOUT : 0.0);
         pollGamepads();
 
-        const bool minimized = isWindowMinimized(backend->mainWindow);
-        const bool focused = backend->mainWindow->focused;
-        const bool playSessionActive = activeProject->isPlaySessionActive();
-        const bool frameSync = !playSessionActive || activeProject->isVSyncEnabled();
-        setMouseControlSuspended(activeProject->isPlaySessionActive() &&
-                                 !activeProject->isMainScenePlaying());
-
-        const bool desiredFrameSync = focused && frameSync;
-        int windowWidth = 0;
-        int windowHeight = 0;
-        getWindowSize(backend->mainWindow, windowWidth, windowHeight);
-        if (!minimized && (backend->swapchainRebuild ||
-            windowWidth != backend->swapchain.Width ||
-            windowHeight != backend->swapchain.Height ||
-            desiredFrameSync != currentFrameSync)) {
-            if (!createMainSwapchain(
-                    windowWidth, windowHeight, desiredFrameSync)) {
-                backend->shouldClose = true;
-                continue;
-            }
-            currentFrameSync = desiredFrameSync;
-        }
-
-        const bool renderRequested = playSessionActive || !idleFrame ||
-                                     backend->redrawRequested ||
-                                     app.hasPendingMainThreadTasks();
-        const bool renderMainFrame = !minimized && renderRequested;
-        const bool frameReady = renderMainFrame && acquireMainFrame();
-
-        ImGui_ImplVulkan_NewFrame();
-        newImGuiFrame();
-        ImGui::NewFrame();
-
-        if (frameReady) {
-            app.engineRender();
-        } else {
-            app.processMainThreadTasks();
-        }
-
-        app.show();
-        bool activityThisFrame = false;
-        {
-            ImGuiIO& io = ImGui::GetIO();
-            bool typing = io.InputQueueCharacters.Size > 0;
-            for (int key = ImGuiKey_Keyboard_BEGIN;
-                 !typing && key < ImGuiKey_Keyboard_END; ++key)
-                typing = ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
-            const bool activity =
-                io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
-                io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
-                ImGui::IsAnyMouseDown() || typing || io.WantTextInput ||
-                ImGui::IsAnyItemActive() || app.didRenderScene() ||
-                app.hasPendingMainThreadTasks() || backend->redrawRequested;
-            backend->redrawRequested = false;
-            if (activity) lastActivityTime = monotonicSeconds();
-            activityThisFrame = activity;
-        }
-
-        ImGui::Render();
-        bool frameSubmitted = false;
-        if (frameReady) {
-            // App::show() may create preview framebuffers. Initialize those before
-            // opening the swapchain pass so Sokol never sees nested passes.
-            render.setClearColor(Vector4(0.45f, 0.55f, 0.60f, 1.00f));
-            render.startRenderPass(windowWidth, windowHeight);
-            render.endRenderPass();
-            SystemRender::commit();
-            frameSubmitted = submitMainFrame(ImGui::GetDrawData());
-        }
-
-        const bool submitFailed = frameReady && !frameSubmitted;
-        if (!submitFailed &&
-            (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)) {
-            ImGui::UpdatePlatformWindows();
-            if (renderRequested || activityThisFrame)
-                ImGui::RenderPlatformWindowsDefault();
-        }
-
-        if (frameSubmitted) presentMainFrame();
-        removeInvalidImGuiTextures();
-
-        if (!focused || minimized) {
-            const int sleepMs = static_cast<int>(
-                (backend->framePeriod - (monotonicSeconds() - frameStart)) * 1000.0);
-            if (sleepMs > 0) usleep(static_cast<useconds_t>(sleepMs * 1000));
-        }
+        editor::EditorFrameState state{backend->redrawRequested};
+        state.framePeriod = backend->framePeriod;
+        state.minimized = isWindowMinimized(backend->mainWindow);
+        state.focused = backend->mainWindow->focused;
+        getWindowSize(backend->mainWindow, state.width, state.height);
+        if (!backend->editorFrame.run(state))
+            backend->shouldClose = true;
     }
 
     app.shutdownBackgroundWork();
@@ -2898,13 +2519,12 @@ int editor::Backend::init(int argc, char* argv[]) {
     }
     app.saveWindowSettings(width, height, maximized);
 
-    vkDeviceWaitIdle(backend->device);
-    ImGui_ImplVulkan_Shutdown();
+    backend->renderer->shutdownImGui();
     shutdownImGuiPlatform();
     ImGui::DestroyContext();
     app.engineViewDestroyed();
     NFD_Quit();
-    shutdownVulkan();
+    backend->renderer.reset();
     shutdownX11();
     app.engineShutdown();
     return 0;
@@ -2998,57 +2618,23 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
 
 ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {
     if (!texture || !texture->isCreated()) return ImTextureID{};
-    const uint32_t viewId = texture->getViewId();
-    auto existing = backend->imguiTextures.find(viewId);
-    if (existing != backend->imguiTextures.end())
-        return (ImTextureID)existing->second;
-
-    VkImageView imageView = reinterpret_cast<VkImageView>(
-        const_cast<void*>(texture->getVulkanHandler()));
-    if (imageView == VK_NULL_HANDLE) return ImTextureID{};
-    VkDescriptorSet descriptor = ImGui_ImplVulkan_AddTexture(
-        imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    backend->imguiTextures.emplace(viewId, descriptor);
-    return (ImTextureID)descriptor;
+    return backend->renderer->getTexture(texture);
 }
 
+#if defined(SOKOL_VULKAN)
+
 sg_environment editor::Backend::getSokolEnvironment() {
-    sg_environment environment{};
-    environment.defaults.sample_count = 1;
-    environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
-    environment.defaults.depth_format = SG_PIXELFORMAT_DEPTH_STENCIL;
-    environment.vulkan.instance = backend->instance;
-    environment.vulkan.physical_device = backend->physicalDevice;
-    environment.vulkan.device = backend->device;
-    environment.vulkan.queue = backend->queue;
-    environment.vulkan.queue_family_index = backend->queueFamily;
-    return environment;
+    return backend->renderer->getSokolEnvironment();
 }
 
 sg_swapchain editor::Backend::getSokolSwapchain() {
-    const ImGui_ImplVulkanH_Window& window = backend->swapchain;
-    const ImGui_ImplVulkanH_Frame& frame = window.Frames[window.FrameIndex];
-    const ImGui_ImplVulkanH_FrameSemaphores& semaphores =
-        window.FrameSemaphores[window.SemaphoreIndex];
-    sg_swapchain swapchain{};
-    swapchain.width = window.Width;
-    swapchain.height = window.Height;
-    swapchain.sample_count = 1;
-    swapchain.color_format = window.SurfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM
-        ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_BGRA8;
-    swapchain.depth_format = SG_PIXELFORMAT_NONE;
-    swapchain.vulkan.render_image = frame.Backbuffer;
-    swapchain.vulkan.render_view = frame.BackbufferView;
-    swapchain.vulkan.present_complete_semaphore = semaphores.ImageAcquiredSemaphore;
-    swapchain.vulkan.render_finished_semaphore =
-        backend->sokolFinishedSemaphores[window.SemaphoreIndex];
-    return swapchain;
+    return backend->renderer->getSokolSwapchain();
 }
 
+#endif
+
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
-    title = projectName.empty()
-        ? "Empty project - Doriax Engine"
-        : projectName + " - Doriax Engine";
+    title = editor::EditorFrame::formatWindowTitle(projectName);
     if (backend && backend->mainWindow) setWindowTitle(backend->mainWindow, title.c_str());
 }
 

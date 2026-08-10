@@ -44,6 +44,8 @@ namespace doriax::editor{
 
             static ImTextureID getImGuiTexture(TextureRender* texture);
 
+            // Vulkan and Metal keep the device and drawable in the backend,
+            // GL uses System's defaults
             #if defined(SOKOL_VULKAN) || defined(SOKOL_METAL)
             static sg_environment getSokolEnvironment();
             static sg_swapchain getSokolSwapchain();

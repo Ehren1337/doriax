@@ -54,8 +54,14 @@ if(NOT API_BACKEND)
 endif()
 message(STATUS "API backend is set to ${API_BACKEND}")
 
+# The native Linux and Windows backends render through Vulkan or OpenGL; the
+# other backends are tied to a single API.
 if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
-    set(GRAPHIC_BACKEND "vulkan")
+    if(NOT GRAPHIC_BACKEND)
+        set(GRAPHIC_BACKEND "vulkan")
+    elseif(NOT GRAPHIC_BACKEND STREQUAL "vulkan" AND NOT GRAPHIC_BACKEND STREQUAL "glcore")
+        message(FATAL_ERROR "API_BACKEND=${API_BACKEND} supports GRAPHIC_BACKEND vulkan or glcore")
+    endif()
 elseif(API_BACKEND STREQUAL "mac")
     set(GRAPHIC_BACKEND "metal")
 else()
@@ -147,39 +153,40 @@ if(API_BACKEND STREQUAL "linux")
         message(FATAL_ERROR "API_BACKEND=linux is only available on Linux")
     endif()
     find_package(X11 REQUIRED COMPONENTS Xrandr)
-    find_package(Vulkan REQUIRED)
 
-    list(APPEND BACKEND_SOURCES
-        ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp
-        ${EDITOR_DIR}/backend/BackendLinux.cpp
-    )
+    list(APPEND BACKEND_SOURCES ${EDITOR_DIR}/backend/BackendLinux.cpp)
+    list(APPEND BACKEND_LIBS X11::X11 X11::Xrandr)
 
-    list(APPEND BACKEND_LIBS
-        X11::X11
-        X11::Xrandr
-        Vulkan::Vulkan
-    )
-    add_definitions("-DVK_USE_PLATFORM_XLIB_KHR")
+    if(GRAPHIC_BACKEND STREQUAL "vulkan")
+        find_package(Vulkan REQUIRED)
+        list(APPEND BACKEND_LIBS Vulkan::Vulkan)
+        add_definitions("-DVK_USE_PLATFORM_XLIB_KHR")
+    else()
+        find_package(OpenGL REQUIRED)
+    endif()
 elseif(API_BACKEND STREQUAL "win")
     if(NOT WIN32)
         message(FATAL_ERROR "API_BACKEND=win is only available on Windows")
     endif()
-    find_package(Vulkan REQUIRED)
-
     list(APPEND BACKEND_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
-        ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp
         ${EDITOR_DIR}/backend/BackendWin.cpp
     )
 
     list(APPEND BACKEND_LIBS
-        Vulkan::Vulkan
         user32
         gdi32
         dwmapi
         shell32
     )
-    add_definitions("-DVK_USE_PLATFORM_WIN32_KHR")
+
+    if(GRAPHIC_BACKEND STREQUAL "vulkan")
+        find_package(Vulkan REQUIRED)
+        list(APPEND BACKEND_LIBS Vulkan::Vulkan)
+        add_definitions("-DVK_USE_PLATFORM_WIN32_KHR")
+    else()
+        list(APPEND BACKEND_LIBS opengl32)
+    endif()
 elseif(API_BACKEND STREQUAL "mac")
     if(NOT APPLE)
         message(FATAL_ERROR "API_BACKEND=mac is only available on macOS")
@@ -187,7 +194,6 @@ elseif(API_BACKEND STREQUAL "mac")
 
     list(APPEND BACKEND_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm
-        ${IMGUI_DIR}/backends/imgui_impl_metal.mm
         ${EDITOR_DIR}/backend/BackendMac.mm
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/apple/DoriaxGameController.mm
     )
@@ -244,6 +250,16 @@ elseif(API_BACKEND STREQUAL "sdl")
     )
 else()
     message(FATAL_ERROR "Unknown API_BACKEND '${API_BACKEND}' (expected linux, win, mac, glfw, or sdl)")
+endif()
+
+# The native backends share the frame loop and pick a renderer by GRAPHIC_BACKEND
+if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
+    list(APPEND BACKEND_SOURCES ${EDITOR_DIR}/backend/EditorFrame.cpp)
+    if(GRAPHIC_BACKEND STREQUAL "vulkan")
+        list(APPEND BACKEND_SOURCES ${EDITOR_DIR}/backend/renderer/RendererVulkan.cpp)
+    else()
+        list(APPEND BACKEND_SOURCES ${EDITOR_DIR}/backend/renderer/RendererGL.cpp)
+    endif()
 endif()
 
 set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
@@ -365,7 +381,12 @@ set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui_widgets.cpp
 )
 
-if(GRAPHIC_BACKEND STREQUAL "glcore")
+# ImGui platform backends go with API_BACKEND above, renderers with GRAPHIC_BACKEND
+if(GRAPHIC_BACKEND STREQUAL "vulkan")
+    list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp)
+elseif(GRAPHIC_BACKEND STREQUAL "metal")
+    list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_metal.mm)
+else()
     list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
 endif()
 

@@ -11,6 +11,8 @@
 #include <cstring>
 #include <cstdlib>
 
+// Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
+// thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched.
 #if defined(DORIAX_EDITOR) && defined(SOKOL_VULKAN)
 #include <vulkan/vulkan.h>
 
@@ -27,7 +29,7 @@ VkResult createSokolImage(VkDevice device, const VkImageCreateInfo* createInfo,
 
 namespace {
 VkResult createSokolImage(VkDevice device, const VkImageCreateInfo* createInfo,
-                          const VkAllocationCallbacks* allocator, VkImage* image) {
+                          const VkAllocationCallbacks* allocator, VkImage* image){
     VkImageCreateInfo info = *createInfo;
     if (info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
         info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
