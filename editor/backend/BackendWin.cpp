@@ -58,6 +58,7 @@ constexpr UINT LIVE_RESIZE_INTERVAL_MS = 16;
 constexpr int GAMEPAD_COUNT = XUSER_MAX_COUNT;
 constexpr int GAMEPAD_BUTTON_COUNT = 15;
 constexpr int GAMEPAD_AXIS_COUNT = 6;
+constexpr ULONGLONG GAMEPAD_SCAN_INTERVAL_MS = 1000;
 #if defined(SOKOL_VULKAN)
 constexpr UINT WINDOW_CLASS_STYLE = CS_HREDRAW | CS_VREDRAW;
 #else
@@ -108,6 +109,7 @@ struct WinBackendData {
 
     HMODULE xinputLibrary = nullptr;
     XInputGetStateProc xinputGetState = nullptr;
+    ULONGLONG nextGamepadScan = 0;
     std::array<Gamepad, GAMEPAD_COUNT> gamepads;
     std::unique_ptr<editor::Renderer> renderer;
     editor::EditorFrame editorFrame;
@@ -384,6 +386,13 @@ void disconnectGamepad(int id) {
 
 void pollGamepads() {
     if (!backend->xinputGetState) return;
+
+    // Probing an empty slot costs a device query on the older XInput libraries,
+    // so look for new controllers once per second instead of every frame.
+    const ULONGLONG now = GetTickCount64();
+    const bool scanEmptySlots = now >= backend->nextGamepadScan;
+    if (scanEmptySlots) backend->nextGamepadScan = now + GAMEPAD_SCAN_INTERVAL_MS;
+
     constexpr std::array<WORD, GAMEPAD_BUTTON_COUNT> buttonMasks = {
         XINPUT_GAMEPAD_A,
         XINPUT_GAMEPAD_B,
@@ -403,9 +412,11 @@ void pollGamepads() {
     };
 
     for (DWORD id = 0; id < GAMEPAD_COUNT; ++id) {
+        Gamepad& gamepad = backend->gamepads[id];
+        if (!gamepad.connected && !scanEmptySlots) continue;
+
         XINPUT_STATE state{};
         const bool connected = backend->xinputGetState(id, &state) == ERROR_SUCCESS;
-        Gamepad& gamepad = backend->gamepads[id];
         if (!connected) {
             disconnectGamepad(static_cast<int>(id));
             continue;

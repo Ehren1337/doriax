@@ -1,6 +1,7 @@
 #include "Backend.h"
 #include "EditorHost.h"
 #include "backend/EditorFrame.h"
+#include "backend/GamepadDB.h"
 #include "backend/renderer/Renderer.h"
 
 #include "Engine.h"
@@ -62,6 +63,9 @@ constexpr long WINDOW_EVENT_MASK =
 constexpr int GAMEPAD_COUNT = 16;
 constexpr int GAMEPAD_BUTTON_COUNT = 15;
 constexpr int GAMEPAD_AXIS_COUNT = 6;
+// Raw device controls a community mapping can refer to
+constexpr int GAMEPAD_RAW_AXIS_COUNT = 16;
+constexpr int GAMEPAD_RAW_BUTTON_COUNT = 32;
 constexpr int MENU_BAR_HEIGHT = 27;
 constexpr int MENU_ITEM_HEIGHT = 25;
 constexpr int MENU_SEPARATOR_HEIGHT = 9;
@@ -92,6 +96,12 @@ struct Gamepad {
     std::array<float, GAMEPAD_AXIS_COUNT> axes{};
     int hatX = 0;
     int hatY = 0;
+
+    editor::GamepadMapping mapping;
+    bool mapped = false;
+    std::array<float, GAMEPAD_RAW_AXIS_COUNT> rawAxes{};
+    std::array<unsigned char, GAMEPAD_RAW_BUTTON_COUNT> rawButtons{};
+    int hat = 0;
 };
 
 struct OutgoingSelection {
@@ -1732,10 +1742,97 @@ void setGamepadButton(int id, Gamepad& gamepad, int button, bool pressed) {
 void updateHat(int id, Gamepad& gamepad, bool horizontal, int value) {
     if (horizontal) gamepad.hatX = value;
     else gamepad.hatY = value;
+    // Community mappings address the hat as the bits of h0
+    gamepad.hat = (gamepad.hatY < 0 ? 1 : 0) | (gamepad.hatX > 0 ? 2 : 0) |
+                  (gamepad.hatY > 0 ? 4 : 0) | (gamepad.hatX < 0 ? 8 : 0);
+    if (gamepad.mapped) return;
     setGamepadButton(id, gamepad, 11, gamepad.hatY < 0);
     setGamepadButton(id, gamepad, 12, gamepad.hatX > 0);
     setGamepadButton(id, gamepad, 13, gamepad.hatY > 0);
     setGamepadButton(id, gamepad, 14, gamepad.hatX < 0);
+}
+
+void setGamepadAxis(int id, Gamepad& gamepad, int axis, float value) {
+    if (std::fabs(value - gamepad.axes[axis]) <= 0.001f) return;
+    gamepad.axes[axis] = value;
+    Engine::systemGamepadAxisMove(id, axis, value);
+}
+
+// Axis index a mapping refers to: the joystick device also lists the hat as an
+// axis, the database does not.
+int mappedAxisSlot(const Gamepad& gamepad, int number) {
+    int slot = 0;
+    for (int i = 0; i < number; ++i) {
+        const unsigned char code = gamepad.axisMap[i];
+        if (code < ABS_HAT0X || code > ABS_HAT3Y) ++slot;
+    }
+    return slot;
+}
+
+float mappedAxisValue(const Gamepad& gamepad, const editor::GamepadInput& input) {
+    if (input.source == editor::GamepadInput::Source::AXIS &&
+        input.index < GAMEPAD_RAW_AXIS_COUNT) {
+        return std::clamp(
+            gamepad.rawAxes[input.index] * input.scale + input.offset, -1.0f, 1.0f);
+    }
+    if (input.source == editor::GamepadInput::Source::BUTTON &&
+        input.index < GAMEPAD_RAW_BUTTON_COUNT) {
+        return gamepad.rawButtons[input.index] ? 1.0f : -1.0f;
+    }
+    return -1.0f;
+}
+
+bool mappedButtonValue(const Gamepad& gamepad, const editor::GamepadInput& input) {
+    if (input.source == editor::GamepadInput::Source::BUTTON)
+        return input.index < GAMEPAD_RAW_BUTTON_COUNT && gamepad.rawButtons[input.index];
+    if (input.source == editor::GamepadInput::Source::HAT)
+        return input.index == 0 && (gamepad.hat & input.hatMask) != 0;
+    if (input.source == editor::GamepadInput::Source::AXIS &&
+        input.index < GAMEPAD_RAW_AXIS_COUNT) {
+        const float value = gamepad.rawAxes[input.index] * input.scale + input.offset;
+        if (input.offset < 0.0f || (input.offset == 0.0f && input.scale > 0.0f))
+            return value >= 0.0f;
+        return value <= 0.0f;
+    }
+    return false;
+}
+
+void applyGamepadMapping(int id, Gamepad& gamepad) {
+    for (int button = 0; button < GAMEPAD_BUTTON_COUNT; ++button) {
+        const editor::GamepadInput& input = gamepad.mapping.buttons[button];
+        if (input.source != editor::GamepadInput::Source::NONE)
+            setGamepadButton(id, gamepad, button, mappedButtonValue(gamepad, input));
+    }
+    for (int axis = 0; axis < GAMEPAD_AXIS_COUNT; ++axis) {
+        const editor::GamepadInput& input = gamepad.mapping.axes[axis];
+        if (input.source != editor::GamepadInput::Source::NONE)
+            setGamepadAxis(id, gamepad, axis, mappedAxisValue(gamepad, input));
+    }
+}
+
+// Same identifier the community database is keyed by, see SDL_GameControllerDB
+bool readGamepadGuid(int id, std::string& guid) {
+    static const char* const parts[] = {"bustype", "vendor", "product", "version"};
+    unsigned int values[4] = {};
+    for (int i = 0; i < 4; ++i) {
+        char path[128];
+        std::snprintf(path, sizeof(path), "/sys/class/input/js%d/device/id/%s", id, parts[i]);
+        FILE* file = std::fopen(path, "r");
+        if (!file) return false;
+        const int read = std::fscanf(file, "%x", &values[i]);
+        std::fclose(file);
+        if (read != 1) return false;
+    }
+    if (!values[1] || !values[2] || !values[3]) return false;
+
+    char text[33];
+    std::snprintf(text, sizeof(text), "%02x%02x0000%02x%02x0000%02x%02x0000%02x%02x0000",
+                  values[0] & 0xff, (values[0] >> 8) & 0xff,
+                  values[1] & 0xff, (values[1] >> 8) & 0xff,
+                  values[2] & 0xff, (values[2] >> 8) & 0xff,
+                  values[3] & 0xff, (values[3] >> 8) & 0xff);
+    guid = text;
+    return true;
 }
 
 void disconnectGamepad(int id) {
@@ -1760,6 +1857,13 @@ void connectGamepad(int id, const char* path) {
     char name[128] = "Gamepad";
     if (ioctl(fd, JSIOCGNAME(sizeof(name)), name) >= 0) name[sizeof(name) - 1] = '\0';
     gamepad.name = name;
+
+    // The joystick device sends the current state of every control on open, so
+    // the mapped values settle on the first poll
+    std::string guid;
+    gamepad.mapped = readGamepadGuid(id, guid) &&
+                     editor::findGamepadMapping(guid, gamepad.mapping);
+
     Engine::systemGamepadConnect(id, gamepad.name);
 }
 
@@ -1830,27 +1934,28 @@ void pollGamepads() {
             if (count == static_cast<ssize_t>(sizeof(event))) {
                 const unsigned char type = event.type & ~JS_EVENT_INIT;
                 if (type == JS_EVENT_BUTTON && event.number < gamepad.buttonMap.size()) {
-                    setGamepadButton(id, gamepad,
-                                     gamepadButtonForCode(gamepad.buttonMap[event.number]),
-                                     event.value != 0);
+                    if (gamepad.mapped) {
+                        if (event.number < GAMEPAD_RAW_BUTTON_COUNT)
+                            gamepad.rawButtons[event.number] = event.value != 0;
+                    } else {
+                        setGamepadButton(id, gamepad,
+                                         gamepadButtonForCode(gamepad.buttonMap[event.number]),
+                                         event.value != 0);
+                    }
                 } else if (type == JS_EVENT_AXIS && event.number < gamepad.axisMap.size()) {
                     const unsigned char code = gamepad.axisMap[event.number];
-                    const int value = event.value < 0 ? -1 : (event.value > 0 ? 1 : 0);
-                    if (code == ABS_HAT0X) {
-                        updateHat(id, gamepad, true, value);
-                    } else if (code == ABS_HAT0Y) {
-                        updateHat(id, gamepad, false, value);
+                    const float normalized = event.value < 0
+                        ? static_cast<float>(event.value) / 32768.0f
+                        : static_cast<float>(event.value) / 32767.0f;
+                    if (code == ABS_HAT0X || code == ABS_HAT0Y) {
+                        const int value = event.value < 0 ? -1 : (event.value > 0 ? 1 : 0);
+                        updateHat(id, gamepad, code == ABS_HAT0X, value);
+                    } else if (gamepad.mapped) {
+                        const int slot = mappedAxisSlot(gamepad, event.number);
+                        if (slot < GAMEPAD_RAW_AXIS_COUNT) gamepad.rawAxes[slot] = normalized;
                     } else {
                         const int axis = gamepadAxisForCode(code);
-                        if (axis >= 0) {
-                            const float normalized = event.value < 0
-                                ? static_cast<float>(event.value) / 32768.0f
-                                : static_cast<float>(event.value) / 32767.0f;
-                            if (std::fabs(normalized - gamepad.axes[axis]) > 0.001f) {
-                                gamepad.axes[axis] = normalized;
-                                Engine::systemGamepadAxisMove(id, axis, normalized);
-                            }
-                        }
+                        if (axis >= 0) setGamepadAxis(id, gamepad, axis, normalized);
                     }
                 }
                 continue;
@@ -1859,6 +1964,7 @@ void pollGamepads() {
                 disconnectGamepad(id);
             break;
         }
+        if (gamepad.connected && gamepad.mapped) applyGamepadMapping(id, gamepad);
         if (gamepad.connected && !first) first = &gamepad;
     }
     updateImGuiGamepad(first);

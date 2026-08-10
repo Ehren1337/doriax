@@ -154,7 +154,10 @@ if(API_BACKEND STREQUAL "linux")
     endif()
     find_package(X11 REQUIRED COMPONENTS Xrandr)
 
-    list(APPEND BACKEND_SOURCES ${EDITOR_DIR}/backend/BackendLinux.cpp)
+    list(APPEND BACKEND_SOURCES
+        ${EDITOR_DIR}/backend/BackendLinux.cpp
+        ${EDITOR_DIR}/backend/GamepadDB.cpp
+    )
     list(APPEND BACKEND_LIBS X11::X11 X11::Xrandr)
 
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
