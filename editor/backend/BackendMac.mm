@@ -266,14 +266,18 @@ void applyRelativeMouseData() {
         return;
     }
     backend->virtualMouseX += backend->rawMouseX;
-    // Unlike scrollingDeltaY, the deltaY of a move/drag event comes from the
-    // CGEvent delta, which points down like ImGui's coordinates. Accumulate it
-    // as-is; negating here inverted the look drag against Linux and Windows.
+    // A move event's deltaY comes from the CGEvent delta, which points down
+    // like ImGui's coordinates (unlike scrollingDeltaY).
     backend->virtualMouseY += backend->rawMouseY;
     backend->rawMouseX = backend->rawMouseY = 0.0;
-    ImGui::GetIO().AddMousePosEvent(
-        static_cast<float>(backend->virtualMouseX),
-        static_cast<float>(backend->virtualMouseY));
+
+    // imgui_impl_osx posts an absolute position per move event, frozen at the
+    // lock point while captured. WantSetMousePos drops those queued positions
+    // so they can't race ours; the OSX backend never acts on the flag.
+    ImGuiIO& io = ImGui::GetIO();
+    io.MousePos = ImVec2(static_cast<float>(backend->virtualMouseX),
+                         static_cast<float>(backend->virtualMouseY));
+    io.WantSetMousePos = true;
 }
 
 void confinePointerToWindow(NSWindow* window) {
