@@ -246,6 +246,8 @@ ImGuiViewport* findViewport(NativeWindow* window) {
 
 void getWindowSize(NativeWindow* window, int& width, int& height);
 
+#if defined(DORIAX_NATIVE_MENU)
+
 unsigned long allocateImGuiColor(const ImVec4& color, unsigned long fallback) {
     XColor xcolor{};
     xcolor.red = static_cast<unsigned short>(
@@ -859,6 +861,15 @@ void shutdownNativeMenu() {
     XDestroyWindow(backend->display, menu.bar);
     menu = NativeMenu{};
 }
+
+#else
+
+void closeNativeMenu() {}
+bool processNativeMenuEvent(XEvent&) { return false; }
+void syncNativeMenuGeometry() {}
+void shutdownNativeMenu() {}
+
+#endif
 
 void setWindowTitle(NativeWindow* window, const char* title) {
     XStoreName(backend->display, window->handle, title);
@@ -2700,6 +2711,12 @@ bool editor::Backend::isRunningOnWayland() {
 
 float editor::Backend::setMainMenu(const PlatformMenuModel& model,
                                    PlatformMenuCallback callback) {
+#if !defined(DORIAX_NATIVE_MENU)
+    // App draws the menu bar with ImGui
+    (void)model;
+    (void)callback;
+    return 0.0f;
+#else
     if (!backend || !backend->display || !backend->mainWindow ||
         !initializeNativeMenu())
         return 0.0f;
@@ -2720,6 +2737,7 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
     for (const PlatformMenuCommand& command : pendingCommands)
         if (callback) callback(command);
     return static_cast<float>(MENU_BAR_HEIGHT);
+#endif
 }
 
 ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {

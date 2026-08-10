@@ -58,7 +58,11 @@ message(STATUS "API backend is set to ${API_BACKEND}")
 # other backends are tied to a single API.
 if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
     if(NOT GRAPHIC_BACKEND)
-        set(GRAPHIC_BACKEND "vulkan")
+        if(API_BACKEND STREQUAL "win")
+            set(GRAPHIC_BACKEND "glcore")
+        else()
+            set(GRAPHIC_BACKEND "vulkan")
+        endif()
     elseif(NOT GRAPHIC_BACKEND STREQUAL "vulkan" AND NOT GRAPHIC_BACKEND STREQUAL "glcore")
         message(FATAL_ERROR "API_BACKEND=${API_BACKEND} supports GRAPHIC_BACKEND vulkan or glcore")
     endif()
@@ -68,6 +72,17 @@ else()
     set(GRAPHIC_BACKEND "glcore")
 endif()
 message(STATUS "Graphic backend is set to ${GRAPHIC_BACKEND}")
+
+# Only macOS keeps the menu bar outside the window, so it is the one platform
+# where a native menu is worth its own implementation. ImGui draws it elsewhere.
+if(NOT DEFINED NATIVE_MENU)
+    if(API_BACKEND STREQUAL "mac")
+        set(NATIVE_MENU ON)
+    else()
+        set(NATIVE_MENU OFF)
+    endif()
+endif()
+message(STATUS "Native menu is set to ${NATIVE_MENU}")
 
 if(POLICY CMP0072)
   cmake_policy(SET CMP0072 NEW) # NEW for GLVND, OLD for legacy OpenGL
@@ -280,6 +295,9 @@ elseif(GRAPHIC_BACKEND STREQUAL "metal")
 else()
     add_definitions("-DSOKOL_GLCORE")
 endif()
+if(NATIVE_MENU)
+    add_definitions("-DDORIAX_NATIVE_MENU")
+endif()
 add_definitions("-DWITH_MINIAUDIO") # For SoLoud
 set(NFD_PORTAL ON CACHE BOOL "Use xdg-desktop-portal instead of GTK") # For NFD
 
@@ -370,6 +388,13 @@ include_directories (${DORIAX_ROOT}/renders)
 include_directories (${SHADERCOMPILER_ROOT}/src)
 
 add_subdirectory(${DORIAX_ROOT})
+
+# The engine compiles sokol's Vulkan backend, so it needs the headers and the
+# loader itself. Only the standalone engine build sets this up on its own.
+if(GRAPHIC_BACKEND STREQUAL "vulkan")
+    target_link_libraries(doriax PUBLIC Vulkan::Vulkan)
+endif()
+
 add_subdirectory(${SHADERCOMPILER_ROOT} EXCLUDE_FROM_ALL)
 
 add_subdirectory(libs/nfd)

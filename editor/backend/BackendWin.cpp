@@ -185,6 +185,8 @@ std::string wideToUtf8(const wchar_t* text, int length) {
     return result;
 }
 
+#if defined(DORIAX_NATIVE_MENU)
+
 std::wstring menuLabel(const PlatformMenuItem& item) {
     std::string label;
     label.reserve(item.label.size() + item.shortcut.size() + 2);
@@ -274,6 +276,8 @@ bool rebuildNativeMenu(const PlatformMenuModel& model) {
     backend->redrawRequested = true;
     return true;
 }
+
+#endif
 
 bool appHasFocus() {
     HWND focused = GetForegroundWindow();
@@ -1130,6 +1134,12 @@ bool editor::Backend::isRunningOnWayland() {
 
 float editor::Backend::setMainMenu(const PlatformMenuModel& model,
                                    PlatformMenuCallback callback) {
+#if !defined(DORIAX_NATIVE_MENU)
+    // App draws the menu bar with ImGui
+    (void)model;
+    (void)callback;
+    return 0.0f;
+#else
     if (!backend || !backend->window) return 0.0f;
     if (!backend->menu.handle || backend->menu.model.menus != model.menus) {
         if (!rebuildNativeMenu(model))
@@ -1142,6 +1152,7 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
     // HMENU is non-client UI, so ImGui must suppress its fallback without
     // reserving an in-client side bar.
     return -1.0f;
+#endif
 }
 
 ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {

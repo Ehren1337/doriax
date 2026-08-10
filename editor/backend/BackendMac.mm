@@ -359,6 +359,8 @@ NSString* functionKeyEquivalent(int number) {
     return [NSString stringWithCharacters:&key length:1];
 }
 
+#if defined(DORIAX_NATIVE_MENU)
+
 void applyShortcut(NSMenuItem* menuItem, const std::string& shortcut) {
     if (shortcut.empty()) return;
     NSEventModifierFlags modifiers = 0;
@@ -424,6 +426,8 @@ bool appendMenuItems(NSMenu* menu,
     return true;
 }
 
+#endif
+
 void appendApplicationMenu(NSMenu* mainMenu) {
     NSString* applicationName = @"Doriax Engine";
     NSMenuItem* root = [[NSMenuItem alloc]
@@ -468,6 +472,8 @@ void appendApplicationMenu(NSMenu* mainMenu) {
     [mainMenu addItem:root];
 }
 
+#if defined(DORIAX_NATIVE_MENU)
+
 bool rebuildNativeMenu(const PlatformMenuModel& model) {
     if (!backend || !backend->menuTarget) return false;
     backend->menu.commands.clear();
@@ -493,6 +499,8 @@ bool rebuildNativeMenu(const PlatformMenuModel& model) {
     requestRedraw();
     return true;
 }
+
+#endif
 
 bool initializeFrameDescriptor() {
     MTLTextureDescriptor* colorDescriptor = [MTLTextureDescriptor
@@ -1104,6 +1112,19 @@ bool editor::Backend::isRunningOnWayland() {
 float editor::Backend::setMainMenu(const PlatformMenuModel& model,
                                    PlatformMenuCallback callback) {
     if (!backend || !NSApp) return 0.0f;
+#if !defined(DORIAX_NATIVE_MENU)
+    // Keep the application menu, macOS needs it for Quit and Hide, and let App
+    // draw the editor menus with ImGui.
+    (void)model;
+    (void)callback;
+    if (!NSApp.mainMenu) {
+        NSMenu* mainMenu = [[NSMenu alloc] initWithTitle:@"Main Menu"];
+        mainMenu.autoenablesItems = NO;
+        appendApplicationMenu(mainMenu);
+        NSApp.mainMenu = mainMenu;
+    }
+    return 0.0f;
+#else
     if (backend->menu.model.menus != model.menus &&
         !rebuildNativeMenu(model))
         return 0.0f;
@@ -1115,6 +1136,7 @@ float editor::Backend::setMainMenu(const PlatformMenuModel& model,
 
     // The macOS menu bar is global and consumes no window client area.
     return -1.0f;
+#endif
 }
 
 ImTextureID editor::Backend::getImGuiTexture(TextureRender* texture) {
