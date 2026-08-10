@@ -1,5 +1,4 @@
-#ifndef OUT_H
-#define OUT_H
+#pragma once
 
 #include "window/OutputWindow.h"
 #include <iosfwd>
@@ -92,4 +91,3 @@ namespace doriax::editor {
     };
 }
 
-#endif /* OUT_H */

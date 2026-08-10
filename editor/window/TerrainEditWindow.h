@@ -1,5 +1,4 @@
-#ifndef TERRAINEDITWINDOW_H
-#define TERRAINEDITWINDOW_H
+#pragma once
 
 #include "Project.h"
 #include "math/Ray.h"
@@ -216,4 +215,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* TERRAINEDITWINDOW_H */

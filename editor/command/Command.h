@@ -1,5 +1,4 @@
-#ifndef COMMAND_H
-#define COMMAND_H
+#pragma once
 
 namespace doriax::editor{
 
@@ -25,4 +24,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* COMMAND_H */

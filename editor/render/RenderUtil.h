@@ -1,5 +1,4 @@
-#ifndef RENDERUTIL_H
-#define RENDERUTIL_H
+#pragma once
 
 namespace doriax::editor{
 
@@ -41,4 +40,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* RENDERUTIL_H */

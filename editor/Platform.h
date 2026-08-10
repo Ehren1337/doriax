@@ -1,5 +1,4 @@
-#ifndef EDITORPLATFORM_H
-#define EDITORPLATFORM_H
+#pragma once
 
 #include "System.h"
 #include "Project.h"
@@ -38,4 +37,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* EDITORPLATFORM_H */

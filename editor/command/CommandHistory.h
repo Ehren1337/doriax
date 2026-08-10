@@ -1,5 +1,4 @@
-#ifndef COMMANDHISTORY_H
-#define COMMANDHISTORY_H
+#pragma once
 
 #include "Command.h"
 #include <vector>
@@ -36,4 +35,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* COMMANDHISTORY_H */

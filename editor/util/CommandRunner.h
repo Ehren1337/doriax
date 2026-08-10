@@ -1,5 +1,4 @@
-#ifndef COMMANDRUNNER_H
-#define COMMANDRUNNER_H
+#pragma once
 
 #include <string>
 #include <filesystem>
@@ -64,4 +63,3 @@ namespace doriax::editor {
 
 }
 
-#endif

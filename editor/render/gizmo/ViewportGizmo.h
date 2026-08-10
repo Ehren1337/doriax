@@ -1,5 +1,4 @@
-#ifndef VIEWPORTGIZMO_H
-#define VIEWPORTGIZMO_H
+#pragma once
 
 #include "Scene.h"
 #include "object/Camera.h"
@@ -49,4 +48,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* VIEWPORTGIZMO_H */

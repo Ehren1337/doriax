@@ -1,5 +1,4 @@
-#ifndef ROTATEGIZMO_H
-#define ROTATEGIZMO_H
+#pragma once
 
 #include "object/Camera.h"
 #include "object/Object.h"
@@ -52,4 +51,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* ROTATEGIZMO_H */

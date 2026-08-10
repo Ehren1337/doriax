@@ -1,5 +1,4 @@
-#ifndef COMMANDHANDLE_H
-#define COMMANDHANDLE_H
+#pragma once
 
 #include "CommandHistory.h"
 #include <map>
@@ -19,4 +18,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* COMMANDHANDLE_H */

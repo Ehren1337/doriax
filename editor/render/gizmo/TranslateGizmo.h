@@ -1,5 +1,4 @@
-#ifndef TRANSLATEGIZMO_H
-#define TRANSLATEGIZMO_H
+#pragma once
 
 #include "object/Camera.h"
 #include "object/Object.h"
@@ -44,4 +43,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* TRANSLATEGIZMO_H */

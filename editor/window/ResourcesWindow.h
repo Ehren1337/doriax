@@ -1,5 +1,4 @@
-#ifndef RESOURCESWINDOW_H
-#define RESOURCESWINDOW_H
+#pragma once
 
 #include "Project.h"
 #include "window/CodeEditor.h"
@@ -244,4 +243,3 @@ namespace doriax::editor {
 
 }
 
-#endif /* RESOURCESWINDOW_H */

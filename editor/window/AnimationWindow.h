@@ -1,5 +1,4 @@
-#ifndef ANIMATIONWINDOW_H
-#define ANIMATIONWINDOW_H
+#pragma once
 
 #include "Project.h"
 #include "imgui.h"
@@ -169,4 +168,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* ANIMATIONWINDOW_H */

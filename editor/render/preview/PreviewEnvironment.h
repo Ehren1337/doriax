@@ -2,8 +2,7 @@
 // Generated from "lythwood_room" (Poly Haven, https://polyhaven.com/a/lythwood_room), CC0 license.
 // Equirectangular HDR tonemapped and projected to cubemap faces (+X,-X,+Y,-Y,+Z,-Z), JPEG encoded.
 
-#ifndef PREVIEWENVIRONMENT_H
-#define PREVIEWENVIRONMENT_H
+#pragma once
 
 namespace doriax::editor {
 
@@ -27,4 +26,3 @@ static const unsigned int preview_env_nz_len = 12268;
 
 }
 
-#endif //PREVIEWENVIRONMENT_H

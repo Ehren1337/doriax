@@ -1,5 +1,4 @@
-#ifndef EDITORAPP_H
-#define EDITORAPP_H
+#pragma once
 
 #include "imgui.h"
 
@@ -257,4 +256,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* EDITORAPP_H */

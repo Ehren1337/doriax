@@ -1,5 +1,4 @@
-#ifndef STRUCTURE_H
-#define STRUCTURE_H
+#pragma once
 
 #include "Project.h"
 #include "SceneWindow.h"
@@ -120,4 +119,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* STRUCTURE_H */

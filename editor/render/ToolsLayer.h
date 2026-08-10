@@ -1,5 +1,4 @@
-#ifndef TOOLSLAYER_H
-#define TOOLSLAYER_H
+#pragma once
 
 #include "Scene.h"
 #include "object/Camera.h"
@@ -71,4 +70,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* TOOLSLAYER_H */

@@ -1,5 +1,4 @@
-#ifndef SCALEGIZMO_H
-#define SCALEGIZMO_H
+#pragma once
 
 #include "object/Camera.h"
 #include "object/Object.h"
@@ -44,4 +43,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* SCALEGIZMO_H */

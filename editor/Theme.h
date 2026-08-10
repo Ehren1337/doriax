@@ -1,5 +1,4 @@
-#ifndef EDITORTHEME_H
-#define EDITORTHEME_H
+#pragma once
 
 #include "imgui.h"
 
@@ -33,4 +32,3 @@ namespace doriax::editor {
 
 }
 
-#endif /* EDITORTHEME_H */

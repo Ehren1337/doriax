@@ -1,5 +1,4 @@
-#ifndef UILAYER_H
-#define UILAYER_H
+#pragma once
 
 #include "Scene.h"
 #include "object/Camera.h"
@@ -72,4 +71,3 @@ namespace doriax::editor{
 
 }
 
-#endif /* UILAYER_H */
