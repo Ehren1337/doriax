@@ -21,7 +21,18 @@
 static NSMutableArray* _slots = nil;
 static bool  _buttonState[DORIAX_MAX_GAMEPADS][D_GAMEPAD_BUTTON_LAST + 1];
 static float _axisState[DORIAX_MAX_GAMEPADS][D_GAMEPAD_AXIS_LAST + 1];
+static bool  _swapFaceButtons[DORIAX_MAX_GAMEPADS];
 static bool  _started = false;
+
+// GameController reports Nintendo pads by the labels printed on them (A on the
+// right, B at the bottom), while every other backend reports face buttons by
+// position. Detect them so the diamond can be put back in positional order.
+static bool hasNintendoFaceLayout(GCController* controller) {
+    NSString* category = controller.productCategory;
+    if (category == nil)
+        return false;
+    return [category containsString:@"Switch"] || [category containsString:@"Joy-Con"];
+}
 
 + (void)start {
     if (_started)
@@ -73,6 +84,7 @@ static bool  _started = false;
 
     _slots[slot] = controller;
     controller.playerIndex = (GCControllerPlayerIndex)slot;
+    _swapFaceButtons[slot] = hasNintendoFaceLayout(controller);
 
     memset(_buttonState[slot], 0, sizeof(_buttonState[slot]));
     for (int a = 0; a <= D_GAMEPAD_AXIS_LAST; a++)
@@ -124,10 +136,12 @@ static void processAxis(int slot, int axis, float value) {
 }
 
 + (void)handleState:(GCExtendedGamepad*)gp slot:(int)slot {
-    processButton(slot, D_GAMEPAD_BUTTON_A, gp.buttonA.pressed);
-    processButton(slot, D_GAMEPAD_BUTTON_B, gp.buttonB.pressed);
-    processButton(slot, D_GAMEPAD_BUTTON_X, gp.buttonX.pressed);
-    processButton(slot, D_GAMEPAD_BUTTON_Y, gp.buttonY.pressed);
+    // A is the bottom button and X the left one, whatever the pad prints there
+    bool swap = _swapFaceButtons[slot];
+    processButton(slot, D_GAMEPAD_BUTTON_A, (swap ? gp.buttonB : gp.buttonA).pressed);
+    processButton(slot, D_GAMEPAD_BUTTON_B, (swap ? gp.buttonA : gp.buttonB).pressed);
+    processButton(slot, D_GAMEPAD_BUTTON_X, (swap ? gp.buttonY : gp.buttonX).pressed);
+    processButton(slot, D_GAMEPAD_BUTTON_Y, (swap ? gp.buttonX : gp.buttonY).pressed);
     processButton(slot, D_GAMEPAD_BUTTON_LEFT_BUMPER, gp.leftShoulder.pressed);
     processButton(slot, D_GAMEPAD_BUTTON_RIGHT_BUMPER, gp.rightShoulder.pressed);
     processButton(slot, D_GAMEPAD_BUTTON_DPAD_UP, gp.dpad.up.pressed);
