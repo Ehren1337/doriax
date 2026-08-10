@@ -41,6 +41,8 @@ set(DORIAX_SHARED ON)
 
 set(ENABLE_OPT OFF CACHE BOOL "Enables spirv-opt capability if present" FORCE)
 
+# Each desktop OS is served by its own native backend and nothing else, so this
+# is a detection rather than a choice.
 if(NOT API_BACKEND)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set(API_BACKEND "linux")
@@ -49,13 +51,13 @@ if(NOT API_BACKEND)
     elseif(APPLE)
         set(API_BACKEND "mac")
     else()
-        set(API_BACKEND "glfw")
+        message(FATAL_ERROR "No native editor backend for ${CMAKE_SYSTEM_NAME} (expected Linux, Windows, or macOS)")
     endif()
 endif()
 message(STATUS "API backend is set to ${API_BACKEND}")
 
-# The native Linux and Windows backends render through Vulkan or OpenGL; the
-# other backends are tied to a single API.
+# The native Linux and Windows backends render through Vulkan or OpenGL; macOS
+# is tied to Metal.
 if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
     if(NOT GRAPHIC_BACKEND)
         if(API_BACKEND STREQUAL "win")
@@ -66,10 +68,8 @@ if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
     elseif(NOT GRAPHIC_BACKEND STREQUAL "vulkan" AND NOT GRAPHIC_BACKEND STREQUAL "glcore")
         message(FATAL_ERROR "API_BACKEND=${API_BACKEND} supports GRAPHIC_BACKEND vulkan or glcore")
     endif()
-elseif(API_BACKEND STREQUAL "mac")
-    set(GRAPHIC_BACKEND "metal")
 else()
-    set(GRAPHIC_BACKEND "glcore")
+    set(GRAPHIC_BACKEND "metal")
 endif()
 message(STATUS "Graphic backend is set to ${GRAPHIC_BACKEND}")
 
@@ -105,13 +105,11 @@ if(WIN32)
     if(MINGW)
         set(MINGW_STATIC_FLAGS -static -static-libgcc -static-libstdc++)
     endif()
-
-    set(CMAKE_PREFIX_PATH "$ENV{ProgramFiles}/GLFW" ${CMAKE_PREFIX_PATH})
-    set(CMAKE_PREFIX_PATH "$ENV{ProgramFiles\(X86\)}/GLFW" ${CMAKE_PREFIX_PATH})
 endif()
 
 set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
+set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
 # Icon and version resource for one executable. Each target needs its own so
 # OriginalFilename matches the file on disk. Added after Defender quarantined
@@ -171,7 +169,8 @@ if(API_BACKEND STREQUAL "linux")
 
     list(APPEND BACKEND_SOURCES
         ${EDITOR_DIR}/backend/BackendLinux.cpp
-        ${EDITOR_DIR}/backend/GamepadDB.cpp
+        ${DORIAX_ROOT}/platform/linux/WindowLinux.cpp
+        ${DORIAX_ROOT}/platform/linux/GamepadDB.cpp
     )
     list(APPEND BACKEND_LIBS X11::X11 X11::Xrandr)
 
@@ -189,6 +188,8 @@ elseif(API_BACKEND STREQUAL "win")
     list(APPEND BACKEND_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
         ${EDITOR_DIR}/backend/BackendWin.cpp
+        ${DORIAX_ROOT}/platform/win/WindowWin.cpp
+        ${DORIAX_ROOT}/platform/win/GamepadWin.cpp
     )
 
     list(APPEND BACKEND_LIBS
@@ -213,7 +214,8 @@ elseif(API_BACKEND STREQUAL "mac")
     list(APPEND BACKEND_SOURCES
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm
         ${EDITOR_DIR}/backend/BackendMac.mm
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/apple/DoriaxGameController.mm
+        ${DORIAX_ROOT}/platform/mac/WindowMac.mm
+        ${DORIAX_ROOT}/platform/apple/DoriaxGameController.mm
     )
 
     list(APPEND BACKEND_LIBS
@@ -229,8 +231,9 @@ elseif(API_BACKEND STREQUAL "mac")
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm
         ${IMGUI_DIR}/backends/imgui_impl_metal.mm
         ${EDITOR_DIR}/backend/BackendMac.mm
+        ${DORIAX_ROOT}/platform/mac/WindowMac.mm
         ${EDITOR_DIR}/util/GraphicUtils.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/apple/DoriaxGameController.mm
+        ${DORIAX_ROOT}/platform/apple/DoriaxGameController.mm
         PROPERTIES
         COMPILE_FLAGS "-fobjc-arc"
     )
@@ -238,41 +241,13 @@ elseif(API_BACKEND STREQUAL "mac")
         ${EDITOR_DIR}/util/GraphicUtils.cpp
         PROPERTIES LANGUAGE OBJCXX
     )
-elseif(API_BACKEND STREQUAL "glfw")
-    find_package(OpenGL REQUIRED)
-    find_package(glfw3 REQUIRED)
-
-    if(NOT DEFINED GLFW_LIBRARIES)
-        set(GLFW_LIBRARIES glfw)
-    endif()
-
-    list(APPEND BACKEND_SOURCES
-        ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-        ${EDITOR_DIR}/backend/BackendGLFW.cpp
-    )
-
-    list(APPEND BACKEND_LIBS
-        ${GLFW_LIBRARIES}
-    )
-elseif(API_BACKEND STREQUAL "sdl")
-    find_package(OpenGL REQUIRED)
-    find_package(SDL3 REQUIRED)
-
-    list(APPEND BACKEND_SOURCES
-        ${IMGUI_DIR}/backends/imgui_impl_sdl3.cpp
-        ${EDITOR_DIR}/backend/BackendSDL.cpp
-    )
-
-    list(APPEND BACKEND_LIBS
-        ${SDL3_LIBRARIES}
-    )
 else()
-    message(FATAL_ERROR "Unknown API_BACKEND '${API_BACKEND}' (expected linux, win, mac, glfw, or sdl)")
+    message(FATAL_ERROR "Unknown API_BACKEND '${API_BACKEND}' (expected linux, win, or mac)")
 endif()
 
 # The native backends share the frame loop and pick a renderer by GRAPHIC_BACKEND
 if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
-    list(APPEND BACKEND_SOURCES ${EDITOR_DIR}/backend/EditorFrame.cpp)
+    list(APPEND BACKEND_SOURCES ${EDITOR_DIR}/EditorFrame.cpp)
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
         list(APPEND BACKEND_SOURCES ${EDITOR_DIR}/backend/renderer/RendererVulkan.cpp)
     else()
@@ -280,7 +255,6 @@ if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
     endif()
 endif()
 
-set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 set(SHADERCOMPILER_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/shadercompiler)
 
 add_definitions("-DDORIAX_EDITOR")
@@ -378,9 +352,17 @@ include_directories (${DORIAX_ROOT}/core/shader)
 include_directories (${DORIAX_ROOT}/core/subsystem)
 include_directories (${DORIAX_ROOT}/core/texture)
 include_directories (${DORIAX_ROOT}/core/util)
-if(API_BACKEND STREQUAL "glfw")
-    include_directories (${DORIAX_ROOT}/platform/glfw) # GamepadMappings.h for BackendGLFW
+# GamepadMappings.h, shared by GamepadDB (editor) and GamepadLinux (games)
+include_directories (${DORIAX_ROOT}/platform/common)
+# renderer/Renderer.h, which EditorFrame.h includes from one directory up
+include_directories (${EDITOR_DIR}/backend)
+if(API_BACKEND STREQUAL "linux")
+    include_directories (${DORIAX_ROOT}/platform/linux) # WindowLinux.h, GamepadDB.h
+elseif(API_BACKEND STREQUAL "win")
+    include_directories (${DORIAX_ROOT}/platform/win) # GamepadWin.h for BackendWin
 elseif(API_BACKEND STREQUAL "mac")
+    # WindowMac.h for BackendMac, DoriaxGameController.h from the shared Apple path
+    include_directories (${DORIAX_ROOT}/platform/mac)
     include_directories (${DORIAX_ROOT}/platform/apple)
 endif()
 include_directories (${DORIAX_ROOT}/renders)

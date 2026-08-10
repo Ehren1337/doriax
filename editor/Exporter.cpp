@@ -776,7 +776,10 @@ bool editor::Exporter::copyGenerated() {
     std::error_code ec;
     fs::create_directories(generatedDst, ec);
 
-    // Exclude editor-specific platform files; main.cpp is handled separately below
+    // main.cpp is handled separately below. PlatformEditor.* is the GLFW host
+    // the editor used to emit into every project; projects created before it
+    // was dropped still carry the files, and the exported build globs every
+    // *.cpp under the project root, so a stale copy would be compiled.
     static const std::set<std::string> excludedFiles = {
         "main.cpp", "PlatformEditor.h", "PlatformEditor.cpp"
     };
@@ -810,19 +813,16 @@ bool editor::Exporter::copyGenerated() {
         std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
         ifs.close();
 
-        // Remove #include "PlatformEditor.h"
-        std::string platformInclude = "#include \"PlatformEditor.h\"\n";
-        size_t pos = content.find(platformInclude);
+        // Remove the entry point (the exported build compiles the engine's own
+        // platform main.cpp, which already defines main()). Generator brackets
+        // it with markers because the block is preprocessor-conditional.
+        const std::string entryBegin = "// DORIAX_ENTRY_POINT_BEGIN\n";
+        const std::string entryEnd = "// DORIAX_ENTRY_POINT_END\n";
+        size_t pos = content.find(entryBegin);
         if (pos != std::string::npos) {
-            content.erase(pos, platformInclude.size());
-        }
-
-        // Remove int main(...) { ... } function (platform provides its own entry point)
-        pos = content.find("int main(");
-        if (pos != std::string::npos) {
-            size_t endPos = content.find("\n}\n", pos);
+            size_t endPos = content.find(entryEnd, pos);
             if (endPos != std::string::npos) {
-                endPos += 3; // include "}\n"
+                endPos += entryEnd.size();
                 while (endPos < content.size() && content[endPos] == '\n') endPos++;
                 content.erase(pos, endPos - pos);
             }

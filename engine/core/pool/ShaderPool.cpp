@@ -28,7 +28,11 @@
 #ifdef SOKOL_VULKAN
 #include "spirv10.h"
 #endif
-#if SOKOL_METAL || DORIAX_APPLE
+// Keyed on the graphics backend alone. DORIAX_APPLE used to appear here too,
+// but that is the *application* backend: an Apple build targeting glcore
+// defines both, so each shader header would be included and every symbol in
+// them (getBase64Shader) would be defined twice.
+#ifdef SOKOL_METAL
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 #include "msl21ios.h"

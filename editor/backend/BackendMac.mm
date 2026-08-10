@@ -3,6 +3,7 @@
 
 #include "DoriaxGameController.h"
 #include "Engine.h"
+#include "WindowMac.h"
 
 #include "imgui_impl_metal.h"
 #include "imgui_impl_osx.h"
@@ -68,17 +69,13 @@ struct MacBackendData {
     bool shouldClose = false;
     bool redrawRequested = true;
     bool applicationActive = true;
-    bool cursorCaptured = false;
-    bool cursorHidden = false;
     bool mouseControlSuspended = false;
     bool gameCursorInSceneRect = false;
     bool gameCursorHidden = false;
-    bool hasSavedCursorPosition = false;
     bool renderingReady = false;
     bool frameInProgress = false;
     bool liveResizeActive = false;
     MouseMode gameMouseMode = MouseMode::NORMAL;
-    CGPoint savedCursorPosition{};
     double virtualMouseX = 0.0;
     double virtualMouseY = 0.0;
     double rawMouseX = 0.0;
@@ -95,6 +92,8 @@ double monotonicSeconds() {
         Clock::now().time_since_epoch()).count();
 }
 
+#if defined(DORIAX_NATIVE_MENU)
+
 NSString* stringFromUtf8(const std::string& text) {
     NSString* result = [[NSString alloc]
         initWithBytes:text.data()
@@ -102,6 +101,8 @@ NSString* stringFromUtf8(const std::string& text) {
              encoding:NSUTF8StringEncoding];
     return result ?: @"";
 }
+
+#endif
 
 void requestRedraw() {
     if (backend) backend->redrawRequested = true;
@@ -151,46 +152,10 @@ bool syncDrawableSize() {
     return changed;
 }
 
-CGPoint cocoaPointToQuartz(NSPoint point) {
-    NSScreen* primary = NSScreen.screens.firstObject;
-    const CGFloat primaryTop = NSMaxY(primary.frame);
-    return CGPointMake(point.x, primaryTop - point.y);
-}
-
-NSCursor* invisibleCursor() {
-    static NSCursor* cursor = nil;
-    if (!cursor) {
-        NSImage* image = [[NSImage alloc] initWithSize:NSMakeSize(1.0, 1.0)];
-        [image lockFocus];
-        [NSColor.clearColor set];
-        NSRectFill(NSMakeRect(0.0, 0.0, 1.0, 1.0));
-        [image unlockFocus];
-        cursor = [[NSCursor alloc] initWithImage:image hotSpot:NSZeroPoint];
-    }
-    return cursor;
-}
-
-void setSystemCursorHidden(bool hidden) {
-    if (!backend || hidden == backend->cursorHidden) return;
-    if (hidden) [NSCursor hide];
-    else [NSCursor unhide];
-    backend->cursorHidden = hidden;
-    // AppKit restores the view's cursor whenever it resets cursor rects, which
-    // cancels the hide (and with it the mouse/cursor disassociation) while the
-    // look drag is running. cursorUpdate: reapplies it; ask for one now.
-    if (hidden) [invisibleCursor() set];
-    else [[NSCursor arrowCursor] set];
-    [backend->window invalidateCursorRectsForView:backend->view];
-}
-
 void releaseCapturedCursor(bool restorePosition) {
-    if (!backend || !backend->cursorCaptured) return;
-    CGAssociateMouseAndMouseCursorPosition(true);
-    backend->cursorCaptured = false;
+    if (!backend || !WindowMac::isCursorCaptured()) return;
+    WindowMac::setCursorCaptured(false, restorePosition);
     backend->rawMouseX = backend->rawMouseY = 0.0;
-    if (restorePosition && backend->hasSavedCursorPosition)
-        CGWarpMouseCursorPosition(backend->savedCursorPosition);
-    backend->hasSavedCursorPosition = false;
 }
 
 void showEditorCursor() {
@@ -201,8 +166,7 @@ void showEditorCursor() {
         io.MouseDrawCursor = false;
         io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
     }
-    setSystemCursorHidden(false);
-    [[NSCursor arrowCursor] set];
+    WindowMac::setCursorHidden(false);
     backend->gameCursorHidden = false;
 }
 
@@ -212,7 +176,7 @@ void hideEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-    setSystemCursorHidden(true);
+    WindowMac::setCursorHidden(true);
     backend->gameCursorHidden = true;
 }
 
@@ -222,8 +186,7 @@ void confineEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
-    setSystemCursorHidden(false);
-    [[NSCursor arrowCursor] set];
+    WindowMac::setCursorHidden(false);
     backend->gameCursorHidden = false;
 }
 
@@ -238,7 +201,7 @@ void applyHoverVisibility(bool force = false) {
 }
 
 void captureEditorCursor() {
-    if (!backend || backend->cursorCaptured || !backend->applicationActive)
+    if (!backend || WindowMac::isCursorCaptured() || !backend->applicationActive)
         return;
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
@@ -247,21 +210,14 @@ void captureEditorCursor() {
         ? io.MousePos.x : backend->view.bounds.size.width * 0.5;
     backend->virtualMouseY = std::isfinite(io.MousePos.y)
         ? io.MousePos.y : backend->view.bounds.size.height * 0.5;
-    CGEventRef event = CGEventCreate(nullptr);
-    if (event) {
-        backend->savedCursorPosition = CGEventGetLocation(event);
-        backend->hasSavedCursorPosition = true;
-        CFRelease(event);
-    }
     backend->rawMouseX = backend->rawMouseY = 0.0;
-    CGAssociateMouseAndMouseCursorPosition(false);
-    backend->cursorCaptured = true;
-    setSystemCursorHidden(true);
+    WindowMac::setCursorCaptured(true, true);
+    WindowMac::setCursorHidden(true);
     backend->gameCursorHidden = true;
 }
 
 void applyRelativeMouseData() {
-    if (!backend || !backend->cursorCaptured || !backend->applicationActive) {
+    if (!backend || !WindowMac::isCursorCaptured() || !backend->applicationActive) {
         if (backend) backend->rawMouseX = backend->rawMouseY = 0.0;
         return;
     }
@@ -280,20 +236,12 @@ void applyRelativeMouseData() {
     io.WantSetMousePos = true;
 }
 
-void confinePointerToWindow(NSWindow* window) {
-    if (!backend || !window || !backend->applicationActive ||
+void confinePointerToWindow() {
+    if (!backend || !backend->applicationActive ||
         backend->gameMouseMode != MouseMode::CONFINED ||
         backend->mouseControlSuspended)
         return;
-    NSView* view = window.contentView;
-    if (!view) return;
-    NSRect screenRect = [window convertRectToScreen:view.bounds];
-    NSPoint point = NSEvent.mouseLocation;
-    NSPoint clamped = NSMakePoint(
-        std::clamp(point.x, NSMinX(screenRect), NSMaxX(screenRect) - 1.0),
-        std::clamp(point.y, NSMinY(screenRect), NSMaxY(screenRect) - 1.0));
-    if (!NSEqualPoints(point, clamped))
-        CGWarpMouseCursorPosition(cocoaPointToQuartz(clamped));
+    WindowMac::confinePointerToWindow();
 }
 
 void handleBackendEvent(NSEvent* event) {
@@ -303,11 +251,11 @@ void handleBackendEvent(NSEvent* event) {
         case NSEventTypeLeftMouseDragged:
         case NSEventTypeRightMouseDragged:
         case NSEventTypeOtherMouseDragged:
-            if (backend->cursorCaptured) {
+            if (WindowMac::isCursorCaptured()) {
                 backend->rawMouseX += event.deltaX;
                 backend->rawMouseY += event.deltaY;
             } else {
-                confinePointerToWindow(event.window ?: backend->window);
+                confinePointerToWindow();
             }
             requestRedraw();
             break;
@@ -340,7 +288,7 @@ void applicationResignedActive() {
     if (!backend) return;
     backend->applicationActive = false;
     releaseCapturedCursor(true);
-    setSystemCursorHidden(false);
+    WindowMac::setCursorHidden(false);
     if (ImGui::GetCurrentContext())
         ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
 }
@@ -749,8 +697,9 @@ void waitForGpu() {
 }
 
 - (void)cursorUpdate:(NSEvent*)event {
-    if (backend && backend->cursorHidden) [invisibleCursor() set];
-    else [super cursorUpdate:event];
+    // AppKit resets cursor rects mid-drag, which would undo the hide the fly
+    // camera relies on; WindowMac reapplies its invisible cursor here.
+    if (!WindowMac::applyHiddenCursorShape()) [super cursorUpdate:event];
 }
 
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
@@ -796,8 +745,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         app.initializeSettings();
         backend = new MacBackendData();
 
-        [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        WindowMac::setupApplication();
         backend->applicationDelegate =
             [[DoriaxEditorApplicationDelegate alloc] init];
         backend->windowDelegate = [[DoriaxEditorWindowDelegate alloc] init];
@@ -813,25 +761,13 @@ int editor::Backend::init(int argc, char* argv[]) {
             return -1;
         }
 
-        const int initialWidth = app.getInitialWindowWidth();
-        const int initialHeight = app.getInitialWindowHeight();
-        NSRect contentRect = NSMakeRect(
-            0, 0, std::max(initialWidth, 1), std::max(initialHeight, 1));
-        const NSWindowStyleMask style = NSWindowStyleMaskTitled |
-            NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable |
-            NSWindowStyleMaskResizable;
-        backend->window = [[NSWindow alloc]
-            initWithContentRect:contentRect
-                      styleMask:style
-                        backing:NSBackingStoreBuffered
-                          defer:NO];
-        backend->window.title = @"Doriax Engine";
-        backend->window.delegate = backend->windowDelegate;
-        backend->window.releasedWhenClosed = NO;
-        backend->window.tabbingMode = NSWindowTabbingModeDisallowed;
-        backend->window.collectionBehavior |=
-            NSWindowCollectionBehaviorFullScreenPrimary;
-        [backend->window center];
+        WindowMacConfig windowConfig;
+        windowConfig.title = "Doriax Engine";
+        windowConfig.width = app.getInitialWindowWidth();
+        windowConfig.height = app.getInitialWindowHeight();
+        WindowMac::create(windowConfig);
+        WindowMac::setWindowDelegate((__bridge void*)backend->windowDelegate);
+        backend->window = (__bridge NSWindow*)WindowMac::nativeWindow();
 
         backend->view = [[DoriaxEditorMetalView alloc]
             initWithFrame:backend->window.contentView.bounds
@@ -848,13 +784,13 @@ int editor::Backend::init(int argc, char* argv[]) {
         backend->view.enableSetNeedsDisplay = NO;
         backend->view.autoResizeDrawable = YES;
         backend->view.clearColor = MTLClearColorMake(0.45, 0.55, 0.60, 1.0);
-        backend->window.contentView = backend->view;
-        backend->window.acceptsMouseMovedEvents = YES;
+        WindowMac::setContentView((__bridge void*)backend->view);
 
         if (!initializeFrameDescriptor()) {
             std::fprintf(stderr,
                          "Error: Could not create Metal frame resources.\n");
             backend->window = nil;
+            WindowMac::destroy();
             delete backend;
             backend = nullptr;
             return -1;
@@ -863,6 +799,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         if (NFD_Init() != NFD_OKAY) {
             std::fprintf(stderr, "Error: NFD_Init failed: %s\n", NFD_GetError());
             backend->window = nil;
+            WindowMac::destroy();
             delete backend;
             backend = nullptr;
             return -1;
@@ -883,6 +820,7 @@ int editor::Backend::init(int argc, char* argv[]) {
             ImGui::DestroyContext();
             NFD_Quit();
             backend->window = nil;
+            WindowMac::destroy();
             delete backend;
             backend = nullptr;
             return -1;
@@ -920,6 +858,7 @@ int editor::Backend::init(int argc, char* argv[]) {
             ImGui::DestroyContext();
             NFD_Quit();
             backend->window = nil;
+            WindowMac::destroy();
             delete backend;
             backend = nullptr;
             app.engineShutdown();
@@ -929,9 +868,8 @@ int editor::Backend::init(int argc, char* argv[]) {
         [DoriaxGameController start];
 
         [NSApp finishLaunching];
-        [backend->window makeKeyAndOrderFront:nil];
-        if (app.getInitialWindowMaximized()) [backend->window zoom:nil];
-        [NSApp activateIgnoringOtherApps:YES];
+        WindowMac::show(false);
+        WindowMac::applyInitialWindowMode(app.getInitialWindowMaximized(), false);
         updateFramePeriod();
 
         app.setWakeCallback([]() { postWakeEvent(); });
@@ -1055,8 +993,8 @@ int editor::Backend::init(int argc, char* argv[]) {
         app.engineViewDestroyed();
         backend->commandQueue = nil;
         NFD_Quit();
-        [backend->window orderOut:nil];
-        backend->window.delegate = nil;
+        backend->window = nil;
+        WindowMac::destroy();
         NSApp.delegate = nil;
         nativeWindowHandle = {};
         delete backend;
@@ -1180,8 +1118,7 @@ void editor::Backend::updateWindowTitle(const std::string& projectName) {
     title = projectName.empty()
         ? "Empty project - Doriax Engine"
         : projectName + " - Doriax Engine";
-    if (backend && backend->window)
-        backend->window.title = stringFromUtf8(title);
+    WindowMac::setTitle(title);
 }
 
 void* editor::Backend::getNFDWindowHandle() {

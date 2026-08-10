@@ -3438,8 +3438,17 @@ void editor::Project::copyEngineApiToProject() {
         for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(engineApiSource)) {
             if (dirEntry.is_regular_file()) {
                 auto ext = dirEntry.path().extension().string();
-                if (ext == ".h" || ext == ".hpp" || ext == ".inl" || ext == ".glsl" || ext == ".frag" || ext == ".vert") {
-                    auto relPath = std::filesystem::relative(dirEntry.path(), engineApiSource);
+                auto relPath = std::filesystem::relative(dirEntry.path(), engineApiSource);
+
+                // The native application backends are compiled by the project's
+                // own build (see Generator::getPlatformCMakeConfig), so their
+                // implementations travel with the snapshot; everything else is
+                // header-only API.
+                const bool isPlatformSource =
+                    !relPath.empty() && relPath.begin()->string() == "platform" &&
+                    (ext == ".cpp" || ext == ".mm" || ext == ".m");
+
+                if (ext == ".h" || ext == ".hpp" || ext == ".inl" || ext == ".glsl" || ext == ".frag" || ext == ".vert" || isPlatformSource) {
                     auto destPath = engineApiDest / relPath;
                     std::filesystem::create_directories(destPath.parent_path());
 

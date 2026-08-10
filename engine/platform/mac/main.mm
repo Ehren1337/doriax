@@ -2,8 +2,8 @@
 // (c) 2026 Eduardo Doria.
 //
 
-#include "DoriaxGLFW.h"
+#include "DoriaxMac.h"
 
 int main(int argc, char* argv[]) {
-    return DoriaxGLFW::init(argc, argv);
+    return DoriaxMac::init(argc, argv);
 }

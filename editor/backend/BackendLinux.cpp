@@ -1,8 +1,9 @@
 #include "Backend.h"
 #include "EditorHost.h"
-#include "backend/EditorFrame.h"
-#include "backend/GamepadDB.h"
-#include "backend/renderer/Renderer.h"
+#include "EditorFrame.h"
+#include "GamepadDB.h"
+#include "WindowLinux.h"
+#include "renderer/Renderer.h"
 
 #include "Engine.h"
 
@@ -191,7 +192,6 @@ struct LinuxBackendData {
     Atom uriList = None;
 
     Cursor mouseCursors[ImGuiMouseCursor_COUNT]{};
-    Cursor invisibleCursor = None;
     ImGuiMouseCursor lastCursor = ImGuiMouseCursor_COUNT;
 
     std::string clipboardText;
@@ -203,8 +203,6 @@ struct LinuxBackendData {
 
     bool shouldClose = false;
     bool redrawRequested = false;
-    bool pointerGrabbed = false;
-    bool relativeMouse = false;
     double virtualMouseX = 0.0;
     double virtualMouseY = 0.0;
     MouseMode gameMouseMode = MouseMode::NORMAL;
@@ -523,10 +521,8 @@ void openTopLevelMenu(int index) {
     }
 
     if (!menu.pointerGrabbed) {
-        if (backend->pointerGrabbed) {
-            XUngrabPointer(backend->display, CurrentTime);
-            backend->pointerGrabbed = false;
-            backend->relativeMouse = false;
+        if (WindowLinux::isPointerGrabbed()) {
+            WindowLinux::releasePointer();
             menu.restoreGamePointer = true;
         }
         menu.pointerGrabbed = XGrabPointer(
@@ -1171,7 +1167,7 @@ void updateMouseCursor() {
     if (cursor == backend->lastCursor && !io.MouseDrawCursor) return;
     backend->lastCursor = cursor;
 
-    Cursor xcursor = backend->invisibleCursor;
+    Cursor xcursor = WindowLinux::invisibleCursor();
     if (!io.MouseDrawCursor && cursor != ImGuiMouseCursor_None) {
         xcursor = backend->mouseCursors[cursor] != None
             ? backend->mouseCursors[cursor]
@@ -1183,7 +1179,7 @@ void updateMouseCursor() {
 
 void updateMouseData() {
     ImGuiIO& io = ImGui::GetIO();
-    if (io.WantSetMousePos && !backend->relativeMouse) {
+    if (io.WantSetMousePos && !WindowLinux::isRelativeMouse()) {
         int x = static_cast<int>(io.MousePos.x);
         int y = static_cast<int>(io.MousePos.y);
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
@@ -1505,7 +1501,11 @@ void processEvent(XEvent& event) {
             break;
         case ConfigureNotify:
             backend->redrawRequested = true;
-            if (window == backend->mainWindow) syncNativeMenuGeometry();
+            if (window == backend->mainWindow) {
+                syncNativeMenuGeometry();
+                WindowLinux::updateSize(event.xconfigure.width,
+                                        event.xconfigure.height);
+            }
             if (ImGuiViewport* viewport = findViewport(window)) {
                 if (window != backend->mainWindow) {
                     const int frame = ImGui::GetFrameCount();
@@ -1546,17 +1546,13 @@ void processEvent(XEvent& event) {
             window->focused = false;
             if (window->inputContext) XUnsetICFocus(window->inputContext);
             io.AddFocusEvent(false);
-            if (window == backend->mainWindow && backend->pointerGrabbed) {
-                XUngrabPointer(backend->display, CurrentTime);
-                backend->pointerGrabbed = false;
-                backend->relativeMouse = false;
-            }
+            if (window == backend->mainWindow) WindowLinux::releasePointer();
             if (window == backend->mainWindow && backend->menu.activeTop >= 0)
                 closeNativeMenu();
             break;
         case EnterNotify:
             backend->redrawRequested = true;
-            if (!backend->relativeMouse) {
+            if (!WindowLinux::isRelativeMouse()) {
                 float x = static_cast<float>(event.xcrossing.x);
                 float y = static_cast<float>(event.xcrossing.y);
                 if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
@@ -1568,12 +1564,12 @@ void processEvent(XEvent& event) {
             break;
         case LeaveNotify:
             backend->redrawRequested = true;
-            if (!backend->relativeMouse && event.xcrossing.mode == NotifyNormal)
+            if (!WindowLinux::isRelativeMouse() && event.xcrossing.mode == NotifyNormal)
                 io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
             break;
         case MotionNotify: {
             backend->redrawRequested = true;
-            if (backend->relativeMouse && window == backend->mainWindow) {
+            if (WindowLinux::isRelativeMouse() && window == backend->mainWindow) {
                 int width = 0;
                 int height = 0;
                 getWindowSize(window, width, height);
@@ -1659,30 +1655,11 @@ void processEvents(double waitSeconds) {
     }
 }
 
-void setPointerMode(bool relative, bool confined, Cursor cursor) {
-    if (backend->pointerGrabbed) {
-        XUngrabPointer(backend->display, CurrentTime);
-        backend->pointerGrabbed = false;
-    }
-    backend->relativeMouse = relative;
-    if (relative || confined) {
-        const int result = XGrabPointer(
-            backend->display, backend->mainWindow->handle, True,
-            PointerMotionMask | ButtonPressMask | ButtonReleaseMask,
-            GrabModeAsync, GrabModeAsync,
-            confined ? backend->mainWindow->handle : None,
-            cursor, CurrentTime);
-        backend->pointerGrabbed = result == GrabSuccess;
-    }
-    XDefineCursor(backend->display, backend->mainWindow->handle, cursor);
-    XFlush(backend->display);
-}
-
 void showEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
-    setPointerMode(false, false, backend->mouseCursors[ImGuiMouseCursor_Arrow]);
+    WindowLinux::setPointer(false, false, backend->mouseCursors[ImGuiMouseCursor_Arrow]);
     backend->lastCursor = ImGuiMouseCursor_COUNT;
     backend->gameCursorHidden = false;
 }
@@ -1691,7 +1668,7 @@ void hideEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-    setPointerMode(false, false, backend->invisibleCursor);
+    WindowLinux::setPointer(false, false, WindowLinux::invisibleCursor());
     backend->gameCursorHidden = true;
 }
 
@@ -1699,7 +1676,7 @@ void confineEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
-    setPointerMode(false, true, backend->mouseCursors[ImGuiMouseCursor_Arrow]);
+    WindowLinux::setPointer(false, true, backend->mouseCursors[ImGuiMouseCursor_Arrow]);
     backend->lastCursor = ImGuiMouseCursor_COUNT;
     backend->gameCursorHidden = false;
 }
@@ -2496,12 +2473,12 @@ bool initializeX11(int width, int height) {
     backend->mouseCursors[ImGuiMouseCursor_ResizeNWSE] = XCreateFontCursor(backend->display, XC_bottom_right_corner);
     backend->mouseCursors[ImGuiMouseCursor_Hand] = XCreateFontCursor(backend->display, XC_hand2);
     backend->mouseCursors[ImGuiMouseCursor_NotAllowed] = XCreateFontCursor(backend->display, XC_pirate);
-    const char emptyData[] = {0};
-    Pixmap empty = XCreateBitmapFromData(backend->display, backend->root, emptyData, 1, 1);
-    XColor black{};
-    backend->invisibleCursor = XCreatePixmapCursor(
-        backend->display, empty, empty, &black, &black, 0, 0);
-    XFreePixmap(backend->display, empty);
+    // The editor owns its display and windows (it is its own ImGui platform
+    // backend), so WindowLinux adopts them rather than creating them. That gives
+    // the cursor and pointer-grab handling one implementation shared with games.
+    WindowLinux::adopt(backend->display, backend->screen,
+                       backend->mainWindow->handle);
+    WindowLinux::updateSize(width, height);
 
     if (pipe2(backend->wakePipe, O_NONBLOCK | O_CLOEXEC) != 0) {
         backend->wakePipe[0] = backend->wakePipe[1] = -1;
@@ -2518,10 +2495,9 @@ void shutdownX11() {
     shutdownNativeMenu();
     for (int i = 0; i < GAMEPAD_COUNT; ++i)
         if (backend->gamepads[i].connected) disconnectGamepad(i);
-    if (backend->pointerGrabbed) XUngrabPointer(backend->display, CurrentTime);
+    WindowLinux::destroy();
     for (Cursor cursor : backend->mouseCursors)
         if (cursor != None) XFreeCursor(backend->display, cursor);
-    if (backend->invisibleCursor != None) XFreeCursor(backend->display, backend->invisibleCursor);
     if (backend->mainWindow) {
         backend->mainWindow->owned = true;
         destroyNativeWindow(backend->mainWindow);
@@ -2586,7 +2562,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     // ImGui. hideEditorCursor() sets NoMouseCursorChange and would leave the
     // pointer permanently invisible in NORMAL edit mode.
     XDefineCursor(backend->display, backend->mainWindow->handle,
-                  backend->invisibleCursor);
+                  WindowLinux::invisibleCursor());
     app.engineViewLoaded();
 
     app.setWakeCallback([]() {
@@ -2657,12 +2633,8 @@ void editor::Backend::disableMouseCursor() {
     io.MouseDrawCursor = false;
     backend->virtualMouseX = io.MousePos.x;
     backend->virtualMouseY = io.MousePos.y;
-    int width = 0;
-    int height = 0;
-    getWindowSize(backend->mainWindow, width, height);
-    XWarpPointer(backend->display, None, backend->mainWindow->handle,
-                 0, 0, 0, 0, width / 2, height / 2);
-    setPointerMode(true, false, backend->invisibleCursor);
+    WindowLinux::centerPointer();
+    WindowLinux::setPointer(true, false, WindowLinux::invisibleCursor());
 }
 
 void editor::Backend::enableMouseCursor() {

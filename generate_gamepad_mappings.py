@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate engine/platform/glfw/GamepadMappings.h from SDL_GameControllerDB.
+"""Generate engine/platform/common/GamepadMappings.h from SDL_GameControllerDB.
 
 GLFW's built-in gamepad database is frozen at release time, so controllers
 released (or added to the community database) after that report as plain
@@ -9,7 +9,7 @@ glfwUpdateGamepadMappings() right after glfwInit().
 
 Usage:
     curl -O https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/master/gamecontrollerdb.txt
-    python3 generate_gamepad_mappings.py gamecontrollerdb.txt engine/platform/glfw/GamepadMappings.h
+    python3 generate_gamepad_mappings.py gamecontrollerdb.txt engine/platform/common/GamepadMappings.h
 
 Only Windows, Mac OS X and Linux entries are kept: the GLFW backend is only
 used on desktop (Android/iOS/web have their own input paths). The header

@@ -5,7 +5,7 @@
 #pragma once
 
 #include "App.h"
-#include "backend/renderer/Renderer.h"
+#include "renderer/Renderer.h"
 
 #include <string>
 

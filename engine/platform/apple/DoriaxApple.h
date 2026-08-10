@@ -57,4 +57,4 @@ public:
 };
 
 
-#endif /* DoriaxSokol_h */
+#endif /* DoriaxApple_h */

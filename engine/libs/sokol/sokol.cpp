@@ -16,16 +16,12 @@
 #define SOKOL_TRACE_HOOKS
 /* sokol 3D-API defines are provided by build options */
 
-#ifdef DORIAX_SOKOL
-    #include "sokol_app.h"
-#endif
+// sokol_app (and the sokol_glue/sokol_fetch helpers that go with it) is no
+// longer compiled: every platform now has its own native application backend
+// under engine/platform, which owns the window, the event loop and the
+// graphics device.
 
 #include "sokol_gfx.h"
 #include "sokol_time.h"
 //#include "sokol_audio.h"
 //#include "sokol_log.h"
-
-#ifdef DORIAX_SOKOL
-    #include "sokol_fetch.h"
-    #include "sokol_glue.h"
-#endif

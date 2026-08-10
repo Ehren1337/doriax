@@ -4,7 +4,7 @@
 
 #include "GamepadDB.h"
 
-#include "engine/platform/glfw/GamepadMappings.h"
+#include "GamepadMappings.h"
 
 #include <cstdlib>
 #include <cstring>

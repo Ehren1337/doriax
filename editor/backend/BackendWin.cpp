@@ -1,7 +1,9 @@
 #include "Backend.h"
 #include "EditorHost.h"
-#include "backend/EditorFrame.h"
-#include "backend/renderer/Renderer.h"
+#include "EditorFrame.h"
+#include "GamepadWin.h"
+#include "WindowWin.h"
+#include "renderer/Renderer.h"
 
 #include "Engine.h"
 
@@ -52,25 +54,14 @@ namespace {
 constexpr wchar_t WINDOW_CLASS_NAME[] = L"DoriaxEditorNativeWindow";
 constexpr UINT WM_DORIAX_WAKE = WM_APP + 1;
 constexpr UINT FIRST_MENU_COMMAND = 0x1000;
-constexpr WORD ARROW_CURSOR_ID = 32512; // IDC_ARROW
 constexpr UINT_PTR LIVE_RESIZE_TIMER_ID = 0xD04A;
 constexpr UINT LIVE_RESIZE_INTERVAL_MS = 16;
-constexpr int GAMEPAD_COUNT = XUSER_MAX_COUNT;
-constexpr int GAMEPAD_BUTTON_COUNT = 15;
-constexpr int GAMEPAD_AXIS_COUNT = 6;
-constexpr ULONGLONG GAMEPAD_SCAN_INTERVAL_MS = 1000;
 #if defined(SOKOL_VULKAN)
 constexpr UINT WINDOW_CLASS_STYLE = CS_HREDRAW | CS_VREDRAW;
 #else
 // OpenGL keeps a device context per window, which needs a private DC
 constexpr UINT WINDOW_CLASS_STYLE = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 #endif
-
-struct Gamepad {
-    bool connected = false;
-    std::array<unsigned char, GAMEPAD_BUTTON_COUNT> buttons{};
-    std::array<float, GAMEPAD_AXIS_COUNT> axes{};
-};
 
 struct NativeMenu {
     HMENU handle = nullptr;
@@ -79,23 +70,16 @@ struct NativeMenu {
     std::vector<PlatformMenuCommand> pendingCommands;
 };
 
-using XInputGetStateProc = DWORD (WINAPI*)(DWORD, XINPUT_STATE*);
-
 struct WinBackendData {
+    // Cached from WindowWin, which owns the window and the cursor state
     HINSTANCE instance = nullptr;
     HWND window = nullptr;
-    bool classRegistered = false;
     bool shouldClose = false;
     bool redrawRequested = false;
     bool inSizeMove = false;
-    bool relativeMouse = false;
-    bool cursorClipped = false;
     bool gameCursorInSceneRect = false;
-    bool gameCursorHidden = false;
     bool mouseControlSuspended = false;
-    bool hasSavedCursorPosition = false;
     MouseMode gameMouseMode = MouseMode::NORMAL;
-    POINT savedCursorPosition{};
     double virtualMouseX = 0.0;
     double virtualMouseY = 0.0;
     LONG rawMouseX = 0;
@@ -107,10 +91,7 @@ struct WinBackendData {
     void (*createImGuiWindow)(ImGuiViewport*) = nullptr;
     NativeMenu menu;
 
-    HMODULE xinputLibrary = nullptr;
-    XInputGetStateProc xinputGetState = nullptr;
-    ULONGLONG nextGamepadScan = 0;
-    std::array<Gamepad, GAMEPAD_COUNT> gamepads;
+    GamepadWin gamepads;
     std::unique_ptr<editor::Renderer> renderer;
     editor::EditorFrame editorFrame;
 };
@@ -154,26 +135,6 @@ void createThemedImGuiWindow(ImGuiViewport* viewport) {
     applyDarkWindowTheme(static_cast<HWND>(viewport->PlatformHandleRaw));
 }
 
-std::wstring utf8ToWide(const std::string& text) {
-    if (text.empty()) return {};
-    int count = MultiByteToWideChar(
-        CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),
-        nullptr, 0);
-    UINT codePage = CP_UTF8;
-    DWORD flags = MB_ERR_INVALID_CHARS;
-    if (count <= 0) {
-        codePage = CP_ACP;
-        flags = 0;
-        count = MultiByteToWideChar(
-            codePage, flags, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    }
-    if (count <= 0) return {};
-    std::wstring result(static_cast<size_t>(count), L'\0');
-    MultiByteToWideChar(codePage, flags, text.data(), static_cast<int>(text.size()),
-                        result.data(), count);
-    return result;
-}
-
 std::string wideToUtf8(const wchar_t* text, int length) {
     if (!text || length <= 0) return {};
     const int count = WideCharToMultiByte(
@@ -198,7 +159,7 @@ std::wstring menuLabel(const PlatformMenuItem& item) {
         label.push_back('\t');
         label += item.shortcut;
     }
-    return utf8ToWide(label);
+    return winUtf8ToWide(label);
 }
 
 bool appendMenuItems(
@@ -279,67 +240,29 @@ bool rebuildNativeMenu(const PlatformMenuModel& model) {
 
 #endif
 
-bool appHasFocus() {
-    HWND focused = GetForegroundWindow();
-    if (!focused) return false;
-    DWORD processId = 0;
-    GetWindowThreadProcessId(focused, &processId);
-    return processId == GetCurrentProcessId();
-}
-
-void updateCursorClip() {
-    if (!backend || !backend->window || !appHasFocus()) {
-        ClipCursor(nullptr);
-        if (backend) backend->cursorClipped = false;
-        return;
-    }
-    if (!backend->relativeMouse && backend->gameMouseMode != MouseMode::CONFINED) {
-        ClipCursor(nullptr);
-        backend->cursorClipped = false;
-        return;
-    }
-    RECT rect{};
-    GetClientRect(backend->window, &rect);
-    POINT topLeft{rect.left, rect.top};
-    POINT bottomRight{rect.right, rect.bottom};
-    ClientToScreen(backend->window, &topLeft);
-    ClientToScreen(backend->window, &bottomRight);
-    rect = {topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
-    ClipCursor(&rect);
-    backend->cursorClipped = true;
-}
-
 void releaseRelativeMouse() {
-    const bool restorePosition = backend->relativeMouse &&
-        backend->hasSavedCursorPosition;
-    backend->relativeMouse = false;
+    WindowWin::setRelativeMouse(false, true);
     backend->rawMouseX = backend->rawMouseY = 0;
-    ClipCursor(nullptr);
-    backend->cursorClipped = false;
-    if (restorePosition)
-        SetCursorPos(backend->savedCursorPosition.x,
-                     backend->savedCursorPosition.y);
-    backend->hasSavedCursorPosition = false;
 }
 
 void showEditorCursor() {
     if (!backend) return;
     releaseRelativeMouse();
+    WindowWin::setCursorConfined(false);
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
-    SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(ARROW_CURSOR_ID)));
-    backend->gameCursorHidden = false;
+    WindowWin::setCursorHidden(false);
 }
 
 void hideEditorCursor() {
     if (!backend) return;
     releaseRelativeMouse();
+    WindowWin::setCursorConfined(false);
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-    SetCursor(nullptr);
-    backend->gameCursorHidden = true;
+    WindowWin::setCursorHidden(true);
 }
 
 void confineEditorCursor() {
@@ -348,9 +271,8 @@ void confineEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
-    SetCursor(LoadCursorW(nullptr, MAKEINTRESOURCEW(ARROW_CURSOR_ID)));
-    updateCursorClip();
-    backend->gameCursorHidden = false;
+    WindowWin::setCursorHidden(false);
+    WindowWin::setCursorConfined(true);
 }
 
 void applyHoverVisibility(bool force = false) {
@@ -358,13 +280,13 @@ void applyHoverVisibility(bool force = false) {
         backend->gameMouseMode != MouseMode::HIDDEN)
         return;
     const bool shouldHide = backend->gameCursorInSceneRect;
-    if (!force && shouldHide == backend->gameCursorHidden) return;
+    if (!force && shouldHide == WindowWin::isCursorHidden()) return;
     if (shouldHide) hideEditorCursor();
     else showEditorCursor();
 }
 
 void applyRelativeMouseData() {
-    if (!backend->relativeMouse || !appHasFocus()) {
+    if (!WindowWin::isRelativeMouse() || !WindowWin::hasFocus()) {
         backend->rawMouseX = backend->rawMouseY = 0;
         return;
     }
@@ -376,116 +298,17 @@ void applyRelativeMouseData() {
         static_cast<float>(backend->virtualMouseY));
 }
 
-float normalizeThumb(SHORT value) {
-    return value >= 0 ? static_cast<float>(value) / 32767.0f
-                      : static_cast<float>(value) / 32768.0f;
-}
-
-void disconnectGamepad(int id) {
-    Gamepad& gamepad = backend->gamepads[id];
-    if (!gamepad.connected) return;
-    gamepad = {};
-    Engine::systemGamepadDisconnect(id);
-}
-
 void pollGamepads() {
-    if (!backend->xinputGetState) return;
-
-    // Probing an empty slot costs a device query on the older XInput libraries,
-    // so look for new controllers once per second instead of every frame.
-    const ULONGLONG now = GetTickCount64();
-    const bool scanEmptySlots = now >= backend->nextGamepadScan;
-    if (scanEmptySlots) backend->nextGamepadScan = now + GAMEPAD_SCAN_INTERVAL_MS;
-
-    constexpr std::array<WORD, GAMEPAD_BUTTON_COUNT> buttonMasks = {
-        XINPUT_GAMEPAD_A,
-        XINPUT_GAMEPAD_B,
-        XINPUT_GAMEPAD_X,
-        XINPUT_GAMEPAD_Y,
-        XINPUT_GAMEPAD_LEFT_SHOULDER,
-        XINPUT_GAMEPAD_RIGHT_SHOULDER,
-        XINPUT_GAMEPAD_BACK,
-        XINPUT_GAMEPAD_START,
-        0,
-        XINPUT_GAMEPAD_LEFT_THUMB,
-        XINPUT_GAMEPAD_RIGHT_THUMB,
-        XINPUT_GAMEPAD_DPAD_UP,
-        XINPUT_GAMEPAD_DPAD_RIGHT,
-        XINPUT_GAMEPAD_DPAD_DOWN,
-        XINPUT_GAMEPAD_DPAD_LEFT
-    };
-
-    for (DWORD id = 0; id < GAMEPAD_COUNT; ++id) {
-        Gamepad& gamepad = backend->gamepads[id];
-        if (!gamepad.connected && !scanEmptySlots) continue;
-
-        XINPUT_STATE state{};
-        const bool connected = backend->xinputGetState(id, &state) == ERROR_SUCCESS;
-        if (!connected) {
-            disconnectGamepad(static_cast<int>(id));
-            continue;
-        }
-        if (!gamepad.connected) {
-            gamepad = {};
-            gamepad.connected = true;
-            gamepad.axes[4] = gamepad.axes[5] = -1.0f;
-            Engine::systemGamepadConnect(static_cast<int>(id), "XInput Controller");
-        }
-
-        for (int button = 0; button < GAMEPAD_BUTTON_COUNT; ++button) {
-            const unsigned char pressed = buttonMasks[button] != 0 &&
-                (state.Gamepad.wButtons & buttonMasks[button]) != 0;
-            if (pressed == gamepad.buttons[button]) continue;
-            gamepad.buttons[button] = pressed;
-            if (pressed) Engine::systemGamepadButtonDown(id, button);
-            else Engine::systemGamepadButtonUp(id, button);
-        }
-
-        const std::array<float, GAMEPAD_AXIS_COUNT> axes = {
-            normalizeThumb(state.Gamepad.sThumbLX),
-            -normalizeThumb(state.Gamepad.sThumbLY),
-            normalizeThumb(state.Gamepad.sThumbRX),
-            -normalizeThumb(state.Gamepad.sThumbRY),
-            static_cast<float>(state.Gamepad.bLeftTrigger) / 127.5f - 1.0f,
-            static_cast<float>(state.Gamepad.bRightTrigger) / 127.5f - 1.0f
-        };
-        for (int axis = 0; axis < GAMEPAD_AXIS_COUNT; ++axis) {
-            if (std::fabs(axes[axis] - gamepad.axes[axis]) <= 0.001f) continue;
-            gamepad.axes[axis] = axes[axis];
-            Engine::systemGamepadAxisMove(id, axis, axes[axis]);
-        }
-    }
-}
-
-void initializeXInput() {
-    constexpr const wchar_t* libraries[] = {
-        L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll"
-    };
-    for (const wchar_t* library : libraries) {
-        backend->xinputLibrary = LoadLibraryW(library);
-        if (!backend->xinputLibrary) continue;
-        backend->xinputGetState = reinterpret_cast<XInputGetStateProc>(
-            GetProcAddress(backend->xinputLibrary, "XInputGetState"));
-        if (backend->xinputGetState) return;
-        FreeLibrary(backend->xinputLibrary);
-        backend->xinputLibrary = nullptr;
-    }
+    backend->gamepads.poll();
 }
 
 void handleRawInput(HRAWINPUT handle) {
-    if (!backend->relativeMouse) return;
-    UINT size = 0;
-    if (GetRawInputData(handle, RID_INPUT, nullptr, &size,
-                        sizeof(RAWINPUTHEADER)) != 0 || size == 0)
-        return;
-    std::vector<unsigned char> storage(size);
-    if (GetRawInputData(handle, RID_INPUT, storage.data(), &size,
-                        sizeof(RAWINPUTHEADER)) != size)
-        return;
-    const RAWINPUT* input = reinterpret_cast<const RAWINPUT*>(storage.data());
-    if (input->header.dwType != RIM_TYPEMOUSE) return;
-    backend->rawMouseX += input->data.mouse.lLastX;
-    backend->rawMouseY += input->data.mouse.lLastY;
+    if (!WindowWin::isRelativeMouse()) return;
+    LONG deltaX = 0;
+    LONG deltaY = 0;
+    if (!WindowWin::readRawMouseDelta(handle, deltaX, deltaY)) return;
+    backend->rawMouseX += deltaX;
+    backend->rawMouseY += deltaY;
     backend->redrawRequested = true;
 }
 
@@ -532,21 +355,21 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 backend->redrawRequested = true;
                 return 0;
             case WM_SETFOCUS:
-                updateCursorClip();
+                WindowWin::updateCursorClip();
                 backend->redrawRequested = true;
                 break;
             case WM_KILLFOCUS:
-                ClipCursor(nullptr);
-                backend->cursorClipped = false;
+                WindowWin::releaseCursorClip();
                 backend->redrawRequested = true;
                 break;
             case WM_MOVE:
             case WM_DISPLAYCHANGE:
-                updateCursorClip();
+                WindowWin::updateCursorClip();
                 backend->redrawRequested = true;
                 break;
             case WM_SIZE:
-                updateCursorClip();
+                WindowWin::refreshClientSize();
+                WindowWin::updateCursorClip();
                 backend->redrawRequested = true;
                 break;
             case WM_ENTERSIZEMOVE:
@@ -593,8 +416,7 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 backend->redrawRequested = true;
                 break;
             case WM_SETCURSOR:
-                if (LOWORD(lParam) == HTCLIENT &&
-                    (backend->relativeMouse || backend->gameCursorHidden)) {
+                if (LOWORD(lParam) == HTCLIENT && WindowWin::isCursorHidden()) {
                     SetCursor(nullptr);
                     return TRUE;
                 }
@@ -640,76 +462,42 @@ void updateFramePeriod() {
 }
 
 bool initializeWindow(int width, int height, bool maximized) {
-    backend->instance = GetModuleHandleW(nullptr);
+    // Has to run before the window exists, so the frame is laid out for the
+    // right DPI from the start.
     ImGui_ImplWin32_EnableDpiAwareness();
 
-    HICON icon = static_cast<HICON>(LoadImageW(
-        backend->instance, L"GLFW_ICON", IMAGE_ICON, 0, 0,
+    WindowWinConfig config;
+    config.title = "Doriax Engine";
+    config.width = width;
+    config.height = height;
+    config.maximized = maximized;
+    config.windowProc = windowProc;
+    config.className = WINDOW_CLASS_NAME;
+    config.classStyle = WINDOW_CLASS_STYLE;
+    config.icon = static_cast<HICON>(LoadImageW(
+        GetModuleHandleW(nullptr), L"GLFW_ICON", IMAGE_ICON, 0, 0,
         LR_DEFAULTSIZE | LR_SHARED));
-    WNDCLASSEXW windowClass{};
-    windowClass.cbSize = sizeof(windowClass);
-    windowClass.style = WINDOW_CLASS_STYLE;
-    windowClass.lpfnWndProc = windowProc;
-    windowClass.hInstance = backend->instance;
-    windowClass.hIcon = icon;
-    windowClass.hIconSm = icon;
-    windowClass.hCursor = LoadCursorW(
-        nullptr, MAKEINTRESOURCEW(ARROW_CURSOR_ID));
-    windowClass.hbrBackground = nullptr;
-    windowClass.lpszClassName = WINDOW_CLASS_NAME;
-    if (!RegisterClassExW(&windowClass)) {
-        std::fprintf(stderr, "Error: Could not register the Win32 window class (%lu).\n",
-                     GetLastError());
-        return false;
-    }
-    backend->classRegistered = true;
+    // ImGui's detached viewports are child windows of this one
+    config.clipChildren = true;
+    if (!WindowWin::create(config)) return false;
 
-    constexpr DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
-    constexpr DWORD exStyle = WS_EX_APPWINDOW;
-    RECT windowRect{0, 0, std::max(width, 1), std::max(height, 1)};
-    AdjustWindowRectEx(&windowRect, style, FALSE, exStyle);
-    const int windowWidth = windowRect.right - windowRect.left;
-    const int windowHeight = windowRect.bottom - windowRect.top;
-    RECT workArea{};
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0);
-    const int x = workArea.left + std::max<LONG>(
-        0, (workArea.right - workArea.left - windowWidth) / 2);
-    const int y = workArea.top + std::max<LONG>(
-        0, (workArea.bottom - workArea.top - windowHeight) / 2);
-    backend->window = CreateWindowExW(
-        exStyle, WINDOW_CLASS_NAME, L"Doriax Engine", style,
-        x, y, windowWidth, windowHeight, nullptr, nullptr,
-        backend->instance, nullptr);
-    if (!backend->window) {
-        std::fprintf(stderr, "Error: Could not create the Win32 window (%lu).\n",
-                     GetLastError());
-        return false;
-    }
+    backend->instance = WindowWin::instance();
+    backend->window = WindowWin::handle();
+
     applyDarkWindowTheme(backend->window);
     DragAcceptFiles(backend->window, TRUE);
 
-    RAWINPUTDEVICE rawInput{};
-    rawInput.usUsagePage = 0x01;
-    rawInput.usUsage = 0x02;
-    rawInput.hwndTarget = backend->window;
-    RegisterRawInputDevices(&rawInput, 1, sizeof(rawInput));
-
     nativeWindowHandle.type = NFD_WINDOW_HANDLE_TYPE_WINDOWS;
     nativeWindowHandle.handle = backend->window;
-    initializeXInput();
+    backend->gamepads.init();
     updateFramePeriod();
-    ShowWindow(backend->window, maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL);
-    UpdateWindow(backend->window);
+    WindowWin::show(maximized);
     return true;
 }
 
 void shutdownWindow() {
     if (!backend) return;
-    ClipCursor(nullptr);
-    for (int id = 0; id < GAMEPAD_COUNT; ++id) disconnectGamepad(id);
-    if (backend->xinputLibrary) FreeLibrary(backend->xinputLibrary);
-    backend->xinputLibrary = nullptr;
-    backend->xinputGetState = nullptr;
+    backend->gamepads.shutdown();
     if (backend->window) {
         KillTimer(backend->window, LIVE_RESIZE_TIMER_ID);
         DragAcceptFiles(backend->window, FALSE);
@@ -718,11 +506,9 @@ void shutdownWindow() {
             DestroyMenu(backend->menu.handle);
             backend->menu.handle = nullptr;
         }
-        DestroyWindow(backend->window);
         backend->window = nullptr;
     }
-    if (backend->classRegistered)
-        UnregisterClassW(WINDOW_CLASS_NAME, backend->instance);
+    WindowWin::destroy();
     delete backend;
     backend = nullptr;
     nativeWindowHandle = {};
@@ -927,13 +713,6 @@ editor::RendererPlatform rendererPlatform() {
 
 #endif
 
-void getClientSize(int& width, int& height) {
-    RECT rect{};
-    GetClientRect(backend->window, &rect);
-    width = std::max<LONG>(rect.right - rect.left, 0);
-    height = std::max<LONG>(rect.bottom - rect.top, 0);
-}
-
 void processMessages(bool waitForMessage) {
     if (waitForMessage)
         MsgWaitForMultipleObjectsEx(
@@ -989,7 +768,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     app.setup();
     int clientWidth = 0;
     int clientHeight = 0;
-    getClientSize(clientWidth, clientHeight);
+    WindowWin::getClientSize(clientWidth, clientHeight);
     backend->renderer = std::make_unique<editor::Renderer>();
     if (!backend->renderer->init(
             rendererPlatform(), clientWidth, clientHeight, true)) {
@@ -1022,14 +801,14 @@ int editor::Backend::init(int argc, char* argv[]) {
         if (frameInProgress || backend->shouldClose) return;
         frameInProgress = true;
         pollGamepads();
-        updateCursorClip();
+        WindowWin::updateCursorClip();
 
         editor::EditorFrameState state{backend->redrawRequested};
         state.framePeriod = backend->framePeriod;
         state.forceRedraw = forceRedraw;
         state.minimized = IsIconic(backend->window) != FALSE;
-        state.focused = appHasFocus();
-        getClientSize(state.width, state.height);
+        state.focused = WindowWin::hasFocus();
+        WindowWin::getClientSize(state.width, state.height);
         if (!backend->editorFrame.run(state))
             backend->shouldClose = true;
         frameInProgress = false;
@@ -1048,7 +827,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     app.shutdownBackgroundWork();
     int width = 0;
     int height = 0;
-    getClientSize(width, height);
+    WindowWin::getClientSize(width, height);
     app.saveWindowSettings(width, height, IsZoomed(backend->window) != FALSE);
 
     backend->renderer->shutdownImGui();
@@ -1071,25 +850,23 @@ void editor::Backend::disableMouseCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     io.MouseDrawCursor = false;
-    if (!backend->relativeMouse) {
-        backend->hasSavedCursorPosition = GetCursorPos(
-            &backend->savedCursorPosition) != FALSE;
+    if (!WindowWin::isRelativeMouse()) {
+        POINT position{};
+        const bool hasPosition = GetCursorPos(&position) != FALSE;
         if (io.MousePos.x > -FLT_MAX && io.MousePos.y > -FLT_MAX) {
             backend->virtualMouseX = io.MousePos.x;
             backend->virtualMouseY = io.MousePos.y;
-        } else if (backend->hasSavedCursorPosition) {
-            POINT position = backend->savedCursorPosition;
+        } else if (hasPosition) {
             if (!(io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable))
                 ScreenToClient(backend->window, &position);
             backend->virtualMouseX = position.x;
             backend->virtualMouseY = position.y;
         }
     }
-    backend->relativeMouse = true;
+    // Saves the cursor position and clips it to the client area
+    WindowWin::setRelativeMouse(true, true);
     backend->rawMouseX = backend->rawMouseY = 0;
-    SetCursor(nullptr);
-    updateCursorClip();
-    backend->gameCursorHidden = true;
+    WindowWin::setCursorHidden(true);
 }
 
 void editor::Backend::enableMouseCursor() {
@@ -1174,10 +951,7 @@ sg_swapchain editor::Backend::getSokolSwapchain() {
 
 void editor::Backend::updateWindowTitle(const std::string& projectName) {
     title = editor::EditorFrame::formatWindowTitle(projectName);
-    if (backend && backend->window) {
-        const std::wstring wideTitle = utf8ToWide(title);
-        SetWindowTextW(backend->window, wideTitle.c_str());
-    }
+    WindowWin::setTitle(title);
 }
 
 void* editor::Backend::getNFDWindowHandle() {

@@ -173,12 +173,20 @@ void DoriaxApple::quit(){
 
 std::string DoriaxApple::getAssetPath(){
     NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"assets"];
-    
+
     NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
-    
-    if (!path)
-        return "";
-    
+
+    if (!path){
+        // No bundle resource: either a plain (non-.app) build, or a project run
+        // from outside the editor, which leaves the assets in the project
+        // directory and bakes its path in (see Generator::getPlatformCMakeConfig).
+#ifdef DORIAX_ASSET_PATH
+        return DORIAX_ASSET_PATH;
+#else
+        return "assets";
+#endif
+    }
+
     return [path cStringUsingEncoding:NSASCIIStringEncoding];
 }
 
@@ -191,12 +199,17 @@ std::string DoriaxApple::getUserDataPath(){
 
 std::string DoriaxApple::getLuaPath(){
     NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"lua"];
-    
+
     NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
-    
-    if (!path)
-        return "";
-    
+
+    if (!path){
+#ifdef DORIAX_LUA_PATH
+        return DORIAX_LUA_PATH;
+#else
+        return "lua";
+#endif
+    }
+
     return [path cStringUsingEncoding:NSASCIIStringEncoding];
 }
 

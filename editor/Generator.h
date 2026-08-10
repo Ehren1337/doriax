@@ -91,13 +91,11 @@ namespace doriax::editor {
         // Returns false (with a logged error) if the cache could not be removed,
         // usually because another program holds a lock on the build directory.
         bool cleanBuildDirectory(const fs::path& buildPath);
-        std::string getPlatformCMakeConfig(const WindowSettings& windowSettings);
-        std::string getPlatformEditorHeader();
-        std::string getPlatformEditorSource(const fs::path& assetsPath, const fs::path& luaPath, bool vsyncEnabled, const WindowSettings& windowSettings);
+        std::string getPlatformCMakeConfig(const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath);
         std::string buildInitSceneScriptsSource(const std::vector<SceneScriptSource>& scriptFiles);
         std::string buildCleanupSceneScriptsSource(const std::vector<SceneScriptSource>& scriptFiles);
 
-        void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<BundleSceneInfo>& bundles, const WindowSettings& windowSettings);
+        void writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<SceneBuildInfo>& scenes, const std::vector<BundleSceneInfo>& bundles, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath);
 
     public:
         Generator();

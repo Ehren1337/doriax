@@ -370,7 +370,7 @@ bool editor::Generator::runCommand(const std::string& command, const fs::path& w
     return commandRunner.run(command, workingDir);
 }
 
-std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& windowSettings) {
+std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath) {
     std::string content;
     content += "if (NOT DORIAX_EDITOR_PLUGIN)\n";
     content += "    add_definitions(\"-DDEFAULT_WINDOW_WIDTH=" + std::to_string(windowSettings.width) + "\")\n";
@@ -379,20 +379,88 @@ std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& wind
     content += "    set(COMPILE_ZLIB OFF)\n";
     content += "    set(IS_ARM OFF)\n";
     content += "\n";
-    content += "    add_definitions(\"-DSOKOL_GLCORE\")\n";
     content += "    add_definitions(\"-DWITH_MINIAUDIO\") # For SoLoud\n";
     content += "\n";
+    // Running a project from outside the editor leaves the assets in the project
+    // directory rather than beside the executable, so the backends' relative
+    // defaults would not find them.
+    content += "    add_definitions(\"-DDORIAX_ASSET_PATH=\\\"" + assetsPath.generic_string() + "\\\"\")\n";
+    content += "    add_definitions(\"-DDORIAX_LUA_PATH=\\\"" + luaPath.generic_string() + "\\\"\")\n";
+    content += "\n";
     content += "    list(APPEND PLATFORM_SOURCE\n";
-    content += "        ${INTERNAL_DIR}/generated/PlatformEditor.cpp\n";
     content += "        ${INTERNAL_DIR}/generated/main.cpp\n";
     content += "    )\n";
     content += "\n";
+    content += "    # Each desktop OS uses the same native application backend as the editor,\n";
+    content += "    # compiled from the engine API snapshot in ${INTERNAL_DIR}/engine-api.\n";
+    // Apple defaults to Metal to match the editor's own renderer; glcore selects
+    // the NSOpenGLView backend instead. Windows and Linux are OpenGL-only here.
+    content += "    if(NOT DORIAX_GRAPHIC_BACKEND)\n";
+    content += "        if(APPLE)\n";
+    content += "            set(DORIAX_GRAPHIC_BACKEND \"metal\")\n";
+    content += "        else()\n";
+    content += "            set(DORIAX_GRAPHIC_BACKEND \"glcore\")\n";
+    content += "        endif()\n";
+    content += "    endif()\n";
+    content += "\n";
+    content += "    set(DORIAX_PLATFORM_DIR ${DORIAX_API_DIR}/platform)\n";
+    content += "    include_directories(${DORIAX_PLATFORM_DIR}/win ${DORIAX_PLATFORM_DIR}/linux ${DORIAX_PLATFORM_DIR}/mac ${DORIAX_PLATFORM_DIR}/apple ${DORIAX_PLATFORM_DIR}/common)\n";
+    content += "\n";
     content += "    if(WIN32)\n";
-    content += "        list(APPEND PLATFORM_LIBS opengl32 gdi32 user32 shell32 glfw)\n";
+    content += "        add_definitions(\"-DSOKOL_GLCORE\")\n";
+    content += "        list(APPEND PLATFORM_SOURCE\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/win/DoriaxWin.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/win/WindowWin.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/win/SystemWin.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/win/GamepadWin.cpp\n";
+    content += "        )\n";
+    content += "        list(APPEND PLATFORM_LIBS opengl32 gdi32 user32 shell32)\n";
     content += "    elseif(APPLE)\n";
-    content += "        list(APPEND PLATFORM_LIBS glfw \"-framework OpenGL\" \"-framework Cocoa\" \"-framework IOKit\" \"-framework CoreVideo\" \"-framework CoreFoundation\")\n";
+    content += "        set(CMAKE_CXX_FLAGS \"${CMAKE_CXX_FLAGS} -fobjc-arc\")\n";
+    content += "        set(CMAKE_C_FLAGS \"${CMAKE_C_FLAGS} -fobjc-arc\")\n";
+    content += "        if(DORIAX_GRAPHIC_BACKEND STREQUAL \"glcore\")\n";
+    content += "            # MTKView has no GL drawable, so OpenGL uses the NSOpenGLView backend\n";
+    content += "            add_definitions(\"-DSOKOL_GLCORE\")\n";
+    content += "            list(APPEND PLATFORM_SOURCE\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/apple/DoriaxGameController.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/mac/DoriaxMac.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/mac/WindowMac.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/mac/SystemMac.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/mac/MacInputRouter.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/mac/MacViewGL.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/mac/main.mm\n";
+    content += "            )\n";
+    content += "            list(APPEND PLATFORM_LIBS \"-framework Cocoa\" \"-framework OpenGL\" \"-framework QuartzCore\" \"-framework GameController\")\n";
+    content += "        else()\n";
+    content += "            add_definitions(\"-DSOKOL_METAL\")\n";
+    content += "            add_definitions(\"-DDORIAX_APPLE\")\n";
+    content += "            # GameMain.mm builds the window programmatically. The storyboard\n";
+    content += "            # entry (main.m + AppDelegate + ViewController) needs a real .app\n";
+    content += "            # bundle and only assembles under the Xcode generator.\n";
+    content += "            list(APPEND PLATFORM_SOURCE\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/apple/macos/GameMain.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/apple/macos/EngineView.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/mac/MacInputRouter.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/mac/MacViewMetal.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/apple/Renderer.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/apple/DoriaxApple.mm\n";
+    content += "                ${DORIAX_PLATFORM_DIR}/apple/DoriaxGameController.mm\n";
+    content += "            )\n";
+    content += "            list(APPEND PLATFORM_LIBS \"-framework Cocoa\" \"-framework Metal\" \"-framework MetalKit\" \"-framework QuartzCore\" \"-framework GameController\")\n";
+    content += "        endif()\n";
     content += "    else()\n";
-    content += "        list(APPEND PLATFORM_LIBS GL dl m glfw)\n";
+    content += "        add_definitions(\"-DSOKOL_GLCORE\")\n";
+    content += "        find_package(X11 REQUIRED)\n";
+    content += "        list(APPEND PLATFORM_SOURCE\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/linux/DoriaxLinux.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/linux/GamepadLinux.cpp\n";
+    content += "            ${DORIAX_PLATFORM_DIR}/linux/GamepadDB.cpp\n";
+    content += "        )\n";
+    content += "        list(APPEND PLATFORM_LIBS X11::X11 GL dl m)\n";
     content += "    endif()\n";
     content += "endif() \n";
     return content;
@@ -598,7 +666,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
     return sourceContent;
 }
 
-void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, const WindowSettings& windowSettings) {
+void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath) {
     const fs::path exePath = FileUtils::getExecutableDir();
 
     fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
@@ -665,6 +733,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "# Local engine API source used by this editor build: " + (exePath / "engine").generic_string() + "\n";
     cmakeContent += "# Full engine + editor source (including YAML serialization for *.scene/*.bundle/project.yaml): https://github.com/doriaxengine/doriax\n\n";
 
+    cmakeContent += "set(DORIAX_API_DIR " + engineApiPathStr + ")\n\n";
+
     cmakeContent += "# Specify C++ standard\n";
     cmakeContent += "set(CMAKE_CXX_STANDARD 17)\n";
     cmakeContent += "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n\n";
@@ -691,7 +761,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    endif()\n";
     cmakeContent += "endif()\n\n";
 
-    cmakeContent += getPlatformCMakeConfig(windowSettings) + "\n";
+    cmakeContent += getPlatformCMakeConfig(windowSettings, assetsPath, luaPath) + "\n";
 
     cmakeContent += scriptSources + "\n";
     cmakeContent += factorySources + "\n";
@@ -748,7 +818,6 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    " + engineApiPathStr + "/core/subsystem\n";
     cmakeContent += "    " + engineApiPathStr + "/core/texture\n";
     cmakeContent += "    " + engineApiPathStr + "/core/util\n";
-    cmakeContent += "    " + engineApiPathStr + "/platform/glfw # GamepadMappings.h for PlatformEditor\n";
     cmakeContent += ")\n\n";
 
     cmakeContent += "# libdoriax is searched in DORIAX_LIB_DIR; by default it points to the Doriax editor executable directory.\n";
@@ -866,7 +935,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "These files are produced by the editor when a scene is played/run and are intended for **in-editor testing only**. Project export/distribution uses a separate pipeline and does not reuse these files. Do not edit them manually — they will be overwritten on the next generation:\n\n";
     agentsContent += "- `CMakeLists.txt` (project root)\n";
     agentsContent += "- `" + relativeInternalPath.generic_string() + "/scene_scripts.cpp`\n";
-    agentsContent += "- `" + relativeInternalPath.generic_string() + "/generated/` (scene factories, bundle factories, `main.cpp`, `PlatformEditor.h`, `PlatformEditor.cpp`)\n";
+    agentsContent += "- `" + relativeInternalPath.generic_string() + "/generated/` (scene factories, bundle factories, `main.cpp`)\n";
     agentsContent += "- `" + engineApiRelativePath.generic_string() + "/` (engine API snapshot copied from the editor)\n\n";
     agentsContent += "## Regenerating C++ code\n\n";
     agentsContent += "The generated C++ sources (scene factories, script bindings) are derived from `*.scene`, `*.bundle`, and `project.yaml` files.\n";
@@ -965,11 +1034,19 @@ void editor::Generator::clearSceneSource(const std::string& sceneName, const fs:
 void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
+    // The editor used to emit a GLFW application host into every project. It is
+    // gone, but projects created before that still carry the files, and nothing
+    // else removes them; the exported build globs every *.cpp under the project
+    // root, so a leftover would be compiled against an engine that no longer
+    // has GLFW in it.
+    std::error_code removeError;
+    fs::remove(generatedPath / "PlatformEditor.h", removeError);
+    fs::remove(generatedPath / "PlatformEditor.cpp", removeError);
+
     // Build main.cpp content
     std::string mainContent;
     mainContent += "// This file is auto-generated by Doriax Editor. Do not edit manually.\n\n";
     mainContent += "#include \"Doriax.h\"\n";
-    mainContent += "#include \"PlatformEditor.h\"\n";
 
     // Include bundle headers (contain declarations for bundle creation functions)
     for (const auto& bundleData : bundles) {
@@ -1055,9 +1132,24 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "}\n\n";
     }
 
+    // Entry point of the native application backend for this OS. On Apple the
+    // process starts in platform/apple/macos/main.m instead, so defining main()
+    // here would collide with it.
+    // The markers let Exporter strip this block wholesale: an exported project
+    // compiles the engine's own platform main.cpp, which already defines main().
+    mainContent += "// DORIAX_ENTRY_POINT_BEGIN\n";
+    mainContent += "#if defined(_WIN32)\n";
+    mainContent += "#include \"DoriaxWin.h\"\n";
     mainContent += "int main(int argc, char* argv[]) {\n";
-    mainContent += "    return PlatformEditor::init(argc, argv);\n";
-    mainContent += "}\n\n";
+    mainContent += "    return DoriaxWin::init(argc, argv);\n";
+    mainContent += "}\n";
+    mainContent += "#elif !defined(__APPLE__)\n";
+    mainContent += "#include \"DoriaxLinux.h\"\n";
+    mainContent += "int main(int argc, char* argv[]) {\n";
+    mainContent += "    return DoriaxLinux::init(argc, argv);\n";
+    mainContent += "}\n";
+    mainContent += "#endif\n";
+    mainContent += "// DORIAX_ENTRY_POINT_END\n\n";
 
     mainContent += "DORIAX_INIT void init() {\n";
     mainContent += "    Engine::setCanvasSize(" + std::to_string(canvasWidth) + ", " + std::to_string(canvasHeight) + ");\n";
@@ -1115,405 +1207,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     const fs::path mainFile = generatedPath / "main.cpp";
     FileUtils::writeIfChanged(mainFile, mainContent);
 
-    const fs::path platformHeaderFile = generatedPath / "PlatformEditor.h";
-    FileUtils::writeIfChanged(platformHeaderFile, getPlatformEditorHeader());
-
-    const fs::path platformSourceFile = generatedPath / "PlatformEditor.cpp";
-    FileUtils::writeIfChanged(platformSourceFile, getPlatformEditorSource(assetsPath, luaPath, vsyncEnabled, windowSettings));
-
-    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, windowSettings);
-}
-
-std::string editor::Generator::getPlatformEditorHeader() {
-    std::string content;
-    content += "// This file is auto-generated by Doriax Editor. Do not edit manually.\n\n";
-    content += "#pragma once\n\n";
-    content += "#define GLFW_INCLUDE_NONE\n";
-    content += "#include \"GLFW/glfw3.h\"\n\n";
-    content += "#include \"System.h\"\n\n";
-    content += "class PlatformEditor: public doriax::System{\n\n";
-    content += "private:\n\n";
-    content += "    typedef struct GamepadState{\n";
-    content += "        bool connected = false;\n";
-    content += "        unsigned char buttons[GLFW_GAMEPAD_BUTTON_LAST + 1] = {0};\n";
-    content += "        float axes[GLFW_GAMEPAD_AXIS_LAST + 1] = {0.0f};\n";
-    content += "    } GamepadState;\n\n";
-    content += "    static int windowPosX;\n";
-    content += "    static int windowPosY;\n";
-    content += "    static int windowWidth;\n";
-    content += "    static int windowHeight;\n\n";
-    content += "    static int screenWidth;\n";
-    content += "    static int screenHeight;\n\n";
-    content += "    static double mousePosX;\n";
-    content += "    static double mousePosY;\n\n";
-    content += "    static int sampleCount;\n\n";
-    content += "    static GLFWwindow* window;\n";
-    content += "    static GLFWmonitor* monitor;\n\n";
-    content += "    static GamepadState gamepads[GLFW_JOYSTICK_LAST + 1];\n\n";
-    content += "    static void pollGamepads();\n\n";
-    content += "public:\n\n";
-    content += "    PlatformEditor();\n\n";
-    content += "    static int init(int argc, char **argv);\n\n";
-    content += "    virtual int getScreenWidth();\n";
-    content += "    virtual int getScreenHeight();\n\n";
-    content += "    virtual int getSampleCount();\n\n";
-    content += "    virtual bool isFullscreen();\n";
-    content += "    virtual void requestFullscreen();\n";
-    content += "    virtual void exitFullscreen();\n\n";
-    content += "    virtual bool isWindowMaximized();\n";
-    content += "    virtual void maximizeWindow();\n";
-    content += "    virtual void restoreWindow();\n";
-    content += "    virtual void setWindowSize(int width, int height);\n";
-    content += "    virtual bool isWindowResizable();\n";
-    content += "    virtual void setWindowResizable(bool resizable);\n";
-    content += "    virtual void setWindowTitle(const std::string& title);\n";
-    content += "    virtual void quit();\n\n";
-    content += "    virtual void setMouseCursor(doriax::CursorType type);\n";
-    content += "    virtual void setMouseMode(doriax::MouseMode mode);\n\n";
-    content += "    virtual void setMousePosition(float x, float y);\n\n";
-    content += "    virtual std::string getAssetPath();\n";
-    content += "    virtual std::string getUserDataPath();\n";
-    content += "    virtual std::string getLuaPath();\n";
-    content += "    virtual std::string getShaderPath();\n\n";
-    content += "};\n";
-    return content;
-}
-
-std::string editor::Generator::getPlatformEditorSource(const fs::path& assetsPath, const fs::path& luaPath, bool vsyncEnabled, const WindowSettings& windowSettings) {
-    // Escape the title for embedding in a generated C++ string literal.
-    // Control characters are sanitized upstream in Project::getWindowSettings().
-    std::string windowTitle;
-    for (char c : windowSettings.title) {
-        if (c == '\\' || c == '"') windowTitle += '\\';
-        windowTitle += c;
-    }
-
-    std::string content;
-    content += "// This file is auto-generated by Doriax Editor. Do not edit manually.\n\n";
-    content += "#include \"PlatformEditor.h\"\n\n";
-    content += "#include <math.h>\n\n";
-    content += "#include \"Engine.h\"\n";
-    content += "#include \"GamepadMappings.h\"\n\n";
-    content += "int PlatformEditor::windowPosX;\n";
-    content += "int PlatformEditor::windowPosY;\n";
-    content += "int PlatformEditor::windowWidth;\n";
-    content += "int PlatformEditor::windowHeight;\n\n";
-    content += "int PlatformEditor::screenWidth;\n";
-    content += "int PlatformEditor::screenHeight;\n\n";
-    content += "double PlatformEditor::mousePosX;\n";
-    content += "double PlatformEditor::mousePosY;\n\n";
-    content += "int PlatformEditor::sampleCount;\n\n";
-    content += "GLFWwindow* PlatformEditor::window;\n";
-    content += "GLFWmonitor* PlatformEditor::monitor;\n\n";
-    content += "PlatformEditor::GamepadState PlatformEditor::gamepads[GLFW_JOYSTICK_LAST + 1];\n\n\n";
-    content += "PlatformEditor::PlatformEditor(){\n\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::pollGamepads(){\n";
-    content += "    for (int jid = 0; jid <= GLFW_JOYSTICK_LAST; jid++){\n";
-    content += "        GamepadState& state = gamepads[jid];\n\n";
-    content += "        GLFWgamepadstate glfwState;\n";
-    content += "        bool connected = glfwJoystickPresent(jid) && glfwGetGamepadState(jid, &glfwState);\n\n";
-    content += "        if (connected && !state.connected){\n";
-    content += "            state = GamepadState();\n";
-    content += "            state.connected = true;\n";
-    content += "            state.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] = -1.0f;\n";
-    content += "            state.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER] = -1.0f;\n";
-    content += "            const char* name = glfwGetGamepadName(jid);\n";
-    content += "            doriax::Engine::systemGamepadConnect(jid, name ? name : \"Gamepad\");\n";
-    content += "        }else if (!connected && state.connected){\n";
-    content += "            state = GamepadState();\n";
-    content += "            doriax::Engine::systemGamepadDisconnect(jid);\n";
-    content += "        }\n\n";
-    content += "        if (!connected)\n";
-    content += "            continue;\n\n";
-    content += "        for (int button = 0; button <= GLFW_GAMEPAD_BUTTON_LAST; button++){\n";
-    content += "            if (glfwState.buttons[button] != state.buttons[button]){\n";
-    content += "                state.buttons[button] = glfwState.buttons[button];\n";
-    content += "                if (glfwState.buttons[button] == GLFW_PRESS){\n";
-    content += "                    doriax::Engine::systemGamepadButtonDown(jid, button);\n";
-    content += "                }else{\n";
-    content += "                    doriax::Engine::systemGamepadButtonUp(jid, button);\n";
-    content += "                }\n";
-    content += "            }\n";
-    content += "        }\n\n";
-    content += "        for (int axis = 0; axis <= GLFW_GAMEPAD_AXIS_LAST; axis++){\n";
-    content += "            if (fabsf(glfwState.axes[axis] - state.axes[axis]) > 0.001f){\n";
-    content += "                state.axes[axis] = glfwState.axes[axis];\n";
-    content += "                doriax::Engine::systemGamepadAxisMove(jid, axis, glfwState.axes[axis]);\n";
-    content += "            }\n";
-    content += "        }\n";
-    content += "    }\n";
-    content += "}\n\n";
-    content += "int PlatformEditor::init(int argc, char **argv){\n";
-    content += "    windowWidth = DEFAULT_WINDOW_WIDTH;\n";
-    content += "    windowHeight = DEFAULT_WINDOW_HEIGHT;\n\n";
-    content += "    sampleCount = 1;\n\n";
-    content += "    doriax::Engine::systemInit(argc, argv, new PlatformEditor());\n\n";
-    content += "    /* create window and GL context via GLFW */\n";
-    content += "    glfwInit();\n\n";
-    content += "    // GLFW's built-in gamepad database misses controllers newer than its\n";
-    content += "    // release; without a mapping glfwGetGamepadState fails and the pad is\n";
-    content += "    // treated as disconnected. Apply the community database over it.\n";
-    content += "    for (size_t i = 0; i < DORIAX_GAMEPAD_MAPPINGS_COUNT; i++)\n";
-    content += "        glfwUpdateGamepadMappings(DORIAX_GAMEPAD_MAPPINGS[i]);\n\n";
-    content += "    glfwWindowHint(GLFW_SAMPLES, (sampleCount == 1) ? 0 : sampleCount);\n";
-    content += "    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);\n";
-    content += "    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);\n";
-    content += "    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);\n";
-    content += "    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);\n";
-    content += std::string("    glfwWindowHint(GLFW_RESIZABLE, ") + (windowSettings.resizable ? "GLFW_TRUE" : "GLFW_FALSE") + ");\n\n";
-    content += "    monitor = glfwGetPrimaryMonitor();\n\n";
-    if (windowSettings.mode == WindowMode::FULLSCREEN) {
-        content += "    // start fullscreen at the current desktop video mode; fall back to windowed\n";
-        content += "    // when the monitor or its video mode is unavailable (e.g. headless session)\n";
-        content += "    const GLFWvidmode* videoMode = monitor ? glfwGetVideoMode(monitor) : nullptr;\n";
-        content += "    if (videoMode) {\n";
-        content += "        glfwWindowHint(GLFW_RED_BITS, videoMode->redBits);\n";
-        content += "        glfwWindowHint(GLFW_GREEN_BITS, videoMode->greenBits);\n";
-        content += "        glfwWindowHint(GLFW_BLUE_BITS, videoMode->blueBits);\n";
-        content += "        glfwWindowHint(GLFW_REFRESH_RATE, videoMode->refreshRate);\n";
-        content += "        window = glfwCreateWindow(videoMode->width, videoMode->height, \"" + windowTitle + "\", monitor, 0);\n";
-        content += "    } else {\n";
-        content += "        window = glfwCreateWindow(windowWidth, windowHeight, \"" + windowTitle + "\", 0, 0);\n";
-        content += "    }\n\n";
-    } else {
-        if (windowSettings.mode == WindowMode::MAXIMIZED) {
-            content += "    glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);\n";
-        }
-        content += "    window = glfwCreateWindow(windowWidth, windowHeight, \"" + windowTitle + "\", 0, 0);\n\n";
-    }
-    content += "    glfwMakeContextCurrent(window);\n";
-    content += "    glfwSwapInterval(" + std::to_string(vsyncEnabled ? 1 : 0) + ");\n\n";
-    content += "    glfwSetMouseButtonCallback(window, [](GLFWwindow*, int btn, int action, int mods) {\n";
-    content += "        if (action==GLFW_PRESS){\n";
-    content += "            doriax::Engine::systemMouseDown(btn, float(mousePosX), float(mousePosY), mods);\n";
-    content += "        }else if (action==GLFW_RELEASE){\n";
-    content += "            doriax::Engine::systemMouseUp(btn, float(mousePosX), float(mousePosY), mods);\n";
-    content += "        }\n";
-    content += "    });\n";
-    content += "    glfwSetCursorPosCallback(window, [](GLFWwindow*, double pos_x, double pos_y) {\n";
-    content += "        float xscale, yscale;\n";
-    content += "        glfwGetWindowContentScale(window, &xscale, &yscale);\n\n";
-    content += "        mousePosX = pos_x * xscale;\n";
-    content += "        mousePosY = pos_y * yscale;\n";
-    content += "        doriax::Engine::systemMouseMove(float(mousePosX), float(mousePosY), 0);\n";
-    content += "    });\n";
-    content += "    glfwSetScrollCallback(window, [](GLFWwindow*, double xoffset, double yoffset){\n";
-    content += "        doriax::Engine::systemMouseScroll((float)xoffset, (float)yoffset, 0);\n";
-    content += "    });\n";
-    content += "    glfwSetKeyCallback(window, [](GLFWwindow*, int key, int /*scancode*/, int action, int mods){\n";
-    content += "        if (action==GLFW_PRESS){\n";
-    content += "            if (key == GLFW_KEY_TAB)\n";
-    content += "                doriax::Engine::systemCharInput('\\t');\n";
-    content += "            if (key == GLFW_KEY_BACKSPACE)\n";
-    content += "                doriax::Engine::systemCharInput('\\b');\n";
-    content += "            if (key == GLFW_KEY_ENTER)\n";
-    content += "                doriax::Engine::systemCharInput('\\r');\n";
-    content += "            if (key == GLFW_KEY_ESCAPE)\n";
-    content += "                doriax::Engine::systemCharInput('\\e');\n";
-    content += "            doriax::Engine::systemKeyDown(key, false, mods);\n";
-    content += "        }else if (action==GLFW_REPEAT){\n";
-    content += "            if (key == GLFW_KEY_TAB)\n";
-    content += "                doriax::Engine::systemCharInput('\\t');\n";
-    content += "            if (key == GLFW_KEY_BACKSPACE)\n";
-    content += "                doriax::Engine::systemCharInput('\\b');\n";
-    content += "            if (key == GLFW_KEY_ENTER)\n";
-    content += "                doriax::Engine::systemCharInput('\\r');\n";
-    content += "            if (key == GLFW_KEY_ESCAPE)\n";
-    content += "                doriax::Engine::systemCharInput('\\e');\n";
-    content += "            doriax::Engine::systemKeyDown(key, true, mods);\n";
-    content += "        }else if (action==GLFW_RELEASE){\n";
-    content += "            doriax::Engine::systemKeyUp(key, false, mods);\n";
-    content += "        }\n";
-    content += "    });\n";
-    content += "    glfwSetCharCallback(window, [](GLFWwindow*, unsigned int codepoint){\n";
-    content += "        doriax::Engine::systemCharInput(codepoint);\n";
-    content += "    });\n\n";
-    content += "    int cur_width, cur_height;\n";
-    content += "    glfwGetFramebufferSize(window, &cur_width, &cur_height);\n\n";
-    content += "    PlatformEditor::screenWidth = cur_width;\n";
-    content += "    PlatformEditor::screenHeight = cur_height;\n\n";
-    content += "    doriax::Engine::systemViewLoaded();\n";
-    content += "    doriax::Engine::systemViewChanged();\n\n";
-    content += "    /* draw loop */\n";
-    content += "    while (!glfwWindowShouldClose(window)) {\n";
-    content += "        int cur_width, cur_height;\n";
-    content += "        glfwGetFramebufferSize(window, &cur_width, &cur_height);\n\n";
-    content += "        if (cur_width != PlatformEditor::screenWidth || cur_height != PlatformEditor::screenHeight){\n";
-    content += "            PlatformEditor::screenWidth = cur_width;\n";
-    content += "            PlatformEditor::screenHeight = cur_height;\n";
-    content += "            doriax::Engine::systemViewChanged();\n";
-    content += "        }\n\n";
-    content += "        doriax::Engine::systemDraw();\n\n";
-    content += "        glfwSwapBuffers(window);\n";
-    content += "        glfwPollEvents();\n";
-    content += "        pollGamepads();\n";
-    content += "    }\n\n";
-    content += "    doriax::Engine::systemViewDestroyed();\n";
-    content += "    doriax::Engine::systemShutdown();\n";
-    content += "    glfwTerminate();\n";
-    content += "    return 0;\n";
-    content += "}\n\n";
-    content += "int PlatformEditor::getScreenWidth(){\n";
-    content += "    return PlatformEditor::screenWidth;\n";
-    content += "}\n\n";
-    content += "int PlatformEditor::getScreenHeight(){\n";
-    content += "    return PlatformEditor::screenHeight;\n";
-    content += "}\n\n";
-    content += "int PlatformEditor::getSampleCount(){\n";
-    content += "    return PlatformEditor::sampleCount;\n";
-    content += "}\n\n";
-    content += "bool PlatformEditor::isFullscreen(){\n";
-    content += "    return glfwGetWindowMonitor(window) != nullptr;\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::requestFullscreen(){\n";
-    content += "    if (isFullscreen())\n";
-    content += "        return;\n\n";
-    content += "    // backup window position and window size\n";
-    content += "    glfwGetWindowPos(window, &windowPosX, &windowPosY);\n";
-    content += "    glfwGetWindowSize(window, &windowWidth, &windowHeight);\n\n";
-    content += "    // get resolution of monitor\n";
-    content += "    const GLFWvidmode * mode = glfwGetVideoMode(monitor);\n\n";
-    content += "    // switch to full screen\n";
-    content += "    glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, 0 );\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::exitFullscreen(){\n";
-    content += "    if (!isFullscreen())\n";
-    content += "        return;\n\n";
-    content += "    // restore last window size and position\n";
-    content += "    glfwSetWindowMonitor(window, nullptr,  windowPosX, windowPosY, windowWidth, windowHeight, 0);\n";
-    content += "}\n\n";
-    content += "bool PlatformEditor::isWindowMaximized(){\n";
-    content += "    return glfwGetWindowAttrib(window, GLFW_MAXIMIZED) == GLFW_TRUE;\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::maximizeWindow(){\n";
-    content += "    // GLFW ignores maximize on fullscreen windows\n";
-    content += "    glfwMaximizeWindow(window);\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::restoreWindow(){\n";
-    content += "    glfwRestoreWindow(window);\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::setWindowSize(int width, int height){\n";
-    content += "    if (width < 1 || height < 1)\n";
-    content += "        return;\n\n";
-    content += "    if (isFullscreen()){\n";
-    content += "        // keep the display mode; resize the window that exitFullscreen restores\n";
-    content += "        windowWidth = width;\n";
-    content += "        windowHeight = height;\n";
-    content += "        return;\n";
-    content += "    }\n\n";
-    content += "    glfwSetWindowSize(window, width, height);\n";
-    content += "}\n\n";
-    content += "bool PlatformEditor::isWindowResizable(){\n";
-    content += "    return glfwGetWindowAttrib(window, GLFW_RESIZABLE) == GLFW_TRUE;\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::setWindowResizable(bool resizable){\n";
-    content += "    glfwSetWindowAttrib(window, GLFW_RESIZABLE, resizable ? GLFW_TRUE : GLFW_FALSE);\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::setWindowTitle(const std::string& title){\n";
-    content += "    glfwSetWindowTitle(window, title.c_str());\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::quit(){\n";
-    content += "    glfwSetWindowShouldClose(window, GLFW_TRUE);\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::setMouseCursor(doriax::CursorType type){\n";
-    content += "    GLFWcursor* cursor = NULL;\n\n";
-    content += "    if (type == doriax::CursorType::ARROW){\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_ARROW_CURSOR);\n";
-    content += "    }else if (type == doriax::CursorType::IBEAM){\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_IBEAM_CURSOR);\n";
-    content += "    }else if (type == doriax::CursorType::CROSSHAIR){\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_CROSSHAIR_CURSOR);\n";
-    content += "    }else if (type == doriax::CursorType::POINTING_HAND){\n";
-    content += "        #ifdef GLFW_POINTING_HAND_CURSOR\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_POINTING_HAND_CURSOR);\n";
-    content += "        #else\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_HAND_CURSOR);\n";
-    content += "        #endif\n";
-    content += "    }else if (type == doriax::CursorType::RESIZE_EW){\n";
-    content += "        #ifdef GLFW_RESIZE_EW_CURSOR\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_RESIZE_EW_CURSOR);\n";
-    content += "        #else\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);\n";
-    content += "        #endif\n";
-    content += "    }else if (type == doriax::CursorType::RESIZE_NS){\n";
-    content += "        #ifdef GLFW_RESIZE_NS_CURSOR\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_RESIZE_NS_CURSOR);\n";
-    content += "        #else\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);\n";
-    content += "        #endif\n";
-    content += "    }else if (type == doriax::CursorType::RESIZE_NWSE){\n";
-    content += "        #ifdef GLFW_RESIZE_NWSE_CURSOR\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_RESIZE_NWSE_CURSOR);\n";
-    content += "        #else\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);\n";
-    content += "        #endif\n";
-    content += "    }else if (type == doriax::CursorType::RESIZE_NESW){\n";
-    content += "        #ifdef GLFW_RESIZE_NESW_CURSOR\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_RESIZE_NESW_CURSOR);\n";
-    content += "        #else\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);\n";
-    content += "        #endif\n";
-    content += "    }else if (type == doriax::CursorType::RESIZE_ALL){\n";
-    content += "        #ifdef GLFW_RESIZE_ALL_CURSOR\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_RESIZE_ALL_CURSOR);\n";
-    content += "        #else\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);\n";
-    content += "        #endif\n";
-    content += "    }else if (type == doriax::CursorType::NOT_ALLOWED){\n";
-    content += "        #ifdef GLFW_NOT_ALLOWED_CURSOR\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_NOT_ALLOWED_CURSOR);\n";
-    content += "        #else\n";
-    content += "        cursor = glfwCreateStandardCursor(GLFW_ARROW_CURSOR);\n";
-    content += "        #endif\n";
-    content += "    }\n\n";
-    content += "    if (cursor) {\n";
-    content += "        glfwSetCursor(window, cursor);\n";
-    content += "    } else {\n";
-    content += "        // Handle error: cursor creation failed\n";
-    content += "    }\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::setMouseMode(doriax::MouseMode mode){\n";
-    content += "    switch (mode){\n";
-    content += "        case doriax::MouseMode::NORMAL:\n";
-    content += "            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);\n";
-    content += "            break;\n";
-    content += "        case doriax::MouseMode::HIDDEN:\n";
-    content += "            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);\n";
-    content += "            break;\n";
-    content += "        case doriax::MouseMode::CAPTURED:\n";
-    content += "            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);\n";
-    content += "            break;\n";
-    content += "        case doriax::MouseMode::CONFINED:\n";
-    content += "            // Visible cursor trapped inside the window (GLFW 3.4+).\n";
-    content += "#ifdef GLFW_CURSOR_CAPTURED\n";
-    content += "            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_CAPTURED);\n";
-    content += "#else\n";
-    content += "            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);\n";
-    content += "#endif\n";
-    content += "            break;\n";
-    content += "    }\n";
-    content += "}\n\n";
-    content += "void PlatformEditor::setMousePosition(float x, float y){\n";
-    content += "    float xscale, yscale;\n";
-    content += "    glfwGetWindowContentScale(window, &xscale, &yscale);\n\n";
-    content += "    mousePosX = x;\n";
-    content += "    mousePosY = y;\n";
-    content += "    glfwSetCursorPos(window, x / xscale, y / yscale);\n";
-    content += "}\n\n";
-    content += "std::string PlatformEditor::getAssetPath(){\n";
-    content += "    return \"" + assetsPath.generic_string() + "\";\n";
-    content += "}\n\n";
-    content += "std::string PlatformEditor::getUserDataPath(){\n";
-    content += "    return \".\";\n";
-    content += "}\n\n";
-    content += "std::string PlatformEditor::getLuaPath(){\n";
-    content += "    return \"" + luaPath.generic_string() + "\";\n";
-    content += "}\n\n";
-    content += "std::string PlatformEditor::getShaderPath(){\n";
-    content += "    return \"" + App::getUserShaderCacheDir().string() + "\";\n";
-    content += "}\n";
-    return content;
+    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, windowSettings, assetsPath, luaPath);
 }
 
 std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {

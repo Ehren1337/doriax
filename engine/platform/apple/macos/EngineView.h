@@ -1,5 +1,7 @@
-#import <MetalKit/MetalKit.h>
+#import "MacViewMetal.h"
 
-@interface EngineView : MTKView <NSTextInputClient>
+// The macOS Metal drawable. Input handling is MacViewMetal's; this subclass
+// exists so the storyboard and Renderer keep referring to EngineView.
+@interface EngineView : MacViewMetal
 
 @end

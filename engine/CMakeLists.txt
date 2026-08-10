@@ -95,8 +95,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
             set(GRAPHIC_BACKEND "gles3")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-            set(GRAPHIC_BACKEND "d3d11")
-            #set(GRAPHIC_BACKEND "glcore")
+            set(GRAPHIC_BACKEND "glcore")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             set(GRAPHIC_BACKEND "glcore")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
@@ -118,35 +117,21 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
             set(APP_BACKEND "android")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-            set(APP_BACKEND "sokol")
+            set(APP_BACKEND "win")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-            if(GRAPHIC_BACKEND STREQUAL "vulkan")
-                set(APP_BACKEND "sokol") # GLFW platform creates a GL context
-            else()
-                #set(APP_BACKEND "sokol")
-                set(APP_BACKEND "glfw")
-            endif()
+            set(APP_BACKEND "linux")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-            #set(APP_BACKEND "sokol")
-            set(APP_BACKEND "glfw")
+            set(APP_BACKEND "linux")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-            if(CMAKE_GENERATOR STREQUAL "Xcode")
-                set(APP_BACKEND "apple")
-            else()
-                set(APP_BACKEND "sokol")
-                #set(APP_BACKEND "glfw")
-            endif()
+            set(APP_BACKEND "apple")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
             set(APP_BACKEND "apple")
         else()
             message(FATAL_ERROR "APP_BACKEND is not set")
         endif()
     endif()
-    if((GRAPHIC_BACKEND STREQUAL "vulkan") AND (APP_BACKEND STREQUAL "glfw"))
-        message(FATAL_ERROR "GRAPHIC_BACKEND=vulkan requires APP_BACKEND=sokol (the GLFW platform creates a GL context)")
-    endif()
     if((NOT DORIAX_VSYNC_ENABLED) AND (CMAKE_SYSTEM_NAME STREQUAL "Darwin") AND
-       ((APP_BACKEND STREQUAL "sokol" AND GRAPHIC_BACKEND STREQUAL "metal") OR APP_BACKEND STREQUAL "apple"))
+       (APP_BACKEND STREQUAL "apple"))
         message(WARNING "VSync off is not supported by the macOS Metal application backend; this build will remain synchronized")
     endif()
     message(STATUS "Application backend is set to ${APP_BACKEND}")
@@ -279,18 +264,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-        add_definitions("-DDORIAX_SOKOL")
+        add_definitions("-DDORIAX_WIN")
 
+        # The native Win32 backend creates a WGL context. D3D11 and Vulkan came
+        # from sokol_app, which this backend replaced; reaching them again means
+        # teaching DoriaxWin to create those devices.
         if(GRAPHIC_BACKEND STREQUAL "glcore")
             add_definitions("-DSOKOL_GLCORE")
-        elseif(GRAPHIC_BACKEND STREQUAL "d3d11")
-            add_definitions("-DSOKOL_D3D11")
-        elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
-            add_definitions("-DSOKOL_VULKAN")
-            if(DEFINED ENV{VULKAN_SDK})
-                include_directories("$ENV{VULKAN_SDK}/Include")
-                link_directories("$ENV{VULKAN_SDK}/Lib")
-            endif()
+        else()
+            message(FATAL_ERROR "APP_BACKEND=win supports GRAPHIC_BACKEND glcore only (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-DWITH_MINIAUDIO")
@@ -304,11 +286,22 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         set(PLATFORM_EXEC_FLAGS WIN32)
 
-        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/sokol)
+        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/win)
 
         list(APPEND PLATFORM_SOURCE
-            ${PLATFORM_ROOT}/DoriaxSokol.cpp
+            ${PLATFORM_ROOT}/DoriaxWin.cpp
+            ${PLATFORM_ROOT}/WindowWin.cpp
+            ${PLATFORM_ROOT}/SystemWin.cpp
+            ${PLATFORM_ROOT}/WinInputRouter.cpp
+            ${PLATFORM_ROOT}/GamepadWin.cpp
             ${PLATFORM_ROOT}/main.cpp
+        )
+
+        list(APPEND PLATFORM_LIBS
+            user32
+            gdi32
+            shell32
+            opengl32
         )
 
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -319,10 +312,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if((CMAKE_SYSTEM_NAME STREQUAL "Linux") OR (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD"))
+        # The native X11 backend creates a GLX context. Vulkan came from
+        # sokol_app, which this backend replaced; reaching it again means
+        # teaching DoriaxLinux to create a Vulkan surface and swapchain.
         if(GRAPHIC_BACKEND STREQUAL "glcore")
             add_definitions("-DSOKOL_GLCORE")
-        elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
-            add_definitions("-DSOKOL_VULKAN")
+        else()
+            message(FATAL_ERROR "APP_BACKEND=linux supports GRAPHIC_BACKEND glcore only (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-DWITH_MINIAUDIO")
@@ -334,29 +330,28 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             set(LUA_DEST_DIR ${CMAKE_BINARY_DIR}/lua)
         endif()
 
-        if(APP_BACKEND STREQUAL "glfw")
-            add_definitions("-DDORIAX_GLFW")
+        add_definitions("-DDORIAX_LINUX")
 
-            set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/glfw)
+        find_package(X11 REQUIRED)
 
-            list(APPEND PLATFORM_SOURCE
-                ${PLATFORM_ROOT}/DoriaxGLFW.cpp
-                ${PLATFORM_ROOT}/main.cpp
-            )
+        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/linux)
 
-            list(APPEND PLATFORM_LIBS
-                GL dl m glfw
-            )
-        else()
-            add_definitions("-DDORIAX_SOKOL")
+        list(APPEND PLATFORM_SOURCE
+            ${PLATFORM_ROOT}/DoriaxLinux.cpp
+            ${PLATFORM_ROOT}/WindowLinux.cpp
+            ${PLATFORM_ROOT}/SystemLinux.cpp
+            ${PLATFORM_ROOT}/LinuxInputRouter.cpp
+            ${PLATFORM_ROOT}/GamepadLinux.cpp
+            ${PLATFORM_ROOT}/GamepadDB.cpp
+            ${PLATFORM_ROOT}/main.cpp
+        )
 
-            set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/sokol)
+        # GamepadDB parses the community mapping database in common/
+        include_directories(${DORIAX_ROOT}/platform/common)
 
-            list(APPEND PLATFORM_SOURCE
-                ${PLATFORM_ROOT}/DoriaxSokol.cpp
-                ${PLATFORM_ROOT}/main.cpp
-            )
-        endif()
+        list(APPEND PLATFORM_LIBS
+            X11::X11 GL dl m
+        )
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -372,78 +367,101 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fobjc-arc")
         set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
 
-        if(APP_BACKEND STREQUAL "apple")
-            add_definitions("-DDORIAX_APPLE")
+        # MTKView has no GL drawable, so an OpenGL build cannot use the Metal
+        # path that macOS shares with iOS; it gets the NSOpenGLView backend in
+        # platform/mac instead.
+        if(GRAPHIC_BACKEND STREQUAL "glcore")
+            set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/mac)
 
-            set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/apple)
+            # Gamepads come from the same GameController code the Metal path
+            # and the editor use
+            include_directories(${DORIAX_ROOT}/platform/apple)
 
-            set(APP_BUNDLE_IDENTIFIER "org.doriaxengine.doriax")
+            list(APPEND PLATFORM_SOURCE
+                ${PLATFORM_ROOT}/DoriaxMac.h
+                ${PLATFORM_ROOT}/DoriaxMac.mm
+                ${PLATFORM_ROOT}/WindowMac.mm
+                ${PLATFORM_ROOT}/SystemMac.mm
+                ${PLATFORM_ROOT}/MacInputRouter.mm
+                ${PLATFORM_ROOT}/MacViewGL.mm
+                ${PLATFORM_ROOT}/main.mm
+                ${DORIAX_ROOT}/platform/apple/DoriaxGameController.mm
+            )
 
+            list(APPEND PLATFORM_LIBS
+                "-framework Cocoa"
+                "-framework OpenGL"
+                "-framework QuartzCore"
+                "-framework GameController"
+            )
+
+            list(APPEND PLATFORM_PROPERTIES
+                XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
+            )
+        else()
+
+        # macOS games run on the same native Cocoa path as iOS
+        add_definitions("-DDORIAX_APPLE")
+
+        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/apple)
+
+        set(APP_BUNDLE_IDENTIFIER "org.doriaxengine.doriax")
+
+        include_directories(/System/Library/Frameworks)
+
+        # The Metal drawable is MacViewMetal, which shares one input translation
+        # (MacInputRouter) with the OpenGL backend in platform/mac.
+        include_directories(${DORIAX_ROOT}/platform/mac)
+
+        list(APPEND PLATFORM_SOURCE
+            ${DORIAX_ROOT}/platform/mac/MacInputRouter.mm
+            ${DORIAX_ROOT}/platform/mac/MacViewMetal.mm
+            ${PLATFORM_ROOT}/macos/EngineView.h
+            ${PLATFORM_ROOT}/macos/EngineView.mm
+            ${PLATFORM_ROOT}/Renderer.h
+            ${PLATFORM_ROOT}/Renderer.mm
+            ${PLATFORM_ROOT}/DoriaxApple.h
+            ${PLATFORM_ROOT}/DoriaxApple.mm
+            ${PLATFORM_ROOT}/DoriaxGameController.h
+            ${PLATFORM_ROOT}/DoriaxGameController.mm
+        )
+
+        # NSApplicationMain loads Main.storyboard out of the bundle resources,
+        # which only assembles under the Xcode generator. Every other generator
+        # produces a bare executable, so it builds the window programmatically.
+        if(CMAKE_GENERATOR STREQUAL "Xcode")
             set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
-
-            include_directories(/System/Library/Frameworks)
 
             list(APPEND PLATFORM_SOURCE
                 ${PLATFORM_ROOT}/macos/main.m
                 ${PLATFORM_ROOT}/macos/AppDelegate.h
                 ${PLATFORM_ROOT}/macos/AppDelegate.m
-                ${PLATFORM_ROOT}/macos/EngineView.h
-                ${PLATFORM_ROOT}/macos/EngineView.mm
                 ${PLATFORM_ROOT}/macos/ViewController.h
                 ${PLATFORM_ROOT}/macos/ViewController.m
-                ${PLATFORM_ROOT}/Renderer.h
-                ${PLATFORM_ROOT}/Renderer.mm
-                ${PLATFORM_ROOT}/DoriaxApple.h
-                ${PLATFORM_ROOT}/DoriaxApple.mm
-                ${PLATFORM_ROOT}/DoriaxGameController.h
-                ${PLATFORM_ROOT}/DoriaxGameController.mm
             )
 
             list(APPEND PLATFORM_RESOURCES
                 ${PLATFORM_ROOT}/macos/Main.storyboard
             )
-
-            # GameController framework for gamepad input (DoriaxGameController.mm)
-            list(APPEND PLATFORM_LIBS
-                "-framework GameController"
-            )
-
             list(APPEND PLATFORM_PROPERTIES
                 MACOSX_BUNDLE_INFO_PLIST "${DORIAX_ROOT}/workspaces/xcode/macos/Info.plist"
                 XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
             )
         else()
-            if(EXISTS "${PROJECT_ROOT}/assets")
-                set(ASSETS_DEST_DIR ${CMAKE_BINARY_DIR}/assets)
-            endif()
-            if(EXISTS "${PROJECT_ROOT}/lua")
-                set(LUA_DEST_DIR ${CMAKE_BINARY_DIR}/lua)
-            endif()
-
-            if(APP_BACKEND STREQUAL "glfw")
-                add_definitions("-DDORIAX_GLFW")
-
-                set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/glfw)
-
-                list(APPEND PLATFORM_SOURCE
-                    ${PLATFORM_ROOT}/DoriaxGLFW.cpp
-                    ${PLATFORM_ROOT}/main.cpp
-                )
-
-                list(APPEND PLATFORM_LIBS
-                    glfw
-                )
-            else()
-                add_definitions("-DDORIAX_SOKOL")
-
-                set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/sokol)
-
-                list(APPEND PLATFORM_SOURCE
-                    ${PLATFORM_ROOT}/DoriaxSokol.cpp
-                    ${PLATFORM_ROOT}/main.cpp
-                )
-            endif()
+            list(APPEND PLATFORM_SOURCE
+                ${PLATFORM_ROOT}/macos/GameMain.mm
+            )
         endif()
+
+        # Cocoa/Metal for the programmatic window, GameController for gamepads
+        list(APPEND PLATFORM_LIBS
+            "-framework Cocoa"
+            "-framework Metal"
+            "-framework MetalKit"
+            "-framework QuartzCore"
+            "-framework GameController"
+        )
+        endif() # GRAPHIC_BACKEND glcore vs metal
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
