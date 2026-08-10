@@ -431,6 +431,7 @@ void ActionSystem::actionUpdate(double dt, ActionComponent& action){
 
 void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& action, AnimationComponent& animcomp){
     int totalActionsPassed = 0;
+    float actionsEnd = 0; // last frame end, used to wrap a loop
 
     // Advance the blend weight toward its fade target. Child actions inherit this
     // weight so their sampled poses are combined by flushPoseBlend() into a smooth
@@ -471,7 +472,10 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
                 iaction.timecount = timeDiff * iaction.speed;
                 iaction.weight = animcomp.weight;
 
-                if (timeDiff > (getFrameDuration(animcomp.actions[i]) / iaction.speed)) {
+                float frameDuration = getFrameDuration(animcomp.actions[i]) / iaction.speed;
+                actionsEnd = std::max(actionsEnd, animcomp.actions[i].startTime + frameDuration);
+
+                if (timeDiff > frameDuration) {
                     totalActionsPassed++;
                 }
             }
@@ -480,12 +484,22 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
 
     }
 
-    if (totalActionsPassed == animcomp.actions.size() || (animcomp.duration >= 0 && action.timecount >= (animcomp.duration / action.speed))) {
+    bool actionsPassed = totalActionsPassed == animcomp.actions.size();
+    bool durationPassed = animcomp.duration >= 0 && action.timecount >= (animcomp.duration / action.speed);
+
+    if (actionsPassed || durationPassed) {
         if (!animcomp.loop) {
             actionStop(entity);
             //onFinish.call(object);
         }else{
-            action.timecount = 0;
+            float loopDuration = durationPassed ? (animcomp.duration / action.speed) : actionsEnd;
+
+            // keep the overshoot, or the cycle gets longer at lower frame rates
+            if (loopDuration > 0 && action.timecount >= loopDuration){
+                action.timecount = std::fmod(action.timecount, loopDuration);
+            }else{
+                action.timecount = 0;
+            }
         }
     }
 }

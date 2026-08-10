@@ -127,14 +127,13 @@ void Engine::setScene(Scene* scene){
         std::lock_guard<std::mutex> lock(sceneListMutex);
 
         if (mainScene){
-            auto it = std::find(scenes.begin(), scenes.end(), mainScene);
-
-            if (it != scenes.end()) {
-                scenes.erase(it);
-            }
+            scenes.erase(std::remove(scenes.begin(), scenes.end(), mainScene), scenes.end());
         }
 
         if (scene){
+            // a scene already registered as a layer would be updated twice per frame
+            scenes.erase(std::remove(scenes.begin(), scenes.end(), scene), scenes.end());
+
             //main scene is allways first scene
             scenes.insert(scenes.begin(), scene);
             mainScene = scene;
@@ -924,6 +923,20 @@ void Engine::systemDraw(){
 
     // avoid increment updateTimeCount after resume
     if (!paused) {
+        // a duplicated scene advances its systems more than once per frame
+        static bool warnedDuplicatedScene = false;
+        if (!warnedDuplicatedScene) {
+            for (size_t i = 0; i < scenes.size() && !warnedDuplicatedScene; i++) {
+                for (size_t j = i + 1; j < scenes.size(); j++) {
+                    if (scenes[i] == scenes[j]) {
+                        Log::warn("Scene %p is registered more than once - it will run faster than real time", (void*)scenes[i]);
+                        warnedDuplicatedScene = true;
+                        break;
+                    }
+                }
+            }
+        }
+
         double frameDelta = deltatime;
 
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
