@@ -162,6 +162,20 @@ static void shapeArabic(const std::vector<uint32_t>& codepoints, size_t offset, 
 }
 
 std::string BidiText::toVisual(const std::string& text) {
+    // Every right-to-left codepoint starts on a byte of 0xD6 or above, so plain text
+    // leaves without decoding. This runs per item per frame in lists.
+    bool couldBeRightToLeft = false;
+    for (unsigned char byte : text) {
+        if (byte >= 0xD6) {
+            couldBeRightToLeft = true;
+            break;
+        }
+    }
+
+    if (!couldBeRightToLeft) {
+        return text;
+    }
+
     bool hadInvalid = false;
     std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(text, hadInvalid);
 

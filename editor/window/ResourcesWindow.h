@@ -41,6 +41,10 @@ namespace doriax::editor {
 
     struct FileEntry {
         std::string name;
+        // name and name-without-extension reshaped for display, built with the entry
+        // because ImGui cannot lay out right-to-left text and this list has no clipper
+        std::string displayName;
+        std::string displayBaseName;
         std::string extension;
         FileType type = FileType::NONE;
         bool isDirectory;

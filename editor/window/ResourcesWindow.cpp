@@ -1,4 +1,5 @@
 #include "ResourcesWindow.h"
+#include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
 
@@ -874,7 +875,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 itemSize = ImVec2(cellWidth, cardHeight);
             }else{
                 itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
-                textSizeClassic = ImGui::CalcTextSize(file.name.c_str(), nullptr, true, cellWidth);
+                textSizeClassic = ImGui::CalcTextSize(file.displayName.c_str(), nullptr, true, cellWidth);
                 float cellHeight = iconSize + itemSpacingY + textSizeClassic.y;
                 selectableSizeClassic = ImVec2(cellWidth, cellHeight);
                 itemSize = selectableSizeClassic;
@@ -1067,7 +1068,6 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 float  contentWidth = itemMax.x - itemMin.x - (pad * 2.0f);
 
                 // --- Name / extension split ---------------------------------
-                std::string baseName = file.name;
                 std::string extensionStr = file.extension;
 
                 // Remove leading '.' for badge text
@@ -1077,13 +1077,6 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                         extLabel = extensionStr.substr(1);
                     else
                         extLabel = extensionStr;
-                }
-
-                // Base name without extension for display
-                if (!file.isDirectory){
-                    size_t dotPos = baseName.rfind('.');
-                    if (dotPos != std::string::npos)
-                        baseName = baseName.substr(0, dotPos);
                 }
 
                 // --- Thumbnail centered -------------------------------------
@@ -1158,13 +1151,13 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 ImGui::SetCursorScreenPos(textMin);
                 ImGui::PushTextWrapPos(textMax.x - ImGui::GetWindowPos().x);
                 ImGui::SetWindowFontScale(fontScale);
-                ImGui::TextUnformatted(baseName.c_str());
+                ImGui::TextUnformatted(file.displayBaseName.c_str());
                 ImGui::SetWindowFontScale(1.0f);
                 ImGui::PopTextWrapPos();
                 ImGui::PopClipRect();
 
                 if (hovered){
-                    ImGui::SetTooltip("%s", file.name.c_str());
+                    ImGui::SetTooltip("%s", file.displayName.c_str());
                 }
 
             }else{
@@ -1188,7 +1181,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 float textOffsetX = (cellWidth * 0.5f) - (textSizeClassic.x * 0.5f);
                 if (textOffsetX < 0) textOffsetX = 0;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textOffsetX);
-                ImGui::TextWrapped("%s", file.name.c_str());
+                ImGui::TextWrapped("%s", file.displayName.c_str());
 
                 ImGui::EndGroup(); // classic group
             }
@@ -1539,6 +1532,15 @@ void editor::ResourcesWindow::scanDirectory(const fs::path& path) {
         fileEntry.name = entry.path().filename().string();
         std::error_code entryEc;
         fileEntry.isDirectory = entry.is_directory(entryEc) && !entryEc;
+
+        fileEntry.displayName = BidiText::toVisual(fileEntry.name);
+        std::string baseName = fileEntry.name;
+        if (!fileEntry.isDirectory){
+            size_t dotPos = baseName.rfind('.');
+            if (dotPos != std::string::npos)
+                baseName = baseName.substr(0, dotPos);
+        }
+        fileEntry.displayBaseName = BidiText::toVisual(baseName);
         fileEntry.icon = fileEntry.isDirectory ? folderIconH : fileIconH;
         fileEntry.hasThumbnail = false;
 
