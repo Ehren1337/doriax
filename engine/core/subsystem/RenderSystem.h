@@ -239,6 +239,8 @@ namespace doriax{
 		bool hasReflectionProbes;
 		bool hasMultipleCameras;
 		bool capturingReflectionProbe;
+		// pipelines the objects were loaded with, to catch a destination change
+		uint8_t loadedPipelines;
 
 		// Projected spotlight masks share one horizontal R8 atlas. Each punctual-light
 		// array index maps directly to one fixed-size atlas tile.
@@ -480,8 +482,10 @@ namespace doriax{
 		void loadBlit();
 		void destroyBlit();
 		bool ensureFixedResFramebuffer(unsigned int width, unsigned int height, TextureFilter filter);
-		// upscales fixedResFramebuffer to the view rect of the real destination
-		// (Engine framebuffer in the editor, swapchain in exported builds)
+		// draws source over the real destination (Engine framebuffer in the editor,
+		// swapchain in exported builds)
+		void renderBlit(TextureRender* source, Rect viewport);
+		// upscales fixedResFramebuffer to the view rect
 		void renderFixedResolutionBlit();
 
 		bool drawUI(UIComponent& ui, Transform& transform, bool renderToTexture);
@@ -524,6 +528,9 @@ namespace doriax{
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
 		// already baked either way.
 		void setDisableFixedResolution(bool disableFixedResolution);
+
+		// copies the stacked scene composite to the swapchain (Engine::endCompositeFramebuffer)
+		void presentFramebufferToSwapchain(Framebuffer* source);
 
 		bool loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain);
 		bool loadPoints(Entity entity, PointsComponent& points, uint8_t pipelines);

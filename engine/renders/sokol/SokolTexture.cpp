@@ -12,7 +12,8 @@
 #include <cstdlib>
 
 // Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
-// thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched.
+// thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched
+// (re-check when sokol_gfx is updated)
 #if defined(DORIAX_EDITOR) && defined(SOKOL_VULKAN)
 #include <vulkan/vulkan.h>
 

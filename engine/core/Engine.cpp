@@ -82,6 +82,7 @@ MouseMode Engine::mouseMode = MouseMode::NORMAL;
 Semaphore Engine::drawSemaphore;
 
 Framebuffer* Engine::framebuffer = nullptr;
+Framebuffer Engine::compositeFramebuffer;
 
 //-----Doriax user events-----
 FunctionSubscribe<void()> Engine::onViewLoaded;
@@ -664,6 +665,49 @@ Framebuffer* Engine::getFramebuffer(){
     return Engine::framebuffer;
 }
 
+bool Engine::ensureCompositeFramebuffer(){
+    const unsigned int width = System::instance().getScreenWidth();
+    const unsigned int height = System::instance().getScreenHeight();
+    if (width == 0 || height == 0)
+        return false;
+
+    if (compositeFramebuffer.isCreated() && compositeFramebuffer.getWidth() == width
+            && compositeFramebuffer.getHeight() == height)
+        return true;
+
+    compositeFramebuffer.destroy();
+    compositeFramebuffer.setWidth(width);
+    compositeFramebuffer.setHeight(height);
+    compositeFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    compositeFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    compositeFramebuffer.create();
+
+    return compositeFramebuffer.isCreated();
+}
+
+void Engine::beginCompositeFramebuffer(){
+// each scene opens its own swapchain pass and the sokol Vulkan backend takes only one
+// per commit, so stacked scenes draw offscreen and are presented once. The other
+// backends draw them straight to the swapchain (re-check when sokol_gfx is updated)
+#if defined(SOKOL_VULKAN)
+    if (framebuffer || scenes.size() <= 1)
+        return;
+
+    if (ensureCompositeFramebuffer())
+        framebuffer = &compositeFramebuffer;
+#endif
+}
+
+void Engine::endCompositeFramebuffer(){
+    if (framebuffer != &compositeFramebuffer)
+        return;
+
+    framebuffer = nullptr;
+
+    if (mainScene)
+        mainScene->getSystem<RenderSystem>()->presentFramebufferToSwapchain(&compositeFramebuffer);
+}
+
 void Engine::clearPools(){
     TexturePool::clear();
     SoundPool::clear();
@@ -921,6 +965,9 @@ void Engine::systemDraw(){
 
     SystemRender::executeQueue();
 
+    // before the update, which bakes the PIP_RTT pipelines from the target in use
+    beginCompositeFramebuffer();
+
     // avoid increment updateTimeCount after resume
     if (!paused) {
         // a duplicated scene advances its systems more than once per frame
@@ -972,9 +1019,14 @@ void Engine::systemDraw(){
 
     Engine::onDraw.call();
 
+    // again for a scene stack loaded during the update
+    beginCompositeFramebuffer();
+
     for (int i = 0; i < scenes.size(); i++){
         scenes[i]->draw();
     }
+
+    endCompositeFramebuffer();
 
     SystemRender::commit();
 
@@ -1025,6 +1077,8 @@ void Engine::systemViewDestroyed(){
     }
 
     SystemRender::shutdown();
+
+    compositeFramebuffer.destroy();
 
     clearPools();
 

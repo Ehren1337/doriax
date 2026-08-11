@@ -2587,9 +2587,8 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         keys.insert(ShaderPool::getShaderKey(ShaderType::COMPOSITE, 0));
     }
 
-    if (scene->isFixedResolutionEnabled()) {
-        keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
-    }
+    // fixed resolution upscales with it and a scene stack is presented with it
+    keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
     // 2D lights with shadows render occluder segments through the shadow2d
     // pass. The runtime additionally gates on an enabled Occluder2D existing

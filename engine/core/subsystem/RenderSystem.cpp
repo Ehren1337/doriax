@@ -174,6 +174,7 @@ void RenderSystem::load(){
     hasReflectionProbes = false;
     hasMultipleCameras = false;
     capturingReflectionProbe = false;
+    loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
     numLights2D = 0;
@@ -3806,8 +3807,8 @@ bool RenderSystem::ensureFixedResFramebuffer(unsigned int width, unsigned int he
     return fixedResFramebuffer.isCreated();
 }
 
-void RenderSystem::renderFixedResolutionBlit(){
-    // bars outside the view rect keep the background color (same as the direct
+void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
+    // bars outside the viewport keep the background color (same as the direct
     // path, which clears the whole destination before applying the viewport)
     fixedResPassRender.setClearColor(scene->getBackgroundColor());
 
@@ -3826,16 +3827,33 @@ void RenderSystem::renderFixedResolutionBlit(){
         // the source was rendered flipped (PIP_RTT) but the GL swapchain is not
         flipGL = Engine::isOpenGL() ? 1.0f : 0.0f;
     }
-    fixedResPassRender.applyViewport(Engine::getViewRect());
+    fixedResPassRender.applyViewport(viewport);
 
     if (blitRender.beginDraw(blitPip)){
         ShaderData& bd = blitShader.get()->shaderData;
-        blitRender.addTexture(bd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, &fixedResFramebuffer.getRender().getColorTexture());
+        blitRender.addTexture(bd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, source);
         fs_blit.params = Vector4(flipGL, 0.0f, 0.0f, 0.0f);
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
     fixedResPassRender.endRenderPass();
+}
+
+void RenderSystem::renderFixedResolutionBlit(){
+    renderBlit(&fixedResFramebuffer.getRender().getColorTexture(), Engine::getViewRect());
+}
+
+void RenderSystem::presentFramebufferToSwapchain(Framebuffer* source){
+    if (!source || !source->isCreated())
+        return;
+
+    loadBlit();
+    if (!blitLoaded)
+        return;
+
+    // the scene passes already letterboxed into the composite, so copy it 1:1
+    renderBlit(&source->getRender().getColorTexture(), Rect(0, 0,
+            (float)System::instance().getScreenWidth(), (float)System::instance().getScreenHeight()));
 }
 
 void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets){
@@ -5983,6 +6001,18 @@ void RenderSystem::update(double dt){
 
     CameraComponent& mainCamera =  scene->getComponent<CameraComponent>(mainCameraEntity);
     Transform& mainCameraTransform =  scene->getComponent<Transform>(mainCameraEntity);
+
+    // the destination is baked into the pipelines at load, so a scene entering or
+    // leaving a stack (or fixed resolution switching) has to reload with the new set
+    if (pipelines != loadedPipelines){
+        loadedPipelines = pipelines;
+
+        needReloadMeshes();
+        needReloadUIs();
+        needReloadPoints();
+        needReloadLines();
+        needReloadSky();
+    }
 
     loadLights(numLights);
     updateSpotMaskAtlas(numLights);

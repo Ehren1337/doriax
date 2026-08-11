@@ -248,13 +248,18 @@ namespace doriax {
         static std::mutex sceneListMutex;
 
         static Framebuffer* framebuffer;
-        
+        // stacked scenes draw here so the frame keeps a single swapchain pass
+        static Framebuffer compositeFramebuffer;
+
         static bool transformCoordPos(float& x, float& y);
         static void calculateCanvas();
         static void includeScene(size_t index, Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.
         static std::vector<Scene*> getScenesSnapshot();
+        static bool ensureCompositeFramebuffer();
+        static void beginCompositeFramebuffer();
+        static void endCompositeFramebuffer();
         
     public:
         class AsyncThreadScope {
