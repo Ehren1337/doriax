@@ -173,6 +173,7 @@ void RenderSystem::load(){
     hasIBL = false;
     hasReflectionProbes = false;
     hasMultipleCameras = false;
+    lastMultiCameraDraw = false;
     capturingReflectionProbe = false;
     loadedPipelines = 0;
     hasLights2D = false;
@@ -4897,6 +4898,9 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
         if (camEntity == NULL_ENTITY || !scene->isEntityCreated(camEntity)){
             camEntity = createMirrorCamera(entity);
             mirrors->getComponentFromIndex(i).reflectionCamera = camEntity;
+            // the loop counting render-to-texture cameras has run, but draw() still
+            // renders this one in the same frame
+            hasMultipleCameras = true;
         }
 
         CameraComponent* refCam = scene->findComponent<CameraComponent>(camEntity);
@@ -6001,6 +6005,15 @@ void RenderSystem::update(double dt){
 
     CameraComponent& mainCamera =  scene->getComponent<CameraComponent>(mainCameraEntity);
     Transform& mainCameraTransform =  scene->getComponent<Transform>(mainCameraEntity);
+
+    // while extra cameras render, draw() rewrites the shared MVP and sky matrices
+    // per camera; removing the last of them (a mirror, a reflection probe) would
+    // otherwise leave the scene on that camera's view until something turns dirty
+    bool multiCameraDraw = hasMultipleCameras || hasReflectionProbes;
+    if (lastMultiCameraDraw && !multiCameraDraw){
+        mainCamera.needUpdate = true;
+    }
+    lastMultiCameraDraw = multiCameraDraw;
 
     // the destination is baked into the pipelines at load, so a scene entering or
     // leaving a stack (or fixed resolution switching) has to reload with the new set

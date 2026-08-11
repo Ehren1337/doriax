@@ -238,6 +238,8 @@ namespace doriax{
 		bool hasIBL;
 		bool hasReflectionProbes;
 		bool hasMultipleCameras;
+		// extra cameras the last frame drew, to catch the switch back to main only
+		bool lastMultiCameraDraw;
 		bool capturingReflectionProbe;
 		// pipelines the objects were loaded with, to catch a destination change
 		uint8_t loadedPipelines;
