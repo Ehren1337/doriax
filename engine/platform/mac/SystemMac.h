@@ -19,6 +19,14 @@ namespace doriax {
 
         int getSampleCount() override;
 
+#if defined(SOKOL_METAL)
+        // The GL backend renders into the default framebuffer, which the base
+        // class already describes. Metal has to hand sokol the device and the
+        // drawable this frame renders into instead.
+        sg_environment getSokolEnvironment() override;
+        sg_swapchain getSokolSwapchain() override;
+#endif
+
         bool isFullscreen() override;
         void requestFullscreen() override;
         void exitFullscreen() override;

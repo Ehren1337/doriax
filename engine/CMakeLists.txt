@@ -418,14 +418,60 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fobjc-arc")
         set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
 
-        # MTKView has no GL drawable, so an OpenGL build cannot use the Metal
-        # path that macOS shares with iOS; it gets the NSOpenGLView backend in
-        # platform/mac instead.
-        if(GRAPHIC_BACKEND STREQUAL "glcore")
+        # Only the Xcode generator assembles the real .app that the storyboard
+        # entry point in platform/apple needs, shared with iOS. Every other
+        # generator builds a bare executable, on the backend in platform/mac.
+        if(GRAPHIC_BACKEND STREQUAL "metal" AND CMAKE_GENERATOR STREQUAL "Xcode")
+            add_definitions("-DDORIAX_APPLE")
+
+            set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/apple)
+
+            set(APP_BUNDLE_IDENTIFIER "org.doriaxengine.doriax")
+            set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
+
+            include_directories(/System/Library/Frameworks)
+
+            # The drawable and the input translation come from platform/mac
+            include_directories(${DORIAX_ROOT}/platform/mac)
+
+            list(APPEND PLATFORM_SOURCE
+                ${DORIAX_ROOT}/platform/mac/MacInputRouter.mm
+                ${DORIAX_ROOT}/platform/mac/MacViewMetal.mm
+                ${PLATFORM_ROOT}/macos/EngineView.h
+                ${PLATFORM_ROOT}/macos/EngineView.mm
+                ${PLATFORM_ROOT}/macos/main.m
+                ${PLATFORM_ROOT}/macos/AppDelegate.h
+                ${PLATFORM_ROOT}/macos/AppDelegate.m
+                ${PLATFORM_ROOT}/macos/ViewController.h
+                ${PLATFORM_ROOT}/macos/ViewController.m
+                ${PLATFORM_ROOT}/Renderer.h
+                ${PLATFORM_ROOT}/Renderer.mm
+                ${PLATFORM_ROOT}/DoriaxApple.h
+                ${PLATFORM_ROOT}/DoriaxApple.mm
+                ${PLATFORM_ROOT}/DoriaxGameController.h
+                ${PLATFORM_ROOT}/DoriaxGameController.mm
+            )
+
+            list(APPEND PLATFORM_RESOURCES
+                ${PLATFORM_ROOT}/macos/Main.storyboard
+            )
+
+            list(APPEND PLATFORM_PROPERTIES
+                MACOSX_BUNDLE_INFO_PLIST "${DORIAX_ROOT}/workspaces/xcode/macos/Info.plist"
+                XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
+            )
+
+            list(APPEND PLATFORM_LIBS
+                "-framework Cocoa"
+                "-framework Metal"
+                "-framework MetalKit"
+                "-framework QuartzCore"
+                "-framework GameController"
+            )
+        else()
             set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/mac)
 
-            # Gamepads come from the same GameController code the Metal path
-            # and the editor use
+            # Gamepads come from the same GameController code iOS and the editor use
             include_directories(${DORIAX_ROOT}/platform/apple)
 
             list(APPEND PLATFORM_SOURCE
@@ -434,85 +480,29 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 ${PLATFORM_ROOT}/WindowMac.mm
                 ${PLATFORM_ROOT}/SystemMac.mm
                 ${PLATFORM_ROOT}/MacInputRouter.mm
-                ${PLATFORM_ROOT}/MacViewGL.mm
                 ${PLATFORM_ROOT}/main.mm
                 ${DORIAX_ROOT}/platform/apple/DoriaxGameController.mm
             )
 
             list(APPEND PLATFORM_LIBS
                 "-framework Cocoa"
-                "-framework OpenGL"
                 "-framework QuartzCore"
                 "-framework GameController"
             )
 
+            # MTKView has no GL drawable, so OpenGL gets an NSOpenGLView
+            if(GRAPHIC_BACKEND STREQUAL "glcore")
+                list(APPEND PLATFORM_SOURCE ${PLATFORM_ROOT}/MacViewGL.mm)
+                list(APPEND PLATFORM_LIBS "-framework OpenGL")
+            else()
+                list(APPEND PLATFORM_SOURCE ${PLATFORM_ROOT}/MacViewMetal.mm)
+                list(APPEND PLATFORM_LIBS "-framework Metal" "-framework MetalKit")
+            endif()
+
             list(APPEND PLATFORM_PROPERTIES
                 XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
-            )
-        else()
-
-        # macOS games run on the same native Cocoa path as iOS
-        add_definitions("-DDORIAX_APPLE")
-
-        set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/apple)
-
-        set(APP_BUNDLE_IDENTIFIER "org.doriaxengine.doriax")
-
-        include_directories(/System/Library/Frameworks)
-
-        # The Metal drawable is MacViewMetal, which shares one input translation
-        # (MacInputRouter) with the OpenGL backend in platform/mac.
-        include_directories(${DORIAX_ROOT}/platform/mac)
-
-        list(APPEND PLATFORM_SOURCE
-            ${DORIAX_ROOT}/platform/mac/MacInputRouter.mm
-            ${DORIAX_ROOT}/platform/mac/MacViewMetal.mm
-            ${PLATFORM_ROOT}/macos/EngineView.h
-            ${PLATFORM_ROOT}/macos/EngineView.mm
-            ${PLATFORM_ROOT}/Renderer.h
-            ${PLATFORM_ROOT}/Renderer.mm
-            ${PLATFORM_ROOT}/DoriaxApple.h
-            ${PLATFORM_ROOT}/DoriaxApple.mm
-            ${PLATFORM_ROOT}/DoriaxGameController.h
-            ${PLATFORM_ROOT}/DoriaxGameController.mm
-        )
-
-        # NSApplicationMain loads Main.storyboard out of the bundle resources,
-        # which only assembles under the Xcode generator. Every other generator
-        # produces a bare executable, so it builds the window programmatically.
-        if(CMAKE_GENERATOR STREQUAL "Xcode")
-            set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
-
-            list(APPEND PLATFORM_SOURCE
-                ${PLATFORM_ROOT}/macos/main.m
-                ${PLATFORM_ROOT}/macos/AppDelegate.h
-                ${PLATFORM_ROOT}/macos/AppDelegate.m
-                ${PLATFORM_ROOT}/macos/ViewController.h
-                ${PLATFORM_ROOT}/macos/ViewController.m
-            )
-
-            list(APPEND PLATFORM_RESOURCES
-                ${PLATFORM_ROOT}/macos/Main.storyboard
-            )
-            list(APPEND PLATFORM_PROPERTIES
-                MACOSX_BUNDLE_INFO_PLIST "${DORIAX_ROOT}/workspaces/xcode/macos/Info.plist"
-                XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
-            )
-        else()
-            list(APPEND PLATFORM_SOURCE
-                ${PLATFORM_ROOT}/macos/GameMain.mm
             )
         endif()
-
-        # Cocoa/Metal for the programmatic window, GameController for gamepads
-        list(APPEND PLATFORM_LIBS
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework MetalKit"
-            "-framework QuartzCore"
-            "-framework GameController"
-        )
-        endif() # GRAPHIC_BACKEND glcore vs metal
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "iOS")

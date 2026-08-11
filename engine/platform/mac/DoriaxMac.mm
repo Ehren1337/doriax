@@ -6,7 +6,14 @@
 
 #import <Cocoa/Cocoa.h>
 
+#if defined(SOKOL_METAL)
+#import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
+#import "MacViewMetal.h"
+#else
 #import "MacViewGL.h"
+#endif
+
 #include "SystemMac.h"
 #include "WindowMac.h"
 
@@ -34,10 +41,18 @@
 using namespace doriax;
 
 namespace {
+#if defined(SOKOL_METAL)
+    MacViewMetal* gameView = nil;
+#else
     MacViewGL* gameView = nil;
+#endif
 }
 
+#if defined(SOKOL_METAL)
+@interface DoriaxMacDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate, MTKViewDelegate>
+#else
 @interface DoriaxMacDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
+#endif
 @property (nonatomic, strong) NSTimer* frameTimer;
 @end
 
@@ -58,7 +73,28 @@ namespace {
         Engine::systemViewChanged();
     });
 
-    gameView = [[MacViewGL alloc] initWithFrame:NSMakeRect(0, 0, config.width, config.height)];
+    const NSRect viewFrame = NSMakeRect(0, 0, config.width, config.height);
+
+#if defined(SOKOL_METAL)
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    if (!device) {
+        NSLog(@"Error: Metal is not supported on this Mac");
+        [NSApp terminate:nil];
+        return;
+    }
+
+    gameView = [[MacViewMetal alloc] initWithFrame:viewFrame device:device];
+    gameView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
+    gameView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
+    // Paused: the frame timer below drives the view, like the OpenGL loop
+    gameView.paused = YES;
+    gameView.enableSetNeedsDisplay = NO;
+    gameView.delegate = self;
+
+    WindowMac::setContentView((__bridge void*)gameView);
+    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = DORIAX_VSYNC_ENABLED ? YES : NO;
+#else
+    gameView = [[MacViewGL alloc] initWithFrame:viewFrame];
     if (!gameView || ![gameView pixelFormat]) {
         NSLog(@"Error: no OpenGL 4.1 core pixel format available");
         [NSApp terminate:nil];
@@ -68,6 +104,7 @@ namespace {
     WindowMac::setContentView((__bridge void*)gameView);
     [gameView makeContextCurrent];
     [gameView setSwapInterval:DORIAX_VSYNC_ENABLED ? 1 : 0];
+#endif
 
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
@@ -87,10 +124,29 @@ namespace {
 
 - (void)renderFrame {
     if (!gameView) return;
+#if defined(SOKOL_METAL)
+    // Runs drawInMTKView below, the only place currentDrawable is valid
+    [gameView draw];
+#else
     [gameView makeContextCurrent];
     Engine::systemDraw();
     [gameView presentFrame];
+#endif
 }
+
+#if defined(SOKOL_METAL)
+- (void)drawInMTKView:(MTKView*)view {
+    (void)view;
+    Engine::systemDraw();
+}
+
+// The Metal counterpart of MacViewGL's reshape
+- (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
+    (void)view;
+    (void)size;
+    WindowMac::refreshDrawableSize();
+}
+#endif
 
 - (void)windowDidResize:(NSNotification*)notification {
     (void)notification;

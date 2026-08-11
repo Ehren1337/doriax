@@ -120,6 +120,10 @@ void* WindowMac::nativeWindow() {
     return (__bridge void*)gWindow;
 }
 
+void* WindowMac::contentView() {
+    return (__bridge void*)gContentView;
+}
+
 void WindowMac::setContentView(void* view) {
     gContentView = (__bridge NSView*)view;
     if (gWindow) gWindow.contentView = gContentView;

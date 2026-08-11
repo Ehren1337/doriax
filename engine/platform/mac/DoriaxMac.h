@@ -5,10 +5,10 @@
 #ifndef DoriaxMac_h
 #define DoriaxMac_h
 
-// Entry point of the macOS OpenGL backend for exported games; Metal games run
-// on engine/platform/apple, which MTKView ties to Metal. The window is
-// WindowMac and the doriax::System surface is SystemMac, both shared with the
-// editor, so what is left here is the frame loop and the build settings.
+// Entry point of the macOS backend for exported games, on both graphic
+// backends: SOKOL_METAL picks the drawable, a MacViewMetal or a MacViewGL. The
+// window is WindowMac and the doriax::System surface is SystemMac, both shared
+// with the editor, so what is left here is the frame loop and the build settings.
 class DoriaxMac {
 public:
 

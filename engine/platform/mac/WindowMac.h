@@ -40,6 +40,7 @@ namespace doriax {
 
         // NSWindow* and NSView*, for the drawable-specific code that owns them.
         static void* nativeWindow();
+        static void* contentView();
         static void setContentView(void* view);
         static void setWindowDelegate(void* delegate);
 
