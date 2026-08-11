@@ -2303,32 +2303,6 @@ void editor::ResourcesWindow::saveEntityFile(const fs::path& directory, const ch
     scanDirectory(currentPath);
 }
 
-void editor::ResourcesWindow::saveBundleFile(const fs::path& directory, const char* bundleContent, size_t contentLen) {
-    if (!bundleContent || contentLen == 0) {
-        return;
-    }
-
-    std::string yamlString(bundleContent, contentLen);
-    YAML::Node bundleNode = YAML::Load(yamlString);
-
-    std::string bundleName = "Bundle";
-    if (bundleNode["members"] && bundleNode["members"].IsSequence() && bundleNode["members"].size() > 0) {
-        YAML::Node firstMember = bundleNode["members"][0];
-        if (firstMember["name"]) {
-            bundleName = firstMember["name"].as<std::string>();
-        }
-    }
-
-    std::string baseName = bundleName.empty() ? "Bundle" : bundleName;
-    fs::path relativePath = uniqueRelativePath(directory, baseName, ".bundle");
-
-    // Use the command to create a bundle file
-    CreateEntityBundleCmd* createBundleCmd = new CreateEntityBundleCmd(project, project->getSelectedSceneId(), relativePath, bundleNode);
-    CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(createBundleCmd);
-
-    scanDirectory(currentPath);
-}
-
 void editor::ResourcesWindow::cleanupThumbnails() {
     // 1. Collect all valid thumbnail paths of existing files
     std::unordered_set<std::string> validThumbPaths;
@@ -2631,12 +2605,6 @@ void editor::ResourcesWindow::show() {
             size_t contentLen = payload->DataSize;
 
             saveEntityFile(currentPath, entityContent, contentLen);
-        }
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("bundle")) {
-            const char* bundleContent = static_cast<const char*>(payload->Data);
-            size_t contentLen = payload->DataSize;
-
-            saveBundleFile(currentPath, bundleContent, contentLen);
         }
         ImGui::EndDragDropTarget();
     }

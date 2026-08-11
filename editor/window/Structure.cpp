@@ -1,6 +1,7 @@
 #include "Structure.h"
 
 #include "App.h"
+#include "Backend.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
@@ -1017,6 +1018,66 @@ void editor::Structure::markMatchingNodes(TreeNode& node, const std::string& sea
     }
 }
 
+std::vector<char> editor::Structure::buildEntityPayload(const TreeNode& node) {
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return {};
+    }
+
+    std::vector<Entity> draggedEntities = getTopLevelSelectedEntities(node.id);
+    std::vector<Entity> exportEntities = draggedEntities;
+
+    // Add virtual children (and chained children) of dragged entities
+    std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(sceneProject->scene, draggedEntities);
+    exportEntities.insert(exportEntities.end(), virtualChildren.begin(), virtualChildren.end());
+
+    YAML::Node entityData;
+    if (exportEntities.size() == 1) {
+        entityData = Stream::encodeEntity(draggedEntities[0], sceneProject->scene, project, sceneProject);
+    } else {
+        // Embed the full export data (including virtual action children) in the entity payload.
+        // Structure uses the EntityPayload header for reparenting; Resources uses the YAML tail.
+        entityData = Stream::encodeEntitySelection(exportEntities, sceneProject->scene);
+    }
+
+    std::string yamlString = YAML::Dump(entityData);
+
+    size_t yamlSize = yamlString.size();
+    std::vector<char> payloadData(sizeof(EntityPayload) + yamlSize);
+
+    EntityPayload* payload = reinterpret_cast<EntityPayload*>(payloadData.data());
+    payload->entity = node.id;
+    payload->parent = node.parent;
+    payload->order = node.order;
+    payload->hasTransform = node.hasTransform;
+    payload->entitySceneId = sceneProject->id;
+    memcpy(payloadData.data() + sizeof(EntityPayload), yamlString.data(), yamlSize);
+
+    return payloadData;
+}
+
+std::filesystem::path editor::Structure::getBundleSaveDirectory() const {
+    if (ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow()) {
+        std::filesystem::path currentPath = resourcesWindow->getCurrentPath();
+        if (!currentPath.empty()) {
+            return currentPath;
+        }
+    }
+    return project->getProjectPath();
+}
+
+void editor::Structure::saveNodeAsBundle(const TreeNode& node) {
+    ResourcesWindow* resourcesWindow = Backend::getApp().getResourcesWindow();
+    if (!resourcesWindow) {
+        return;
+    }
+
+    std::vector<char> payloadData = buildEntityPayload(node);
+    if (!payloadData.empty()) {
+        resourcesWindow->saveEntityFile(getBundleSaveDirectory(), payloadData.data(), payloadData.size());
+    }
+}
+
 void editor::Structure::showTreeNode(editor::TreeNode& node) {
     // Skip nodes that don't match search and don't have matching descendants
     bool hasSearch = strlen(searchBuffer) > 0;
@@ -1171,38 +1232,10 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
             // Add entity drag drop payload for dragging to resources
             if (!node.isScene) {
-                SceneProject* sceneProject = project->getSelectedScene();
-                std::vector<Entity> draggedEntities = getTopLevelSelectedEntities(node.id);
-                std::vector<Entity> exportEntities = draggedEntities;
-
-                // Add virtual children (and chained children) of dragged entities
-                std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(sceneProject->scene, draggedEntities);
-                exportEntities.insert(exportEntities.end(), virtualChildren.begin(), virtualChildren.end());
-
-                YAML::Node entityData;
-                if (exportEntities.size() == 1) {
-                    entityData = Stream::encodeEntity(draggedEntities[0], sceneProject->scene, project, sceneProject);
-                } else {
-                    // Embed the full export data (including virtual action children) in the entity payload.
-                    // Structure uses the EntityPayload header for reparenting; Resources uses the YAML tail.
-                    entityData = Stream::encodeEntitySelection(exportEntities, sceneProject->scene);
+                std::vector<char> payloadData = buildEntityPayload(node);
+                if (!payloadData.empty()) {
+                    ImGui::SetDragDropPayload("entity", payloadData.data(), payloadData.size());
                 }
-
-                std::string yamlString = YAML::Dump(entityData);
-
-                size_t yamlSize = yamlString.size();
-                size_t payloadSize = sizeof(EntityPayload) + yamlSize;
-                std::vector<char> payloadData(payloadSize);
-
-                EntityPayload* payload = reinterpret_cast<EntityPayload*>(payloadData.data());
-                payload->entity = node.id;
-                payload->parent = node.parent;
-                payload->order = node.order;
-                payload->hasTransform = node.hasTransform;
-                payload->entitySceneId = sceneProject->id;
-                memcpy(payloadData.data() + sizeof(EntityPayload), yamlString.data(), yamlSize);
-
-                ImGui::SetDragDropPayload("entity", payloadData.data(), payloadSize);
             }
 
             ImGui::Text("Moving %s", node.name.c_str());
@@ -1651,8 +1684,17 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                 uint32_t sceneId = project->getSelectedSceneId();
                 const auto& sceneBundles = project->getEntityBundles(sceneId);
 
+                ImGui::Separator();
+
+                if (ImGui::MenuItem(ICON_FA_FLOPPY_DISK "  Save as Bundle", nullptr, false, !node.isLocked && node.hasTransform)) {
+                    saveNodeAsBundle(node);
+                }
+                if (ImGui::IsItemHovered()) {
+                    std::filesystem::path directory = std::filesystem::relative(getBundleSaveDirectory(), project->getProjectPath());
+                    ImGui::SetItemTooltip("Saves to %s", directory == "." ? "project root" : directory.string().c_str());
+                }
+
                 if (!sceneBundles.empty()) {
-                    ImGui::Separator();
                     if (ImGui::BeginMenu(ICON_FA_BOXES_STACKED "  Insert to Bundle")) {
                         for (const auto& [path, bundlePtr] : sceneBundles) {
                             auto sceneIt = bundlePtr->instances.find(sceneId);

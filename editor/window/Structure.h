@@ -100,6 +100,10 @@ namespace doriax::editor{
         void handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId);
         void showAddChildSceneMenu();
 
+        std::vector<char> buildEntityPayload(const TreeNode& node);
+        std::filesystem::path getBundleSaveDirectory() const;
+        void saveNodeAsBundle(const TreeNode& node);
+
         // Search-related methods
         bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);
         bool hasMatchingDescendant(const TreeNode& node, const std::string& searchLower);

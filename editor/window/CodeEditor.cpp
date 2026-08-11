@@ -1477,7 +1477,6 @@ void editor::CodeEditor::show() {
                     isCppSource = (dropExt != ".h" && dropExt != ".hpp" && dropExt != ".hh" && dropExt != ".hxx");
                 }
 
-                // Single entity
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
                     if (isCppSource) {
                         Backend::getApp().registerAlert("Drop Entity", "Entity properties must be added to the header file (.h), not the source file (.cpp).");
@@ -1487,26 +1486,6 @@ void editor::CodeEditor::show() {
                             insertLuaEntityProperty(instance, ep->entity, ep->entitySceneId);
                         else
                             insertCppEntityProperty(instance, ep->entity, ep->entitySceneId);
-                    }
-                }
-                // Bundle (multiple entities) — use first entity
-                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("bundle")) {
-                    if (isCppSource) {
-                        Backend::getApp().registerAlert("Drop Entity", "Entity properties must be added to the header file (.h), not the source file (.cpp).");
-                    } else {
-                        try {
-                            std::string yamlStr(static_cast<const char*>(payload->Data), payload->DataSize);
-                            YAML::Node bundleNode = YAML::Load(yamlStr);
-                            if (bundleNode["members"] && bundleNode["members"].IsSequence() && bundleNode["members"].size() > 0) {
-                                Entity firstEntity = bundleNode["members"][0]["entity"].as<Entity>();
-                                SceneProject* sp = project->getSelectedScene();
-                                uint32_t sceneId = sp ? sp->id : 0;
-                                if (instance.languageType == SyntaxLanguage::Lua)
-                                    insertLuaEntityProperty(instance, firstEntity, sceneId);
-                                else
-                                    insertCppEntityProperty(instance, firstEntity, sceneId);
-                            }
-                        } catch (...) {}
                     }
                 }
                 ImGui::EndDragDropTarget();

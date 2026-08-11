@@ -204,8 +204,6 @@ namespace doriax::editor {
         void clearThumbnailTextures();
 
         void saveMaterialFile(const fs::path& directory, const char* materialContent, size_t contentLen, const MaterialPayload* sourceMaterial = nullptr);
-        void saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen);
-        void saveBundleFile(const fs::path& directory, const char* bundleContent, size_t contentLen);
 
         fs::path uniqueRelativePath(const fs::path& directory, const std::string& baseName, const std::string& extension);
 
@@ -239,6 +237,7 @@ namespace doriax::editor {
 
         void refreshCurrentDirectory();
         fs::path getCurrentPath() const { return currentPath; }
+        void saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen);
 
         void show();
         void setOpen(bool open);
