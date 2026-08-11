@@ -11,7 +11,12 @@
 
 #include "Engine.h"
 
+#if defined(SOKOL_VULKAN)
+// After WindowLinux.h: the Xlib surface entry points come from <X11/Xlib.h>
+#include "VulkanContext.h"
+#else
 #include <GL/glx.h>
+#endif
 #include <X11/Xutil.h>
 
 #include <time.h>
@@ -44,6 +49,7 @@ using namespace doriax;
 
 namespace {
 
+#if !defined(SOKOL_VULKAN)
 using CreateContextAttribsProc =
     GLXContext (*)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
 using SwapIntervalProc = void (*)(Display*, GLXDrawable, int);
@@ -52,6 +58,7 @@ GLXFBConfig framebufferConfig = nullptr;
 GLXContext glContext = nullptr;
 SwapIntervalProc swapIntervalEXT = nullptr;
 bool glxContextError = false;
+#endif
 
 GamepadLinux gamepads;
 LinuxInputRouter inputRouter;
@@ -64,6 +71,7 @@ double monotonicSeconds() {
     return double(now.tv_sec) + double(now.tv_nsec) / 1.0e9;
 }
 
+#if !defined(SOKOL_VULKAN)
 template <typename T>
 T glxProc(const char* name) {
     return reinterpret_cast<T>(
@@ -188,6 +196,45 @@ void destroyContext() {
     framebufferConfig = nullptr;
 }
 
+void beginFrame() {
+}
+
+void endFrame() {
+    glXSwapBuffers(WindowLinux::display(), WindowLinux::handle());
+}
+
+#else
+
+VkResult createWindowSurface(VkInstance instance, VkSurfaceKHR* surface) {
+    VkXlibSurfaceCreateInfoKHR surfaceInfo{};
+    surfaceInfo.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+    surfaceInfo.dpy = WindowLinux::display();
+    surfaceInfo.window = WindowLinux::handle();
+    return vkCreateXlibSurfaceKHR(instance, &surfaceInfo, nullptr, surface);
+}
+
+bool createContext() {
+    VulkanContextConfig config;
+    config.surfaceExtension = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
+    config.createSurface = createWindowSurface;
+    config.vsync = DORIAX_VSYNC_ENABLED != 0;
+    return VulkanContext::create(config);
+}
+
+void destroyContext() {
+    VulkanContext::destroy();
+}
+
+void beginFrame() {
+    VulkanContext::beginFrame();
+}
+
+void endFrame() {
+    VulkanContext::endFrame();
+}
+
+#endif
+
 void processEvents() {
     Display* display = WindowLinux::display();
     while (XPending(display)) {
@@ -230,23 +277,32 @@ int DoriaxLinux::init(int argc, char **argv) {
     if (!WindowLinux::openDisplay())
         return -1;
 
-    XVisualInfo* info = nullptr;
-    if (!selectVisual(info)) {
-        WindowLinux::destroy();
-        return -1;
-    }
-
     WindowLinuxConfig config;
     config.title = DORIAX_WINDOW_TITLE;
     config.appId = DORIAX_APP_ID;
     config.width = DEFAULT_WINDOW_WIDTH;
     config.height = DEFAULT_WINDOW_HEIGHT;
     config.resizable = DORIAX_WINDOW_RESIZABLE;
+
+#if defined(SOKOL_VULKAN)
+    // A Vulkan surface presents to any drawable, so the window keeps the
+    // screen's own visual instead of one matched to a GLX configuration.
+    config.visual = DefaultVisual(WindowLinux::display(), WindowLinux::screen());
+    config.depth = DefaultDepth(WindowLinux::display(), WindowLinux::screen());
+
+    const bool created = WindowLinux::create(config);
+#else
+    XVisualInfo* info = nullptr;
+    if (!selectVisual(info)) {
+        WindowLinux::destroy();
+        return -1;
+    }
     config.visual = info->visual;
     config.depth = info->depth;
 
     const bool created = WindowLinux::create(config);
     XFree(info);
+#endif
     if (!created) {
         WindowLinux::destroy();
         return -1;
@@ -284,8 +340,9 @@ int DoriaxLinux::init(int argc, char **argv) {
 
         gamepads.poll(monotonicSeconds());
 
+        beginFrame();
         Engine::systemDraw();
-        glXSwapBuffers(WindowLinux::display(), WindowLinux::handle());
+        endFrame();
     }
 
     Engine::systemViewDestroyed();

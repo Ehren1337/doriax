@@ -149,6 +149,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     find_package(Threads REQUIRED)
 
+    # FindVulkan reads the VULKAN_SDK environment variable the SDK installer
+    # sets. A macro, not a function, so Vulkan_FOUND lands in the caller.
+    macro(doriax_find_vulkan backendOption)
+        find_package(Vulkan QUIET)
+        if(NOT Vulkan_FOUND)
+            message(FATAL_ERROR "${backendOption}=vulkan needs the Vulkan SDK (https://vulkan.lunarg.com/sdk/home), and VULKAN_SDK is not set here. If it is installed, restart the shell or editor this build was started from: Windows only gives the variable to processes started after the installer ran. Otherwise use ${backendOption}=glcore.")
+        endif()
+    endmacro()
+
     if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         add_definitions("-DDORIAX_WEB")
 
@@ -266,13 +275,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
         add_definitions("-DDORIAX_WIN")
 
-        # The native Win32 backend creates a WGL context. D3D11 and Vulkan came
-        # from sokol_app, which this backend replaced; reaching them again means
-        # teaching DoriaxWin to create those devices.
+        # The native Win32 backend creates a WGL context, a Vulkan surface and
+        # swapchain, or a D3D11 device and swapchain.
         if(GRAPHIC_BACKEND STREQUAL "glcore")
             add_definitions("-DSOKOL_GLCORE")
+        elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
+            add_definitions("-DSOKOL_VULKAN")
+            add_definitions("-DVK_USE_PLATFORM_WIN32_KHR")
+        elseif(GRAPHIC_BACKEND STREQUAL "d3d11")
+            add_definitions("-DSOKOL_D3D11")
         else()
-            message(FATAL_ERROR "APP_BACKEND=win supports GRAPHIC_BACKEND glcore only (got '${GRAPHIC_BACKEND}')")
+            message(FATAL_ERROR "APP_BACKEND=win supports GRAPHIC_BACKEND glcore, vulkan or d3d11 (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-DWITH_MINIAUDIO")
@@ -285,6 +298,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
 
         set(PLATFORM_EXEC_FLAGS WIN32)
+
+        if(MSVC)
+            # The windowed subsystem above enters at WinMain, but the backend's
+            # entry point is main() (platform/win/main.cpp). MinGW handles this
+            # on its own with -mwindows.
+            list(APPEND PLATFORM_PROPERTIES LINK_FLAGS "/ENTRY:mainCRTStartup")
+        endif()
 
         set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/win)
 
@@ -301,8 +321,25 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             user32
             gdi32
             shell32
-            opengl32
         )
+
+        if(GRAPHIC_BACKEND STREQUAL "vulkan")
+            # Device and swapchain are shared with the other desktops
+            include_directories(${DORIAX_ROOT}/platform/common)
+            list(APPEND PLATFORM_SOURCE
+                ${DORIAX_ROOT}/platform/common/VulkanContext.cpp
+            )
+            doriax_find_vulkan("GRAPHIC_BACKEND")
+            list(APPEND PLATFORM_LIBS Vulkan::Vulkan)
+        elseif(GRAPHIC_BACKEND STREQUAL "d3d11")
+            # d3d11 and dxgi ship with the Windows SDK, nothing to find
+            list(APPEND PLATFORM_SOURCE
+                ${PLATFORM_ROOT}/D3D11Context.cpp
+            )
+            list(APPEND PLATFORM_LIBS d3d11 dxgi)
+        else()
+            list(APPEND PLATFORM_LIBS opengl32)
+        endif()
 
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             list(APPEND PLATFORM_LIBS
@@ -312,13 +349,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if((CMAKE_SYSTEM_NAME STREQUAL "Linux") OR (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD"))
-        # The native X11 backend creates a GLX context. Vulkan came from
-        # sokol_app, which this backend replaced; reaching it again means
-        # teaching DoriaxLinux to create a Vulkan surface and swapchain.
+        # The native X11 backend creates a GLX context or a Vulkan surface and
+        # swapchain.
         if(GRAPHIC_BACKEND STREQUAL "glcore")
             add_definitions("-DSOKOL_GLCORE")
+        elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
+            add_definitions("-DSOKOL_VULKAN")
+            add_definitions("-DVK_USE_PLATFORM_XLIB_KHR")
         else()
-            message(FATAL_ERROR "APP_BACKEND=linux supports GRAPHIC_BACKEND glcore only (got '${GRAPHIC_BACKEND}')")
+            message(FATAL_ERROR "APP_BACKEND=linux supports GRAPHIC_BACKEND glcore or vulkan (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-DWITH_MINIAUDIO")
@@ -350,8 +389,20 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         include_directories(${DORIAX_ROOT}/platform/common)
 
         list(APPEND PLATFORM_LIBS
-            X11::X11 GL dl m
+            X11::X11 dl m
         )
+
+        if(GRAPHIC_BACKEND STREQUAL "vulkan")
+            # The device and swapchain are the same on every desktop; only the
+            # surface differs, so the backend passes that in.
+            list(APPEND PLATFORM_SOURCE
+                ${DORIAX_ROOT}/platform/common/VulkanContext.cpp
+            )
+            doriax_find_vulkan("GRAPHIC_BACKEND")
+            list(APPEND PLATFORM_LIBS Vulkan::Vulkan)
+        else()
+            list(APPEND PLATFORM_LIBS GL)
+        endif()
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")

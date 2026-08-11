@@ -33,6 +33,12 @@ namespace {
     DWORD gSavedStyle = 0;
     bool gFullscreen = false;
 
+    // IDC_* expand to MAKEINTRESOURCEA unless UNICODE is defined, and this file
+    // calls the -W entry points, so re-tag the ordinal as a wide resource id.
+    LPCWSTR wideCursorId(const void* id) {
+        return MAKEINTRESOURCEW(static_cast<WORD>(reinterpret_cast<ULONG_PTR>(id)));
+    }
+
     DWORD windowStyle(bool resizable, bool maximized, bool clipChildren) {
         DWORD style = WS_OVERLAPPEDWINDOW;
         if (!resizable) style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
@@ -74,7 +80,7 @@ bool WindowWin::create(const WindowWinConfig& config) {
     windowClass.hInstance = gInstance;
     windowClass.hIcon = config.icon;
     windowClass.hIconSm = config.icon;
-    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    windowClass.hCursor = LoadCursorW(nullptr, wideCursorId(IDC_ARROW));
     windowClass.hbrBackground = nullptr;
     windowClass.lpszClassName = gClassName;
     if (!RegisterClassExW(&windowClass)) {
@@ -285,7 +291,7 @@ void WindowWin::quit() {
 }
 
 void WindowWin::setMouseCursor(CursorType type) {
-    const wchar_t* name = IDC_ARROW;
+    auto name = IDC_ARROW;
     switch (type) {
         case CursorType::ARROW:         name = IDC_ARROW; break;
         case CursorType::IBEAM:         name = IDC_IBEAM; break;
@@ -299,7 +305,7 @@ void WindowWin::setMouseCursor(CursorType type) {
         case CursorType::NOT_ALLOWED:   name = IDC_NO; break;
     }
 
-    HCURSOR cursor = LoadCursorW(nullptr, name);
+    HCURSOR cursor = LoadCursorW(nullptr, wideCursorId(name));
     if (!cursor) return;
     gCursor = cursor;
     if (gWindow)
@@ -345,7 +351,8 @@ void WindowWin::setCursorHidden(bool hidden) {
     gCursorHidden = hidden;
     // Win32 has no hide counter to unbalance: the cursor is whatever the last
     // SetCursor said, and WM_SETCURSOR reapplies it as the pointer moves.
-    SetCursor(hidden ? nullptr : (gCursor ? gCursor : LoadCursorW(nullptr, IDC_ARROW)));
+    SetCursor(hidden ? nullptr
+                     : (gCursor ? gCursor : LoadCursorW(nullptr, wideCursorId(IDC_ARROW))));
 }
 
 bool WindowWin::isCursorHidden() {

@@ -54,6 +54,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::DEPTH;
         return true;
     }
+    if (typeToken == "gbuffer") {
+        shaderType = ShaderType::GBUFFER;
+        return true;
+    }
     if (typeToken == "sky") {
         shaderType = ShaderType::SKYBOX;
         return true;

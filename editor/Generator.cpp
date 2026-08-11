@@ -393,21 +393,32 @@ std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& wind
     content += "\n";
     content += "    # Each desktop OS uses the same native application backend as the editor,\n";
     content += "    # compiled from the engine API snapshot in ${INTERNAL_DIR}/engine-api.\n";
-    // Apple defaults to Metal to match the editor's own renderer; glcore selects
-    // the NSOpenGLView backend instead. Windows and Linux are OpenGL-only here.
+    // This build links the editor's own engine library, whose sokol_gfx was
+    // compiled for a single graphics backend, so the default has to be that one.
+#if defined(SOKOL_VULKAN)
+    const std::string editorGraphicBackend = "vulkan";
+#elif defined(SOKOL_METAL)
+    const std::string editorGraphicBackend = "metal";
+#else
+    const std::string editorGraphicBackend = "glcore";
+#endif
     content += "    if(NOT DORIAX_GRAPHIC_BACKEND)\n";
-    content += "        if(APPLE)\n";
-    content += "            set(DORIAX_GRAPHIC_BACKEND \"metal\")\n";
-    content += "        else()\n";
-    content += "            set(DORIAX_GRAPHIC_BACKEND \"glcore\")\n";
-    content += "        endif()\n";
+    content += "        set(DORIAX_GRAPHIC_BACKEND \"" + editorGraphicBackend + "\")\n";
     content += "    endif()\n";
+    content += "\n";
+    content += "\n";
+    content += "    # FindVulkan reads the VULKAN_SDK environment variable the SDK installer sets\n";
+    content += "    macro(doriax_find_vulkan)\n";
+    content += "        find_package(Vulkan QUIET)\n";
+    content += "        if(NOT Vulkan_FOUND)\n";
+    content += "            message(FATAL_ERROR \"DORIAX_GRAPHIC_BACKEND=vulkan needs the Vulkan SDK (https://vulkan.lunarg.com/sdk/home), and VULKAN_SDK is not set here. If it is installed, restart the shell or editor this build was started from: Windows only gives the variable to processes started after the installer ran. Otherwise use DORIAX_GRAPHIC_BACKEND=glcore.\")\n";
+    content += "        endif()\n";
+    content += "    endmacro()\n";
     content += "\n";
     content += "    set(DORIAX_PLATFORM_DIR ${DORIAX_API_DIR}/platform)\n";
     content += "    include_directories(${DORIAX_PLATFORM_DIR}/win ${DORIAX_PLATFORM_DIR}/linux ${DORIAX_PLATFORM_DIR}/mac ${DORIAX_PLATFORM_DIR}/apple ${DORIAX_PLATFORM_DIR}/common)\n";
     content += "\n";
     content += "    if(WIN32)\n";
-    content += "        add_definitions(\"-DSOKOL_GLCORE\")\n";
     content += "        list(APPEND PLATFORM_SOURCE\n";
     content += "            ${DORIAX_PLATFORM_DIR}/win/DoriaxWin.cpp\n";
     content += "            ${DORIAX_PLATFORM_DIR}/win/WindowWin.cpp\n";
@@ -415,7 +426,17 @@ std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& wind
     content += "            ${DORIAX_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
     content += "            ${DORIAX_PLATFORM_DIR}/win/GamepadWin.cpp\n";
     content += "        )\n";
-    content += "        list(APPEND PLATFORM_LIBS opengl32 gdi32 user32 shell32)\n";
+    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32)\n";
+    content += "        if(DORIAX_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
+    content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
+    content += "            add_definitions(\"-DVK_USE_PLATFORM_WIN32_KHR\")\n";
+    content += "            list(APPEND PLATFORM_SOURCE ${DORIAX_PLATFORM_DIR}/common/VulkanContext.cpp)\n";
+    content += "            doriax_find_vulkan()\n";
+    content += "            list(APPEND PLATFORM_LIBS Vulkan::Vulkan)\n";
+    content += "        else()\n";
+    content += "            add_definitions(\"-DSOKOL_GLCORE\")\n";
+    content += "            list(APPEND PLATFORM_LIBS opengl32)\n";
+    content += "        endif()\n";
     content += "    elseif(APPLE)\n";
     content += "        set(CMAKE_CXX_FLAGS \"${CMAKE_CXX_FLAGS} -fobjc-arc\")\n";
     content += "        set(CMAKE_C_FLAGS \"${CMAKE_C_FLAGS} -fobjc-arc\")\n";
@@ -450,7 +471,6 @@ std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& wind
     content += "            list(APPEND PLATFORM_LIBS \"-framework Cocoa\" \"-framework Metal\" \"-framework MetalKit\" \"-framework QuartzCore\" \"-framework GameController\")\n";
     content += "        endif()\n";
     content += "    else()\n";
-    content += "        add_definitions(\"-DSOKOL_GLCORE\")\n";
     content += "        find_package(X11 REQUIRED)\n";
     content += "        list(APPEND PLATFORM_SOURCE\n";
     content += "            ${DORIAX_PLATFORM_DIR}/linux/DoriaxLinux.cpp\n";
@@ -460,7 +480,17 @@ std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& wind
     content += "            ${DORIAX_PLATFORM_DIR}/linux/GamepadLinux.cpp\n";
     content += "            ${DORIAX_PLATFORM_DIR}/linux/GamepadDB.cpp\n";
     content += "        )\n";
-    content += "        list(APPEND PLATFORM_LIBS X11::X11 GL dl m)\n";
+    content += "        list(APPEND PLATFORM_LIBS X11::X11 dl m)\n";
+    content += "        if(DORIAX_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
+    content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
+    content += "            add_definitions(\"-DVK_USE_PLATFORM_XLIB_KHR\")\n";
+    content += "            list(APPEND PLATFORM_SOURCE ${DORIAX_PLATFORM_DIR}/common/VulkanContext.cpp)\n";
+    content += "            doriax_find_vulkan()\n";
+    content += "            list(APPEND PLATFORM_LIBS Vulkan::Vulkan)\n";
+    content += "        else()\n";
+    content += "            add_definitions(\"-DSOKOL_GLCORE\")\n";
+    content += "            list(APPEND PLATFORM_LIBS GL)\n";
+    content += "        endif()\n";
     content += "    endif()\n";
     content += "endif() \n";
     return content;
@@ -874,7 +904,25 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_BINARY_DIR}\n";
     cmakeContent += "    OUTPUT_NAME \"" + libName + "\"\n";
     cmakeContent += "    PREFIX \"\"\n";
-    cmakeContent += ")\n";
+    cmakeContent += ")\n\n";
+
+    cmakeContent += "# The engine DLL lives next to the editor, and Windows searches only the\n";
+    cmakeContent += "# executable directory and PATH, so a standalone build needs its own copy or\n";
+    cmakeContent += "# it dies with STATUS_DLL_NOT_FOUND before main(). The other desktops get\n";
+    cmakeContent += "# DORIAX_LIB_DIR in the build rpath from CMake.\n";
+    cmakeContent += "if(WIN32 AND NOT DORIAX_EDITOR_PLUGIN)\n";
+    cmakeContent += "    # Same reason as DORIAX_LIB above: never reuse a cached path\n";
+    cmakeContent += "    unset(DORIAX_RUNTIME_LIB CACHE)\n";
+    cmakeContent += "    find_file(DORIAX_RUNTIME_LIB NAMES doriax.dll PATHS \"${DORIAX_LIB_DIR}\" NO_DEFAULT_PATH)\n";
+    cmakeContent += "    if(DORIAX_RUNTIME_LIB)\n";
+    cmakeContent += "        add_custom_command(TARGET " + libName + " POST_BUILD\n";
+    cmakeContent += "            COMMAND ${CMAKE_COMMAND} -E copy_if_different\n";
+    cmakeContent += "                    \"${DORIAX_RUNTIME_LIB}\" \"$<TARGET_FILE_DIR:" + libName + ">\"\n";
+    cmakeContent += "            COMMENT \"Copying the Doriax engine runtime next to the executable\")\n";
+    cmakeContent += "    else()\n";
+    cmakeContent += "        message(WARNING \"doriax.dll not found in ${DORIAX_LIB_DIR}: the executable will not start outside the editor.\")\n";
+    cmakeContent += "    endif()\n";
+    cmakeContent += "endif()\n";
 
     // Build C++ source content
     std::string sourceContent;

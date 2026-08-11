@@ -19,9 +19,9 @@ namespace {
     // supported by that host's standalone CMake configuration.
     #if defined(_WIN32)
     constexpr GraphicBackendOption desktopGraphicBackends[] = {
-        { "Direct3D 11", "d3d11" },
+        { "OpenGL",      "glcore" },
         { "Vulkan",      "vulkan" },
-        { "OpenGL",      "glcore" }
+        { "Direct3D 11", "d3d11" }
     };
     #elif defined(__APPLE__)
     constexpr GraphicBackendOption desktopGraphicBackends[] = {

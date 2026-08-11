@@ -25,6 +25,14 @@ namespace doriax {
 
         int getSampleCount() override;
 
+#if defined(SOKOL_VULKAN)
+        // The GL backend renders into the default framebuffer, which the base
+        // class already describes. Vulkan has to hand sokol the device and the
+        // image acquired for this frame instead.
+        sg_environment getSokolEnvironment() override;
+        sg_swapchain getSokolSwapchain() override;
+#endif
+
         bool isFullscreen() override;
         void requestFullscreen() override;
         void exitFullscreen() override;

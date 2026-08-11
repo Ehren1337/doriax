@@ -9,6 +9,13 @@
 #include "WinInputRouter.h"
 #include "WindowWin.h"
 
+#if defined(SOKOL_VULKAN)
+// After WindowWin.h: the Win32 surface entry points come from <windows.h>
+#include "VulkanContext.h"
+#elif defined(SOKOL_D3D11)
+#include "D3D11Context.h"
+#endif
+
 #include "Engine.h"
 
 #include <cstdio>
@@ -41,6 +48,7 @@ namespace {
 
 constexpr wchar_t WINDOW_CLASS_NAME[] = L"DoriaxGameWindow";
 
+#if defined(SOKOL_GLCORE)
 // wglCreateContextAttribsARB / wglSwapIntervalEXT, resolved at runtime
 using CreateContextAttribsProc = HGLRC (WINAPI*)(HDC, HGLRC, const int*);
 using SwapIntervalProc = BOOL (WINAPI*)(int);
@@ -53,12 +61,14 @@ constexpr int WGL_CONTEXT_CORE_PROFILE_BIT = 0x00000001;
 HDC deviceContext = nullptr;
 HGLRC glContext = nullptr;
 SwapIntervalProc swapIntervalEXT = nullptr;
+#endif
 
 GamepadWin gamepads;
 WinInputRouter inputRouter;
 
 bool shouldClose = false;
 
+#if defined(SOKOL_GLCORE)
 template <typename T>
 T wglProc(const char* name) {
     PROC address = wglGetProcAddress(name);
@@ -69,6 +79,7 @@ T wglProc(const char* name) {
         return nullptr;
     return reinterpret_cast<T>(address);
 }
+#endif
 
 LRESULT CALLBACK windowProc(HWND handle, UINT message,
                             WPARAM wParam, LPARAM lParam) {
@@ -109,6 +120,58 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message,
 
     return DefWindowProcW(handle, message, wParam, lParam);
 }
+
+#if defined(SOKOL_VULKAN)
+
+VkResult createWindowSurface(VkInstance instance, VkSurfaceKHR* surface) {
+    VkWin32SurfaceCreateInfoKHR surfaceInfo{};
+    surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    surfaceInfo.hinstance = WindowWin::instance();
+    surfaceInfo.hwnd = WindowWin::handle();
+    return vkCreateWin32SurfaceKHR(instance, &surfaceInfo, nullptr, surface);
+}
+
+bool createContext() {
+    VulkanContextConfig config;
+    config.surfaceExtension = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
+    config.createSurface = createWindowSurface;
+    config.vsync = DORIAX_VSYNC_ENABLED != 0;
+    return VulkanContext::create(config);
+}
+
+void destroyContext() {
+    VulkanContext::destroy();
+}
+
+void beginFrame() {
+    VulkanContext::beginFrame();
+}
+
+void endFrame() {
+    VulkanContext::endFrame();
+}
+
+#elif defined(SOKOL_D3D11)
+
+bool createContext() {
+    D3D11ContextConfig config;
+    config.vsync = DORIAX_VSYNC_ENABLED != 0;
+    return D3D11Context::create(config);
+}
+
+void destroyContext() {
+    D3D11Context::destroy();
+}
+
+void beginFrame() {
+    D3D11Context::beginFrame();
+}
+
+void endFrame() {
+    D3D11Context::endFrame();
+}
+
+#else
 
 bool createContext() {
     deviceContext = GetDC(WindowWin::handle());
@@ -185,6 +248,15 @@ void destroyContext() {
     swapIntervalEXT = nullptr;
 }
 
+void beginFrame() {
+}
+
+void endFrame() {
+    SwapBuffers(deviceContext);
+}
+
+#endif
+
 }
 
 int DoriaxWin::init(int argc, char **argv) {
@@ -243,8 +315,9 @@ int DoriaxWin::init(int argc, char **argv) {
 
         gamepads.poll();
 
+        beginFrame();
         Engine::systemDraw();
-        SwapBuffers(deviceContext);
+        endFrame();
     }
 
     Engine::systemViewDestroyed();

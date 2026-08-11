@@ -23,6 +23,12 @@ vec3 getNormal2D(){
 }
 
 #ifdef USE_SHADOWS_2D
+#ifdef IS_HLSL
+// Constant bound for the same reason as the 3D kernel (see shadows.glsl), so
+// MEDIUM and HIGH 2D shadow quality render as LOW here
+const int MAX_SHADOW2D_RADIUS = 2;  // 5 taps
+#endif
+
 // 1D polar shadow map lookup: the row stores, per angle around the light, the
 // normalized distance (dist/range) of the nearest occluder. PCF along the row
 // with 2*radius+1 taps (radius from the scene's Shadow2DQuality, uniform-driven
@@ -40,6 +46,9 @@ float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softn
     #endif
 
     int radius = int(lighting2d.atlasInfo.w);
+    #ifdef IS_HLSL
+        radius = min(radius, MAX_SHADOW2D_RADIUS);
+    #endif
     if (radius <= 0){
         float occ = decodeDepth(texture(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(u, v)));
         return (dist01 - bias <= occ) ? 1.0 : 0.0;
@@ -48,7 +57,12 @@ float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softn
     float halfWidth = lighting2d.atlasInfo.x * max(softness, 0.5); // in texels
     float tapStep = halfWidth / float(radius);
     float lit = 0.0;
+    // The clamp leaves radius at MAX_SHADOW2D_RADIUS
+    #ifdef IS_HLSL
+    for (int t = -MAX_SHADOW2D_RADIUS; t <= MAX_SHADOW2D_RADIUS; ++t){
+    #else
     for (int t = -radius; t <= radius; ++t){
+    #endif
         float su = fract(u + float(t) * tapStep);
         float occ = decodeDepth(texture(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(su, v)));
         lit += (dist01 - bias <= occ) ? 1.0 : 0.0;

@@ -7,6 +7,12 @@
 #include "WinInputRouter.h"
 #include "WindowWin.h"
 
+#if defined(SOKOL_VULKAN)
+#include "VulkanContext.h"
+#elif defined(SOKOL_D3D11)
+#include "D3D11Context.h"
+#endif
+
 using namespace doriax;
 
 SystemWin::SystemWin(WinInputRouter* router) : router(router) {
@@ -23,6 +29,24 @@ int SystemWin::getScreenHeight() {
 int SystemWin::getSampleCount() {
     return 1;
 }
+
+#if defined(SOKOL_VULKAN)
+sg_environment SystemWin::getSokolEnvironment() {
+    return VulkanContext::environment();
+}
+
+sg_swapchain SystemWin::getSokolSwapchain() {
+    return VulkanContext::swapchain();
+}
+#elif defined(SOKOL_D3D11)
+sg_environment SystemWin::getSokolEnvironment() {
+    return D3D11Context::environment();
+}
+
+sg_swapchain SystemWin::getSokolSwapchain() {
+    return D3D11Context::swapchain();
+}
+#endif
 
 bool SystemWin::isFullscreen() {
     return WindowWin::isFullscreen();

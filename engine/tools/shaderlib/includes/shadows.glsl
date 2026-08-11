@@ -1,3 +1,11 @@
+#ifdef IS_HLSL
+// HLSL unrolls any loop holding a texture lookup, so the PCF bound has to be a
+// constant and its taps multiply with the light and cascade loops around it.
+// Capping keeps that compilable: MEDIUM and HIGH quality render as LOW here.
+const int MAX_PCF_RADIUS = 1;   // 3x3 kernel
+const int MAX_PCF_RINGS = 1;    // center + 1 ring
+#endif
+
 struct Shadow{
     float maxBias;
     float minBias;
@@ -120,11 +128,21 @@ float shadowCalculationAux(int shadowMapIndex, Shadow shadowConf, float NdotL){
     // PCF kernel radius from the scene's shadow quality (cameraDir.w), uniform-driven
     // so quality changes need no shader rebuild: 0 = 1 tap, 1 = 3x3, 2 = 5x5, 3 = 7x7
     int pcfRadius = int(lighting.cameraDir.w);
+    #ifdef IS_HLSL
+        pcfRadius = min(pcfRadius, MAX_PCF_RADIUS);
+    #endif
 
     if (pcfRadius > 0){
 
+        // The clamp leaves pcfRadius at MAX_PCF_RADIUS, so the constant bound
+        // covers the taps in use and nothing more
+        #ifdef IS_HLSL
+        for(int x = -MAX_PCF_RADIUS; x <= MAX_PCF_RADIUS; ++x) {
+            for(int y = -MAX_PCF_RADIUS; y <= MAX_PCF_RADIUS; ++y) {
+        #else
         for(int x = -pcfRadius; x <= pcfRadius; ++x) {
             for(int y = -pcfRadius; y <= pcfRadius; ++y) {
+        #endif
                 vec2 sampleCoord = clamp(proj_coords.xy + vec2(x, y) * texel_size, slotMin, slotMax);
                 shadow += shadowCompare(shadowMapIndex, currentDepth, bias, sampleCoord);
             }
@@ -197,6 +215,9 @@ float shadowCubeCalculationPCF(int shadowMapIndex, vec3 fragToLight, float NdotL
     // PCF ring count from the scene's shadow quality (cameraDir.w), uniform-driven:
     // 0 = 1 tap, 1 = 9 taps (center + 1 ring), 2 = 17 taps, 3 = 25 taps
     int pcfRings = int(lighting.cameraDir.w);
+    #ifdef IS_HLSL
+        pcfRings = min(pcfRings, MAX_PCF_RINGS);
+    #endif
 
     if (pcfRings > 0){
 
@@ -208,7 +229,12 @@ float shadowCubeCalculationPCF(int shadowMapIndex, vec3 fragToLight, float NdotL
         float diskRadius = length( fragToLight ) * 0.0005;
 
         shadow += shadowCubeCompare(shadowMapIndex, currentDepth, bias, fragToLight);
+        // Constant bound for HLSL, same reasoning as the 2D kernel above
+        #ifdef IS_HLSL
+        for (int r = 1; r <= MAX_PCF_RINGS; ++r){
+        #else
         for (int r = 1; r <= pcfRings; ++r){
+        #endif
             float ringRadius = diskRadius * float(r) / float(pcfRings);
             for (int i = 0; i < 8; ++i){
                 shadow += shadowCubeCompare(shadowMapIndex, currentDepth, bias, fragToLight + ringOffsets[i] * ringRadius);

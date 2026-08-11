@@ -25,6 +25,14 @@ namespace doriax {
 
         int getSampleCount() override;
 
+#if defined(SOKOL_VULKAN) || defined(SOKOL_D3D11)
+        // The GL backend renders into the default framebuffer, which the base
+        // class already describes. Vulkan and D3D11 have to hand sokol the
+        // device and the views this frame draws into instead.
+        sg_environment getSokolEnvironment() override;
+        sg_swapchain getSokolSwapchain() override;
+#endif
+
         bool isFullscreen() override;
         void requestFullscreen() override;
         void exitFullscreen() override;

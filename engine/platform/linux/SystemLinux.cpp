@@ -7,6 +7,10 @@
 #include "LinuxInputRouter.h"
 #include "WindowLinux.h"
 
+#if defined(SOKOL_VULKAN)
+#include "VulkanContext.h"
+#endif
+
 using namespace doriax;
 
 SystemLinux::SystemLinux(LinuxInputRouter* router) : router(router) {
@@ -23,6 +27,16 @@ int SystemLinux::getScreenHeight() {
 int SystemLinux::getSampleCount() {
     return 1;
 }
+
+#if defined(SOKOL_VULKAN)
+sg_environment SystemLinux::getSokolEnvironment() {
+    return VulkanContext::environment();
+}
+
+sg_swapchain SystemLinux::getSokolSwapchain() {
+    return VulkanContext::swapchain();
+}
+#endif
 
 bool SystemLinux::isFullscreen() {
     return WindowLinux::isFullscreen();
