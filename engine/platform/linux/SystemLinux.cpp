@@ -120,3 +120,11 @@ std::string SystemLinux::getLuaPath() {
     return "lua";
 #endif
 }
+
+std::string SystemLinux::getShaderPath() {
+#ifdef DORIAX_SHADER_PATH
+    return DORIAX_SHADER_PATH;
+#else
+    return System::getShaderPath();
+#endif
+}

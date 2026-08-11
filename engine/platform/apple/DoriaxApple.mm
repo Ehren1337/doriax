@@ -213,6 +213,22 @@ std::string DoriaxApple::getLuaPath(){
     return [path cStringUsingEncoding:NSASCIIStringEncoding];
 }
 
+std::string DoriaxApple::getShaderPath(){
+    NSMutableString* adjusted_relative_path = [[NSMutableString alloc] initWithString:@"shaders"];
+
+    NSString* path = [[NSBundle mainBundle] pathForResource:adjusted_relative_path ofType:nil];
+
+    if (!path){
+#ifdef DORIAX_SHADER_PATH
+        return DORIAX_SHADER_PATH;
+#else
+        return System::getShaderPath();
+#endif
+    }
+
+    return [path cStringUsingEncoding:NSASCIIStringEncoding];
+}
+
 bool DoriaxApple::getBoolForKey(const char *key, bool defaultValue){
     NSNumber *value = [[NSUserDefaults standardUserDefaults] objectForKey:[NSString stringWithUTF8String:key]];
     if (value) {

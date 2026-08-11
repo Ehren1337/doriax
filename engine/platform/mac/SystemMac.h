@@ -39,6 +39,7 @@ namespace doriax {
         std::string getAssetPath() override;
         std::string getUserDataPath() override;
         std::string getLuaPath() override;
+        std::string getShaderPath() override;
     };
 
 }

@@ -130,3 +130,11 @@ std::string SystemWin::getLuaPath() {
     return "lua";
 #endif
 }
+
+std::string SystemWin::getShaderPath() {
+#ifdef DORIAX_SHADER_PATH
+    return DORIAX_SHADER_PATH;
+#else
+    return System::getShaderPath();
+#endif
+}

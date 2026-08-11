@@ -381,11 +381,10 @@ std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& wind
     content += "\n";
     content += "    add_definitions(\"-DWITH_MINIAUDIO\") # For SoLoud\n";
     content += "\n";
-    // Running a project from outside the editor leaves the assets in the project
-    // directory rather than beside the executable, so the backends' relative
-    // defaults would not find them.
+    // Absolute paths for standalone runs outside the editor.
     content += "    add_definitions(\"-DDORIAX_ASSET_PATH=\\\"" + assetsPath.generic_string() + "\\\"\")\n";
     content += "    add_definitions(\"-DDORIAX_LUA_PATH=\\\"" + luaPath.generic_string() + "\\\"\")\n";
+    content += "    add_definitions(\"-DDORIAX_SHADER_PATH=\\\"" + App::getUserShaderCacheDir().generic_string() + "\\\"\")\n";
     content += "\n";
     content += "    list(APPEND PLATFORM_SOURCE\n";
     content += "        ${INTERNAL_DIR}/generated/main.cpp\n";

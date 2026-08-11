@@ -98,3 +98,11 @@ std::string SystemMac::getLuaPath() {
     return "lua";
 #endif
 }
+
+std::string SystemMac::getShaderPath() {
+#ifdef DORIAX_SHADER_PATH
+    return DORIAX_SHADER_PATH;
+#else
+    return System::getShaderPath();
+#endif
+}

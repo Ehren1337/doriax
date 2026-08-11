@@ -30,6 +30,7 @@ public:
     virtual std::string getAssetPath() override;
     virtual std::string getUserDataPath() override;
     virtual std::string getLuaPath() override;
+    virtual std::string getShaderPath() override;
 
     virtual bool getBoolForKey(const char *key, bool defaultValue) override;
     virtual int getIntegerForKey(const char *key, int defaultValue) override;
