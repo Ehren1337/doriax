@@ -2605,6 +2605,19 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     }
 }
 
+void editor::Project::buildStandaloneShaderCache() {
+    // the generated main.cpp registers every scene stack, so any of them can be loaded
+    std::set<ShaderKey> shaderKeys;
+    for (const auto& sceneProject : getScenes()) {
+        shaderKeys.insert(sceneProject.shaderKeys.begin(), sceneProject.shaderKeys.end());
+        // stored keys are only as new as the last save of that scene
+        collectSceneShaderKeys(&sceneProject, shaderKeys);
+    }
+
+    ShaderBuilder builder;
+    builder.buildMissingShaders(shaderKeys, this);
+}
+
 void editor::Project::invalidateCustomShaders() {
     // Drop the editor's compiled cache for forked shaders, free their GPU handles, and
     // flag every renderable that uses one so RenderSystem recompiles it on the next draw.
@@ -7222,6 +7235,11 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
         const unsigned int requestedBuildJobs = cmakeBuildJobs.load();
         generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+
+        // play regenerates the standalone project, so its shaders are ensured here too
+        buildStandaloneShaderCache();
+
+        if (isCancelled()) { markStartupDone(); return; }
 
         const bool hasCppScripts = !mergedCppScripts.empty();
 

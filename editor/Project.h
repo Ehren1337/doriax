@@ -309,6 +309,10 @@ namespace doriax::editor{
         uint32_t createNewSceneInternal(std::string sceneName, SceneType type, uint32_t previousSceneId);
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
 
+        // The standalone build reads shaders from the editor cache (DORIAX_SHADER_PATH)
+        // and cannot compile, so a variant the editor never draws with is missing there.
+        void buildStandaloneShaderCache();
+
     public:
         Project();
 

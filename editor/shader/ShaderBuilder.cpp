@@ -571,6 +571,30 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     return ShaderBuildResult({}, ResourceLoadState::Loading);
 }
 
+void editor::ShaderBuilder::buildMissingShaders(const std::set<ShaderKey>& shaderKeys, Project* project) {
+    if (!project) {
+        return;
+    }
+
+    for (const ShaderKey& shaderKey : shaderKeys) {
+        const std::filesystem::path cachePath = getShaderCachePath(shaderKey, project);
+        const bool isCustom = ShaderPool::getCustomIdFromKey(shaderKey) != 0;
+        const bool fresh = !isCustom || !isCustomCacheStale(shaderKey, project, cachePath);
+
+        ShaderData diskData;
+        if (fresh && ShaderDataSerializer::readFromFile(cachePath.string(), ShaderPool::getStorageKey(shaderKey), diskData)) {
+            continue;
+        }
+
+        try {
+            const ShaderData data = buildShaderInternal(shaderKey, project, false);
+            (void)saveShaderDataCache(shaderKey, project, data);
+        } catch (const std::exception&) {
+            // buildShaderInternal reports it; the remaining keys still build
+        }
+    }
+}
+
 void editor::ShaderBuilder::requestShutdown() {
     std::lock_guard<std::mutex> lock(cacheMutex);
     shutdownRequested = true;

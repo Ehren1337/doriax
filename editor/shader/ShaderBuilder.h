@@ -5,6 +5,7 @@
 #include "shader/ShaderBuildTypes.h"
 #include "ShaderData.h"
 #include <vector>
+#include <set>
 #include <unordered_map>
 #include <mutex>
 #include <future>
@@ -75,6 +76,10 @@ namespace doriax::editor {
 
         ShaderBuildResult buildShader(ShaderKey shaderKey, Project* project);
         ShaderData buildShaderForExport(ShaderKey shaderKey, Project* project, shadercompiler::lang_type_t lang, int version, bool es, shadercompiler::platform_t platform = shadercompiler::SHADER_DEFAULT);
+
+        // Compiles the keys absent from the disk cache, synchronously (buildShader hands
+        // async builds to the pool and returns before they land).
+        void buildMissingShaders(const std::set<ShaderKey>& shaderKeys, Project* project);
 
         // Drops cached builds and dependency snapshots for all custom variants so the
         // next get() recompiles. Called after source mutations and project switches.
