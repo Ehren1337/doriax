@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(doriax-editor)
 
-# Tag when the commit has one, short hash otherwise. CI passes it in, local
-# builds ask git so Help > About shows something real.
+# Same as CI (.github/workflows/cmake.yml): git describe --tags --always --dirty.
+# CI passes DORIAXEDITOR_VERSION explicitly; local builds ask git here.
 if(NOT DORIAXEDITOR_VERSION)
     find_package(Git QUIET)
     if(GIT_FOUND)

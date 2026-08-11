@@ -60,6 +60,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: true
+          # Full history so git describe can resolve v0.6-N-gHASH like local builds.
+          fetch-depth: 0
 
       - name: Print env
         run: |
@@ -163,22 +165,11 @@ jobs:
 
       - name: Set version
         shell: bash
-        env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
         run: |
-          # Tag when the commit has one, short hash otherwise. Branch pushes need
-          # the tags fetched first, actions/checkout skips them by default. Refs
-          # come in through env because git allows shell metacharacters in them.
-          if [[ "$REF_TYPE" == "tag" ]]; then
-            VERSION="$REF_NAME"
-          else
-            git fetch --tags --quiet || true
-            VERSION="$(git tag --points-at HEAD | head -n 1)"
-            if [[ -z "$VERSION" ]]; then
-              VERSION="$(git rev-parse --short HEAD)"
-            fi
-          fi
+          # Same command as CMakeLists.txt. fetch-depth: 0 + tags so describe
+          # can resolve v0.6-N-gHASH the same way as a local clone.
+          git fetch --tags --quiet || true
+          VERSION="$(git describe --tags --always --dirty)"
           echo "DORIAX_VERSION=$VERSION" >> $GITHUB_ENV
           
       - name: Configure
