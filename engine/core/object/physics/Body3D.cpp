@@ -448,11 +448,16 @@ void Body3D::deactivate(){
 }
 
 bool Body3D::isSensor() const{
-    return getJoltBody().IsSensor();
+    return getComponent<Body3DComponent>().sensor;
 }
 
 void Body3D::setIsSensor(bool sensor){
-    getJoltBodyWrite().SetIsSensor(sensor);
+    Body3DComponent& body = getComponent<Body3DComponent>();
+    body.sensor = sensor;
+
+    if (!body.body.IsInvalid()){
+        getJoltBodyWrite().SetIsSensor(sensor);
+    }
 }
 
 bool Body3D::isCollideKinematicVsNonDynamic() const{

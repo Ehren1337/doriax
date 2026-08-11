@@ -85,6 +85,7 @@ namespace doriax{
         Body3DMotionQuality motionQuality = Body3DMotionQuality::DISCRETE;
         float gravityFactor = 1.0f;
         JPH::EAllowedDOFs allowedDOFs = JPH::EAllowedDOFs::All;
+        bool sensor = false;
         bool newBody = true;
         Vector3 loadedScale = Vector3::UNIT_SCALE;
     };

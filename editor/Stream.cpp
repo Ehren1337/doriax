@@ -5668,6 +5668,7 @@ YAML::Node editor::Stream::encodeBody3DComponent(const Body3DComponent& body) {
 
     node["type"] = bodyTypeToString(body.type);
     node["motionQuality"] = body3DMotionQualityToString(body.motionQuality);
+    node["sensor"] = body.sensor;
     node["numShapes"] = static_cast<unsigned int>(body.numShapes);
 
     YAML::Node shapesNode;
@@ -5724,6 +5725,7 @@ Body3DComponent editor::Stream::decodeBody3DComponent(const YAML::Node& node, co
 
     if (node["type"]) body.type = stringToBodyType(node["type"].as<std::string>());
     if (node["motionQuality"]) body.motionQuality = stringToBody3DMotionQuality(node["motionQuality"].as<std::string>());
+    if (node["sensor"]) body.sensor = node["sensor"].as<bool>();
     if (node["numShapes"]) body.numShapes = node["numShapes"].as<unsigned int>();
 
     if (node["shapes"]) {
