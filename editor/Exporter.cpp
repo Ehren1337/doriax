@@ -206,9 +206,10 @@ void editor::Exporter::runExport() {
     if (isCancelled()) { setError("Export cancelled"); return; }
     if (!copyGenerated()) return;
     if (isCancelled()) { setError("Export cancelled"); return; }
-    if (!copyAssets()) return;
-    if (isCancelled()) { setError("Export cancelled"); return; }
+    // Lua before assets, which skips the sources the lua tree took
     if (!copyLua()) return;
+    if (isCancelled()) { setError("Export cancelled"); return; }
+    if (!copyAssets()) return;
     if (isCancelled()) { setError("Export cancelled"); return; }
     if (!copyCppScripts()) return;
     if (isCancelled()) { setError("Export cancelled"); return; }
@@ -321,6 +322,14 @@ bool editor::Exporter::isLuaExportFile(const fs::path& path) {
         ".lua", ".luac", ".json", ".txt", ".csv", ".tsv", ".xml", ".ini", ".cfg", ".conf", ".toml", ".dat"
     };
     return luaExtensions.count(ext) > 0;
+}
+
+bool editor::Exporter::isLuaSourceFile(const fs::path& path) {
+    // Only the lua tree needs these; every platform puts it on the "lua://" lookup path
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return ext == ".lua" || ext == ".luac";
 }
 
 bool editor::Exporter::checkTargetDir() {
@@ -877,7 +886,7 @@ bool editor::Exporter::copyGenerated() {
 }
 
 bool editor::Exporter::copyAssets() {
-    setProgress("Copying assets...", 0.3f);
+    setProgress("Copying assets...", 0.35f);
 
     fs::path assetsSrc = config.assetsDir;
     if (assetsSrc.empty()) {
@@ -911,22 +920,24 @@ bool editor::Exporter::copyAssets() {
         if (shouldSkipExportSupportFile(relPath)) continue;
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
-        if (entry.is_regular_file() && isCppSourceFile(entry.path())) continue;
+        if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
+
+        // Skip Lua sources already shipped in the lua tree
+        if (isLuaSourceFile(entry.path()) && luaCopiedSources.count(entry.path().lexically_normal())) continue;
 
         fs::path destPath = assetsDst / relPath;
-        if (entry.is_directory()) {
-            fs::create_directories(destPath, ec);
-        } else if (entry.is_regular_file()) {
-            fs::create_directories(destPath.parent_path(), ec);
-            fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-        }
+        fs::create_directories(destPath.parent_path(), ec);
+        fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
 
     return true;
 }
 
 bool editor::Exporter::copyLua() {
-    setProgress("Copying Lua scripts...", 0.35f);
+    setProgress("Copying Lua scripts...", 0.3f);
+
+    // Cleared before the early returns: with no lua tree, assets keeps the Lua files
+    luaCopiedSources.clear();
 
     fs::path luaSrc = config.luaDir;
     if (luaSrc.empty()) {
@@ -971,6 +982,7 @@ bool editor::Exporter::copyLua() {
         fs::path destPath = luaDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
+        if (!ec) luaCopiedSources.insert(entry.path().lexically_normal());
     }
 
     return true;

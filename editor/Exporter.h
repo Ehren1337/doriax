@@ -83,6 +83,9 @@ namespace doriax::editor {
         ShaderBuilder shaderBuilder;
         CommandRunner commandRunner;
 
+        // Lua sources copyLua() shipped, so copyAssets() can skip them
+        std::set<fs::path> luaCopiedSources;
+
         // Scales values passed to setProgress so the generation steps (written
         // for the [0,1] SourceCode range) map into [0, 0.5] for Desktop/Web,
         // leaving the upper half for configure/build/collect.
@@ -103,6 +106,7 @@ namespace doriax::editor {
         static bool isCppHeaderFile(const fs::path& path);
         static bool isCppSourceFile(const fs::path& path);
         static bool isLuaExportFile(const fs::path& path);
+        static bool isLuaSourceFile(const fs::path& path);
 
         std::string getAppName() const;
         fs::path getBuildCacheDir() const;
