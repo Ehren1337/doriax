@@ -368,6 +368,8 @@
 		710AD70425B6058100A7B12F /* libstb-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 710AD6E325B6053400A7B12F /* libstb-ios.a */; };
 		710AD75225B7343400A7B12F /* EngineView.mm in Sources */ = {isa = PBXBuildFile; fileRef = 710AD75125B7343400A7B12F /* EngineView.mm */; };
 		710AD78625B7A1F600A7B12F /* EngineView.mm in Sources */ = {isa = PBXBuildFile; fileRef = 710AD76C25B79D8300A7B12F /* EngineView.mm */; };
+		71C5A1062F0A11B000A1B2C0 /* MacInputRouter.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71C5A1012F0A11B000A1B2C0 /* MacInputRouter.mm */; };
+		71C5A1072F0A11B000A1B2C0 /* MacViewMetal.mm in Sources */ = {isa = PBXBuildFile; fileRef = 71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */; };
 		710EE49D2A2E1E9200EB04EC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 710EE49C2A2E1E9200EB04EC /* Assets.xcassets */; };
 		710EE49E2A2E1E9200EB04EC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 710EE49C2A2E1E9200EB04EC /* Assets.xcassets */; };
 		71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71125F182E41845E006D11A1 /* EntityRegistry.cpp */; };
@@ -1834,6 +1836,11 @@
 		710AD75125B7343400A7B12F /* EngineView.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = EngineView.mm; sourceTree = "<group>"; };
 		710AD76B25B79D6700A7B12F /* EngineView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EngineView.h; sourceTree = "<group>"; };
 		710AD76C25B79D8300A7B12F /* EngineView.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = EngineView.mm; sourceTree = "<group>"; };
+		71C5A1002F0A11B000A1B2C0 /* MacInputRouter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacInputRouter.h; sourceTree = "<group>"; };
+		71C5A1012F0A11B000A1B2C0 /* MacInputRouter.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MacInputRouter.mm; sourceTree = "<group>"; };
+		71C5A1022F0A11B000A1B2C0 /* MacViewMetal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacViewMetal.h; sourceTree = "<group>"; };
+		71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = MacViewMetal.mm; sourceTree = "<group>"; };
+		71C5A1042F0A11B000A1B2C0 /* KeyCodesMac.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyCodesMac.h; sourceTree = "<group>"; };
 		710EE49C2A2E1E9200EB04EC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		710EE49F2A2E291100EB04EC /* ios */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ios; sourceTree = "<group>"; };
 		710EE4A12A2E2A2000EB04EC /* macos */ = {isa = PBXFileReference; lastKnownFileType = folder; path = macos; sourceTree = "<group>"; };
@@ -4249,9 +4256,22 @@
 			isa = PBXGroup;
 			children = (
 				7162FE2E2597C7990075B97D /* apple */,
+				71C5A1052F0A11B000A1B2C0 /* mac */,
 			);
 			name = platform;
 			path = ../../platform;
+			sourceTree = "<group>";
+		};
+		71C5A1052F0A11B000A1B2C0 /* mac */ = {
+			isa = PBXGroup;
+			children = (
+				71C5A1042F0A11B000A1B2C0 /* KeyCodesMac.h */,
+				71C5A1002F0A11B000A1B2C0 /* MacInputRouter.h */,
+				71C5A1012F0A11B000A1B2C0 /* MacInputRouter.mm */,
+				71C5A1022F0A11B000A1B2C0 /* MacViewMetal.h */,
+				71C5A1032F0A11B000A1B2C0 /* MacViewMetal.mm */,
+			);
+			path = mac;
 			sourceTree = "<group>";
 		};
 		7162FE2E2597C7990075B97D /* apple */ = {
@@ -7034,6 +7054,8 @@
 			files = (
 				713D8324259D3F8F00567F9F /* main.m in Sources */,
 				710AD78625B7A1F600A7B12F /* EngineView.mm in Sources */,
+				71C5A1072F0A11B000A1B2C0 /* MacViewMetal.mm in Sources */,
+				71C5A1062F0A11B000A1B2C0 /* MacInputRouter.mm in Sources */,
 				713D8323259D3F8F00567F9F /* ViewController.m in Sources */,
 				713D8325259D3F8F00567F9F /* AppDelegate.m in Sources */,
 				17995BF83003C3A800411B78 /* DoriaxGameController.mm in Sources */,
@@ -8081,6 +8103,7 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../platform/mac",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -8115,6 +8138,7 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../platform/mac",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
