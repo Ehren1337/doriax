@@ -270,25 +270,26 @@ ShaderLang editor::ShaderBuilder::mapLang(shadercompiler::lang_type_t lang) {
     }
 }
 
-// Target selection must stay in step with ShaderPool::getShaderLangStr(), which
-// names the cache file the result is stored under.
-void editor::ShaderBuilder::setBackendLang(shadercompiler::args_t& args) {
-    switch (Engine::getGraphicBackend()) {
-        case GraphicBackend::METAL:
+// Target selection must stay in step with ShaderPool::getShaderLangStr(backend), which
+// names the file the result is stored under.
+void editor::ShaderBuilder::applyShaderBackend(shadercompiler::args_t& args, ShaderBackend backend) {
+    switch (backend) {
+        case ShaderBackend::MetalMacOS:
+        case ShaderBackend::MetalIOS:
             args.lang = shadercompiler::LANG_MSL;
             args.version = 21;
-            args.platform = (Engine::getPlatform() == Platform::iOS)
+            args.platform = (backend == ShaderBackend::MetalIOS)
                 ? shadercompiler::SHADER_IOS : shadercompiler::SHADER_MACOS;
             break;
-        case GraphicBackend::D3D11:
+        case ShaderBackend::D3D11:
             args.lang = shadercompiler::LANG_HLSL;
             args.version = 50;
             break;
-        case GraphicBackend::VULKAN:
+        case ShaderBackend::Vulkan:
             args.lang = shadercompiler::LANG_SPIRV;
             args.version = 10;
             break;
-        case GraphicBackend::GLES3:
+        case ShaderBackend::GLES3:
             args.lang = shadercompiler::LANG_GLSL;
             args.version = 300;
             args.es = true;
@@ -298,6 +299,10 @@ void editor::ShaderBuilder::setBackendLang(shadercompiler::args_t& args) {
             args.version = 410;
             break;
     }
+}
+
+void editor::ShaderBuilder::setBackendLang(shadercompiler::args_t& args) {
+    applyShaderBackend(args, ShaderPool::getShaderBackend());
 }
 
 // Implementation of convertToShaderData
@@ -852,7 +857,7 @@ ShaderData editor::ShaderBuilder::buildShaderInternal(ShaderKey shaderKey, Proje
     Out::build(
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
-        ShaderPool::getShaderLangStr(shaderData.lang, shaderData.version, shaderData.es, Engine::getPlatform()).c_str());
+        ShaderPool::getShaderLangStr(ShaderPool::getShaderBackend()).c_str());
 
     return shaderData;
 }
@@ -980,7 +985,7 @@ ShaderData& editor::ShaderBuilder::getShaderData(ShaderKey shaderKey) {
     return shaderDataCache[shaderKey]; 
 }
 
-ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Project* project, shadercompiler::lang_type_t lang, int version, bool es, shadercompiler::platform_t platform) {
+ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend) {
     ShaderType shaderType = ShaderPool::getShaderTypeFromKey(shaderKey);
     uint32_t properties = ShaderPool::getPropertiesFromKey(shaderKey);
     uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
@@ -990,10 +995,7 @@ ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Proj
     args.isValid = true;
     args.useBuffers = true;
     args.fileBuffers = editor::shaderMap;
-    args.lang = lang;
-    args.version = version;
-    args.es = es;
-    args.platform = platform;
+    applyShaderBackend(args, backend);
 
     setupBuildArgs(args, shaderKey, project);
 
@@ -1013,18 +1015,14 @@ ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Proj
         throw std::runtime_error("Error cross-compiling");
     }
 
-    args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) + getLangSuffix(lang, version, es, platform);
+    args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
+                           getLangSuffix(args.lang, args.version, args.es, args.platform);
     ShaderData shaderData = convertToShaderData(spirvcrossvec, inputs, args);
-
-    Platform shaderPlatform = Platform::Linux;
-    if (shaderData.lang == ShaderLang::MSL) {
-        shaderPlatform = platform == shadercompiler::SHADER_IOS ? Platform::iOS : Platform::MacOS;
-    }
 
     Out::build(
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
-        ShaderPool::getShaderLangStr(shaderData.lang, shaderData.version, shaderData.es, shaderPlatform).c_str());
+        ShaderPool::getShaderLangStr(backend).c_str());
 
     return shaderData;
 }

@@ -765,10 +765,10 @@ const std::vector<ToolDefinition>& cachedTools() {
         },
         {
             "export_project",
-            "Run the editor export pipeline for selected platforms.",
+            "Run the editor export pipeline for the selected graphic backends.",
             objectSchema({
                 {"target_dir", stringSchema("Output directory. Must be outside or separate from project source")},
-                {"platforms", stringSchema("Comma-separated platforms: linux, windows, macos, ios, android, web, all")},
+                {"backends", stringSchema("Comma-separated graphic backends the shaders are compiled for: opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all")},
                 {"start_scene_id", integerSchema("Optional startup scene id override")}
             }, {"target_dir"}),
             false
@@ -778,7 +778,7 @@ const std::vector<ToolDefinition>& cachedTools() {
             "Generate selected shaders using the editor shader builder.",
             objectSchema({
                 {"target_dir", stringSchema("Output directory")},
-                {"platforms", stringSchema("Comma-separated platforms: linux, windows, macos, ios, android, web, all")},
+                {"backends", stringSchema("Comma-separated graphic backends to compile for: opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all")},
                 {"format", stringSchema("binary, header, or json")}
             }, {"target_dir"}),
             false

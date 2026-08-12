@@ -30,11 +30,8 @@
 
 namespace doriax::editor {
 
-// `Platform` inside this namespace refers to the editor's Platform wrapper
-// class, so we alias the engine-side platform enum and shader symbols here
-// to keep call sites short and unambiguous.
-using EnginePlatform = ::doriax::Platform;
 using ::doriax::Engine;
+using ::doriax::ShaderBackend;
 using ::doriax::ShaderBuildResult;
 using ::doriax::ShaderKey;
 using ::doriax::ShaderPool;
@@ -48,7 +45,7 @@ struct ExportCliOptions {
     fs::path assetsDir;
     fs::path luaDir;
     std::string startScene;
-    std::set<EnginePlatform> platforms;
+    std::set<ShaderBackend> backends;
     std::set<ShaderKey> shaderKeys;
     bool help = false;
     bool listScenes = false;
@@ -56,7 +53,7 @@ struct ExportCliOptions {
 
 struct ShaderCliOptions {
     fs::path targetDir;
-    std::set<EnginePlatform> platforms;
+    std::set<ShaderBackend> backends;
     std::set<ShaderKey> shaderKeys;
     ShaderOutputFormat outputFormat = ShaderOutputFormat::Binary;
     bool help = false;
@@ -134,21 +131,7 @@ static bool parseUInt32(const std::string& value, uint32_t& out) {
     return true;
 }
 
-static bool parsePlatformName(const std::string& value, EnginePlatform& out) {
-    const std::string token = normalizeToken(value);
-    if (token == "linux")                            { out = EnginePlatform::Linux;   return true; }
-    if (token == "windows" || token == "win")        { out = EnginePlatform::Windows; return true; }
-    if (token == "macos"   || token == "mac")        { out = EnginePlatform::MacOS;   return true; }
-    if (token == "ios")                              { out = EnginePlatform::iOS;     return true; }
-    if (token == "android")                          { out = EnginePlatform::Android; return true; }
-    if (token == "web" || token == "wasm" || token == "emscripten") {
-        out = EnginePlatform::Web;
-        return true;
-    }
-    return false;
-}
-
-static bool isAllPlatformsToken(const std::string& value) {
+static bool isAllBackendsToken(const std::string& value) {
     return normalizeToken(value) == "all";
 }
 
@@ -237,13 +220,26 @@ static bool parseShaderSpec(const std::string& value, ShaderKey& out, std::strin
     return true;
 }
 
-static void addAllSupportedPlatforms(std::set<EnginePlatform>& platforms) {
-    platforms.insert(EnginePlatform::Linux);
-    platforms.insert(EnginePlatform::Windows);
-    platforms.insert(EnginePlatform::MacOS);
-    platforms.insert(EnginePlatform::iOS);
-    platforms.insert(EnginePlatform::Web);
-    platforms.insert(EnginePlatform::Android);
+static void addAllSupportedBackends(std::set<ShaderBackend>& backends) {
+    const std::vector<ShaderBackend>& all = ShaderPool::getShaderBackends();
+    backends.insert(all.begin(), all.end());
+}
+
+static bool parseBackendList(const std::string& value, std::set<ShaderBackend>& backends, std::string& error) {
+    for (const std::string& name : splitList(value)) {
+        if (isAllBackendsToken(name)) {
+            addAllSupportedBackends(backends);
+            continue;
+        }
+
+        ShaderBackend backend;
+        if (!ShaderPool::parseShaderBackend(name, backend)) {
+            error = "Unknown graphic backend: " + name;
+            return false;
+        }
+        backends.insert(backend);
+    }
+    return true;
 }
 
 static std::string getCommandName(const char* executableName) {
@@ -275,11 +271,11 @@ static void printUsage(const std::string& commandName) {
         << "      --assets <path>         Asset directory, relative to the project or absolute.\n"
         << "      --lua <path>            Lua directory, relative to the project or absolute.\n"
         << "      --start-scene <id|name> Start scene override.\n"
-        << "      --platform <list>       linux, windows, macos, ios, web, android, all. Can repeat.\n"
+        << "      --backend <list>        opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all. Can repeat.\n"
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
         << "      --list-scenes           Print project scenes and exit.\n"
         << "  -h, --help                  Show this help.\n\n"
-        << "If no --platform is provided, all supported platforms are used.\n"
+        << "If no --backend is provided, all supported backends are used.\n"
         << "If no --shader is provided, shaders discovered while regenerating scenes are exported.\n"
         << "For standalone shader generation, use `" << commandName << " shaders`.\n";
 }
@@ -291,10 +287,10 @@ static void printShadersUsage(const std::string& commandName) {
         << "Options:\n"
         << "  -o, --out <path>            Destination directory for generated shader files.\n"
         << "      --format <format>       binary, header, or json. Default: binary.\n"
-        << "      --platform <list>       linux, windows, macos, ios, web, android, all. Can repeat.\n"
+        << "      --backend <list>        opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all. Can repeat.\n"
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
         << "  -h, --help                  Show this help.\n\n"
-        << "If no --platform is provided, all supported platforms are used.\n"
+        << "If no --backend is provided, all supported backends are used.\n"
         << "Shader output is written directly to <out>.\n";
 }
 
@@ -329,21 +325,9 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
         } else if (arg == "--start-scene") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             options.startScene = value;
-        } else if (arg == "--platform") {
+        } else if (arg == "--backend") {
             if (!requireValue(argc, argv, i, value, error)) return false;
-            for (const std::string& name : splitList(value)) {
-                if (isAllPlatformsToken(name)) {
-                    addAllSupportedPlatforms(options.platforms);
-                    continue;
-                }
-
-                EnginePlatform platform;
-                if (!parsePlatformName(name, platform)) {
-                    error = "Unknown platform: " + name;
-                    return false;
-                }
-                options.platforms.insert(platform);
-            }
+            if (!parseBackendList(value, options.backends, error)) return false;
         } else if (arg == "--shader") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             ShaderKey key;
@@ -370,8 +354,8 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
         error = "Missing required --out path.";
         return false;
     }
-    if (options.platforms.empty()) {
-        addAllSupportedPlatforms(options.platforms);
+    if (options.backends.empty()) {
+        addAllSupportedBackends(options.backends);
     }
 
     return true;
@@ -393,21 +377,9 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
                 error = "Unknown shader output format: " + value;
                 return false;
             }
-        } else if (arg == "--platform") {
+        } else if (arg == "--backend") {
             if (!requireValue(argc, argv, i, value, error)) return false;
-            for (const std::string& name : splitList(value)) {
-                if (isAllPlatformsToken(name)) {
-                    addAllSupportedPlatforms(options.platforms);
-                    continue;
-                }
-
-                EnginePlatform platform;
-                if (!parsePlatformName(name, platform)) {
-                    error = "Unknown platform: " + name;
-                    return false;
-                }
-                options.platforms.insert(platform);
-            }
+            if (!parseBackendList(value, options.backends, error)) return false;
         } else if (arg == "--shader") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             ShaderKey key;
@@ -432,8 +404,8 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
         error = "Missing required --shader spec.";
         return false;
     }
-    if (options.platforms.empty()) {
-        addAllSupportedPlatforms(options.platforms);
+    if (options.backends.empty()) {
+        addAllSupportedBackends(options.backends);
     }
 
     return true;
@@ -546,7 +518,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     config.assetsDir = options.assetsDir.empty() ? project.getAssetsDir() : options.assetsDir;
     config.luaDir    = options.luaDir.empty()    ? project.getLuaDir()    : options.luaDir;
     config.startSceneId = resolveStartSceneId(project, options.startScene);
-    config.selectedPlatforms  = options.platforms;
+    config.selectedBackends   = options.backends;
     config.selectedShaderKeys = options.shaderKeys;
 
     if (!options.startScene.empty() && config.startSceneId == 0) {
@@ -600,7 +572,7 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
     ExportConfig config;
     config.targetDir = options.targetDir;
     config.shaderOutputFormat = options.outputFormat;
-    config.selectedPlatforms = options.platforms;
+    config.selectedBackends = options.backends;
     config.selectedShaderKeys = options.shaderKeys;
 
     Exporter exporter;

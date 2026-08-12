@@ -6923,13 +6923,13 @@ void RenderSystem::draw(){
         const std::string shaderSpecs = ShaderPool::getMissingShadersDisplayList();
         std::string shaderCliArgs = ShaderPool::getMissingShadersCliArgs();
         const std::string shaderOutputDir = System::instance().getShaderPath();
-        const std::string shaderPlatform = ShaderPool::getSuggestedCliPlatform();
+        const std::string shaderBackend = ShaderPool::getSuggestedCliBackend();
 
         if (shaderCliArgs.empty()) {
             shaderCliArgs = " --shader \"<shader-spec>\"";
         }
 
-        const std::string shaderCommand = "doriax-editor shaders --out \"" + shaderOutputDir + "\" --platform " + shaderPlatform + shaderCliArgs;
+        const std::string shaderCommand = "doriax-editor shaders --out \"" + shaderOutputDir + "\" --backend " + shaderBackend + shaderCliArgs;
 
         Log::verbose(
             "\n"
@@ -6940,14 +6940,14 @@ void RenderSystem::draw(){
             "Missing shaders:\n"
             "%s\n"
             "\n"
-            "Bundle precompiled shaders for platform: %s\n"
+            "Bundle precompiled shaders for graphic backend: %s\n"
             "To generate them manually with Doriax Editor:\n"
             "\n"
             "> %s\n"
             "\n"
             "Current runtime shader format: %s\n"
             "-------------------"
-            , shaderOutputDir.c_str(), shaderSpecs.c_str(), shaderPlatform.c_str(), shaderCommand.c_str(), ShaderPool::getShaderLangStr().c_str());
+            , shaderOutputDir.c_str(), shaderSpecs.c_str(), shaderBackend.c_str(), shaderCommand.c_str(), ShaderPool::getShaderLangStr().c_str());
         exit(1);
     }
 }

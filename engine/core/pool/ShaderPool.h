@@ -88,10 +88,18 @@ namespace doriax{
         // their needReload pass.
         static void destroyCustomShaders();
 
+        static const std::vector<ShaderBackend>& getShaderBackends();
+        // backend this runtime was built for
+        static ShaderBackend getShaderBackend();
+        static std::string getShaderBackendName(ShaderBackend backend);      // "Metal (iOS)"
+        static std::string getShaderBackendCliToken(ShaderBackend backend);  // "metal-ios"
+        static bool parseShaderBackend(const std::string& value, ShaderBackend& out);
+
         static std::string getShaderLangStr();
+        static std::string getShaderLangStr(ShaderBackend backend);
         static std::string getShaderLangStr(ShaderLang lang, int version, bool es = false, Platform platform = Platform::Linux);
         static bool getShaderCliSpec(const std::string& shaderStr, std::string& cliSpec);
-        static std::string getSuggestedCliPlatform();
+        static std::string getSuggestedCliBackend();
         static std::string getMissingShadersCliArgs();
         static std::string getMissingShadersDisplayList();
         static std::vector<std::string>& getMissingShaders();

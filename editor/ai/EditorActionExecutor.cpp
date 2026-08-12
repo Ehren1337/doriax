@@ -881,22 +881,10 @@ bool parseSceneType(const std::string& typeName, SceneType& type) {
     return false;
 }
 
-bool parsePlatformName(const std::string& value, Platform& out) {
-    std::string token = lower(value);
-    token.erase(std::remove_if(token.begin(), token.end(), [](char c) {
-        return c == ' ' || c == '_' || c == '-';
-    }), token.end());
-    if (token == "linux") { out = Platform::Linux; return true; }
-    if (token == "windows" || token == "win") { out = Platform::Windows; return true; }
-    if (token == "macos" || token == "mac") { out = Platform::MacOS; return true; }
-    if (token == "ios") { out = Platform::iOS; return true; }
-    if (token == "android") { out = Platform::Android; return true; }
-    if (token == "web" || token == "wasm" || token == "emscripten") { out = Platform::Web; return true; }
-    return false;
-}
+std::set<ShaderBackend> parseBackendList(const std::string& text, std::string& error) {
+    const std::vector<ShaderBackend>& allBackends = ShaderPool::getShaderBackends();
 
-std::set<Platform> parsePlatformList(const std::string& text, std::string& error) {
-    std::set<Platform> platforms;
+    std::set<ShaderBackend> backends;
     std::stringstream ss(text.empty() ? "all" : text);
     std::string token;
     while (std::getline(ss, token, ',')) {
@@ -908,22 +896,20 @@ std::set<Platform> parsePlatformList(const std::string& text, std::string& error
         }).base(), token.end());
         if (token.empty()) continue;
         if (lower(token) == "all") {
-            platforms.insert({Platform::Linux, Platform::Windows, Platform::MacOS,
-                              Platform::iOS, Platform::Android, Platform::Web});
+            backends.insert(allBackends.begin(), allBackends.end());
             continue;
         }
-        Platform platform;
-        if (!parsePlatformName(token, platform)) {
-            error = "Unknown platform: " + token;
+        ShaderBackend backend;
+        if (!ShaderPool::parseShaderBackend(token, backend)) {
+            error = "Unknown graphic backend: " + token;
             return {};
         }
-        platforms.insert(platform);
+        backends.insert(backend);
     }
-    if (platforms.empty()) {
-        platforms.insert({Platform::Linux, Platform::Windows, Platform::MacOS,
-                          Platform::iOS, Platform::Android, Platform::Web});
+    if (backends.empty()) {
+        backends.insert(allBackends.begin(), allBackends.end());
     }
-    return platforms;
+    return backends;
 }
 
 bool parseShaderOutputFormat(const std::string& value, ShaderOutputFormat& out) {
@@ -3711,7 +3697,7 @@ ActionResult EditorActionExecutor::exportProject(const Json& arguments, const st
     config.luaDir = project->getLuaPath();
     config.startSceneId = static_cast<uint32_t>(arguments.value("start_scene_id", static_cast<int>(project->getStartSceneId())));
     std::string error;
-    config.selectedPlatforms = parsePlatformList(arguments.value("platforms", "all"), error);
+    config.selectedBackends = parseBackendList(arguments.value("backends", "all"), error);
     if (!error.empty()) return failResult(error);
 
     Exporter exporter;
@@ -3728,7 +3714,7 @@ ActionResult EditorActionExecutor::generateShaders(const Json& arguments, const 
     ExportConfig config;
     config.targetDir = arguments.value("target_dir", "");
     std::string error;
-    config.selectedPlatforms = parsePlatformList(arguments.value("platforms", "all"), error);
+    config.selectedBackends = parseBackendList(arguments.value("backends", "all"), error);
     if (!error.empty()) return failResult(error);
     if (!parseShaderOutputFormat(arguments.value("format", "header"), config.shaderOutputFormat)) {
         return failResult("Unsupported shader output format. Use binary, header, or json.");

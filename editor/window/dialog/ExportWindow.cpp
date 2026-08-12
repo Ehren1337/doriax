@@ -3,6 +3,7 @@
 #include "AppSettings.h"
 #include "Backend.h"
 #include "Generator.h"
+#include "pool/ShaderPool.h"
 #include "window/Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "Out.h"
@@ -10,28 +11,19 @@
 namespace doriax::editor {
 
 namespace {
-    struct GraphicBackendOption {
-        const char* name;
-        const char* cmakeValue;
-    };
-
     // Desktop exports build for the current host, so only expose backends
     // supported by that host's standalone CMake configuration.
     #if defined(_WIN32)
-    constexpr GraphicBackendOption desktopGraphicBackends[] = {
-        { "OpenGL",      "glcore" },
-        { "Vulkan",      "vulkan" },
-        { "Direct3D 11", "d3d11" }
+    constexpr ShaderBackend desktopGraphicBackends[] = {
+        ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11
     };
     #elif defined(__APPLE__)
-    constexpr GraphicBackendOption desktopGraphicBackends[] = {
-        { "Metal",  "metal" },
-        { "OpenGL", "glcore" }
+    constexpr ShaderBackend desktopGraphicBackends[] = {
+        ShaderBackend::MetalMacOS, ShaderBackend::GLCore
     };
     #else
-    constexpr GraphicBackendOption desktopGraphicBackends[] = {
-        { "OpenGL", "glcore" },
-        { "Vulkan", "vulkan" }
+    constexpr ShaderBackend desktopGraphicBackends[] = {
+        ShaderBackend::GLCore, ShaderBackend::Vulkan
     };
     #endif
 
@@ -46,14 +38,11 @@ namespace {
         ImGui::TableNextColumn();
     }
 
-    Platform hostPlatform() {
-        #if defined(_WIN32)
-        return Platform::Windows;
-        #elif defined(__APPLE__)
-        return Platform::MacOS;
-        #else
-        return Platform::Linux;
-        #endif
+    bool isHostBackend(ShaderBackend backend) {
+        for (ShaderBackend hostBackend : desktopGraphicBackends) {
+            if (hostBackend == backend) return true;
+        }
+        return false;
     }
 }
 
@@ -82,7 +71,7 @@ void ExportWindow::open(Project* project) {
     m_graphicBackendIndex = 0;
 
     populateShaderList();
-    populatePlatformList();
+    populateBackendList();
 }
 
 void ExportWindow::populateShaderList() {
@@ -122,26 +111,15 @@ void ExportWindow::populateShaderList() {
     });
 }
 
-void ExportWindow::populatePlatformList() {
-    m_platformEntries.clear();
+void ExportWindow::populateBackendList() {
+    m_backendEntries.clear();
 
-    Platform platforms[] = { Platform::Linux, Platform::Windows, Platform::MacOS, Platform::iOS, Platform::Web, Platform::Android };
-
-    for (Platform p : platforms) {
-        PlatformEntry entry;
-        entry.platform = p;
-        entry.name = Exporter::getPlatformName(p);
-        // Default: select current OS
-        #if defined(__linux__)
-        entry.selected = (p == Platform::Linux);
-        #elif defined(_WIN32)
-        entry.selected = (p == Platform::Windows);
-        #elif defined(__APPLE__)
-        entry.selected = (p == Platform::MacOS);
-        #else
-        entry.selected = false;
-        #endif
-        m_platformEntries.push_back(entry);
+    for (ShaderBackend backend : ShaderPool::getShaderBackends()) {
+        BackendEntry entry;
+        entry.backend = backend;
+        entry.name = ShaderPool::getShaderBackendName(backend);
+        entry.selected = isHostBackend(backend);
+        m_backendEntries.push_back(entry);
     }
 }
 
@@ -379,12 +357,12 @@ void ExportWindow::drawGraphicBackendRow() {
         m_graphicBackendIndex = 0;
     }
 
-    const char* preview = desktopGraphicBackends[m_graphicBackendIndex].name;
+    const std::string preview = ShaderPool::getShaderBackendName(desktopGraphicBackends[m_graphicBackendIndex]);
     ImGui::SetNextItemWidth(-1);
-    if (ImGui::BeginCombo("##GraphicBackend", preview)) {
+    if (ImGui::BeginCombo("##GraphicBackend", preview.c_str())) {
         for (int i = 0; i < desktopGraphicBackendCount; ++i) {
             const bool selected = (m_graphicBackendIndex == i);
-            if (ImGui::Selectable(desktopGraphicBackends[i].name, selected)) {
+            if (ImGui::Selectable(ShaderPool::getShaderBackendName(desktopGraphicBackends[i]).c_str(), selected)) {
                 m_graphicBackendIndex = i;
             }
             if (selected) {
@@ -517,18 +495,19 @@ void ExportWindow::drawShaderSection() {
     drawAddShaderDialog();
 }
 
-void ExportWindow::drawPlatformSection() {
-    ImGui::Text(ICON_FA_DESKTOP "  Platforms");
+void ExportWindow::drawBackendSection() {
+    ImGui::Text(ICON_FA_MICROCHIP "  Graphic Backends");
     ImGui::Spacing();
 
-    if (ImGui::BeginTable("platforms_table", 3, ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableSetupColumn("PlatformCol1", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("PlatformCol2", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("PlatformCol3", ImGuiTableColumnFlags_WidthStretch);
-        for (auto& entry : m_platformEntries) {
+    if (ImGui::BeginTable("backends_table", 3, ImGuiTableFlags_SizingStretchSame)) {
+        ImGui::TableSetupColumn("BackendCol1", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("BackendCol2", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("BackendCol3", ImGuiTableColumnFlags_WidthStretch);
+        for (auto& entry : m_backendEntries) {
             ImGui::TableNextColumn();
-            std::string checkboxId = "##platform_" + entry.name;
+            std::string checkboxId = "##backend_" + entry.name;
             ImGui::Checkbox((entry.name + checkboxId).c_str(), &entry.selected);
+            ImGui::SetItemTooltip("%s", ShaderPool::getShaderLangStr(entry.backend).c_str());
         }
         ImGui::EndTable();
     }
@@ -583,7 +562,7 @@ void ExportWindow::drawSettings() {
     ImGui::Spacing();
 
     if (m_mode == ExportMode::SourceCode) {
-        drawPlatformSection();
+        drawBackendSection();
     }
 
     // --- Validation warnings ---
@@ -613,12 +592,12 @@ void ExportWindow::drawSettings() {
     }
 
     if (m_mode == ExportMode::SourceCode) {
-        bool hasSelectedPlatforms = false;
-        for (const auto& entry : m_platformEntries) {
-            if (entry.selected) { hasSelectedPlatforms = true; break; }
+        bool hasSelectedBackends = false;
+        for (const auto& entry : m_backendEntries) {
+            if (entry.selected) { hasSelectedBackends = true; break; }
         }
-        if (!hasSelectedPlatforms) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " No platforms selected");
+        if (!hasSelectedBackends) {
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " No graphic backends selected");
             canExport = false;
         }
     } else if (m_mode == ExportMode::Desktop) {
@@ -715,27 +694,32 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
 
     if (m_mode == ExportMode::SourceCode) {
         exportConfig.targetDir = m_targetDir;
-        for (const auto& entry : m_platformEntries) {
+        for (const auto& entry : m_backendEntries) {
             if (entry.selected) {
-                exportConfig.selectedPlatforms.insert(entry.platform);
+                exportConfig.selectedBackends.insert(entry.backend);
             }
         }
     } else {
         exportConfig.destinationDir = m_targetDir;
-        // Drives the shader formats compiled into the build.
-        exportConfig.selectedPlatforms.insert(m_mode == ExportMode::Desktop ? hostPlatform() : Platform::Web);
+
+        // A built export runs on a single backend, driving both its shaders and its CMake
+        ShaderBackend backend = ShaderBackend::GLES3;
         if (m_mode == ExportMode::Desktop) {
             const int backendIndex =
                 (m_graphicBackendIndex >= 0 && m_graphicBackendIndex < desktopGraphicBackendCount)
                     ? m_graphicBackendIndex
                     : 0;
-            exportConfig.graphicBackend = desktopGraphicBackends[backendIndex].cmakeValue;
+            backend = desktopGraphicBackends[backendIndex];
+        }
+        exportConfig.selectedBackends.insert(backend);
+        exportConfig.graphicBackend = Exporter::getCMakeGraphicBackend(backend);
+
+        if (m_mode == ExportMode::Desktop) {
             exportConfig.cmakeCCompiler = m_project->getCMakeCCompiler();
             exportConfig.cmakeCxxCompiler = m_project->getCMakeCxxCompiler();
             exportConfig.cmakeGenerator = m_project->getCMakeGenerator();
             exportConfig.buildJobs = m_project->getCMakeBuildJobs();
         } else {
-            exportConfig.graphicBackend = "gles3";
             exportConfig.emsdkPath = m_emsdkOverride;
         }
     }

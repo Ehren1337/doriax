@@ -1595,61 +1595,13 @@ bool editor::Exporter::buildAndSaveShaders() {
         return false;
     }
 
-    struct ShaderFormat {
-        shadercompiler::lang_type_t lang;
-        int version;
-        bool es;
-        shadercompiler::platform_t platform;
-        std::string suffix;
-    };
-
-    std::vector<ShaderFormat> requiredFormats;
-    if (!config.graphicBackend.empty() && config.mode != ExportMode::SourceCode) {
-        // Built exports only need the shader language consumed by their selected
-        // runtime backend.
-        if (config.graphicBackend == "glcore") {
-            requiredFormats.push_back({shadercompiler::LANG_GLSL, 410, false, shadercompiler::SHADER_DEFAULT, "glsl410"});
-        } else if (config.graphicBackend == "gles3") {
-            requiredFormats.push_back({shadercompiler::LANG_GLSL, 300, true, shadercompiler::SHADER_DEFAULT, "glsl300es"});
-        } else if (config.graphicBackend == "d3d11") {
-            requiredFormats.push_back({shadercompiler::LANG_HLSL, 50, false, shadercompiler::SHADER_DEFAULT, "hlsl5"});
-        } else if (config.graphicBackend == "metal") {
-            requiredFormats.push_back({shadercompiler::LANG_MSL, 21, false, shadercompiler::SHADER_MACOS, "msl21macos"});
-        } else if (config.graphicBackend == "vulkan") {
-            requiredFormats.push_back({shadercompiler::LANG_SPIRV, 10, false, shadercompiler::SHADER_DEFAULT, "spirv10"});
-        }
-    } else {
-        // Source exports may target multiple platforms/backends, so retain every
-        // format supported by the selected platforms.
-        if (config.selectedPlatforms.count(Platform::Linux)
-            || config.selectedPlatforms.count(Platform::Windows)
-            || config.selectedPlatforms.count(Platform::MacOS)) {
-            requiredFormats.push_back({shadercompiler::LANG_GLSL, 410, false, shadercompiler::SHADER_DEFAULT, "glsl410"});
-        }
-        if (config.selectedPlatforms.count(Platform::Windows)) {
-            requiredFormats.push_back({shadercompiler::LANG_HLSL, 50, false, shadercompiler::SHADER_DEFAULT, "hlsl5"});
-        }
-        if (config.selectedPlatforms.count(Platform::Android) || config.selectedPlatforms.count(Platform::Web)) {
-            requiredFormats.push_back({shadercompiler::LANG_GLSL, 300, true, shadercompiler::SHADER_DEFAULT, "glsl300es"});
-        }
-        if (config.selectedPlatforms.count(Platform::MacOS)) {
-            requiredFormats.push_back({shadercompiler::LANG_MSL, 21, false, shadercompiler::SHADER_MACOS, "msl21macos"});
-        }
-        if (config.selectedPlatforms.count(Platform::iOS)) {
-            requiredFormats.push_back({shadercompiler::LANG_MSL, 21, false, shadercompiler::SHADER_IOS, "msl21ios"});
-        }
-        if (config.selectedPlatforms.count(Platform::Linux) || config.selectedPlatforms.count(Platform::Windows)) {
-            // Vulkan is available on desktop Linux and Windows.
-            requiredFormats.push_back({shadercompiler::LANG_SPIRV, 10, false, shadercompiler::SHADER_DEFAULT, "spirv10"});
-        }
+    // Default to glsl410 if no backend was selected
+    std::vector<ShaderBackend> backends(config.selectedBackends.begin(), config.selectedBackends.end());
+    if (backends.empty()) {
+        backends.push_back(ShaderBackend::GLCore);
     }
 
-    // Default to glsl410 if no platforms require anything
-    if (requiredFormats.empty()) {
-        requiredFormats.push_back({shadercompiler::LANG_GLSL, 410, false, shadercompiler::SHADER_DEFAULT, "glsl410"});
-    }
-
-    int total = (int)config.selectedShaderKeys.size() * requiredFormats.size();
+    int total = (int)config.selectedShaderKeys.size() * backends.size();
     int current = 0;
     bool hadFailure = false;
     std::map<std::string, std::vector<ShaderHeaderBuilder::HeaderShader>> headerShaders;
@@ -1660,14 +1612,14 @@ bool editor::Exporter::buildAndSaveShaders() {
         uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
         std::string shaderStr = ShaderPool::getShaderStr(type, props, customId);
 
-        for (const auto& fmt : requiredFormats) {
+        for (ShaderBackend backend : backends) {
             float shaderProgress = 0.6f + (0.3f * (float)current / (float)std::max(total, 1));
-            std::string fmtStr = fmt.suffix;
+            std::string fmtStr = ShaderPool::getShaderLangStr(backend);
             setProgress("Building shader: " + shaderStr + " (" + fmtStr + ")", shaderProgress);
 
             try {
                 // Synchronous build without cache
-                ShaderData resultData = shaderBuilder.buildShaderForExport(shaderKey, project, fmt.lang, fmt.version, fmt.es, fmt.platform);
+                ShaderData resultData = shaderBuilder.buildShaderForExport(shaderKey, project, backend);
 
                 std::string basename = shaderStr + "_" + fmtStr;
                 std::string err;
@@ -1710,13 +1662,14 @@ bool editor::Exporter::buildAndSaveShaders() {
 
     if (config.shaderOutputFormat == ShaderOutputFormat::Header) {
         setProgress("Writing shader headers...", 0.95f);
-        for (const auto& fmt : requiredFormats) {
+        for (ShaderBackend backend : backends) {
+            const std::string fmtStr = ShaderPool::getShaderLangStr(backend);
             std::string err;
-            const auto it = headerShaders.find(fmt.suffix);
+            const auto it = headerShaders.find(fmtStr);
             const std::vector<ShaderHeaderBuilder::HeaderShader> emptyShaders;
             const std::vector<ShaderHeaderBuilder::HeaderShader>& shaders = it == headerShaders.end() ? emptyShaders : it->second;
-            if (!ShaderHeaderBuilder::writeShaderHeader(shadersDst / (fmt.suffix + ".h"), fmt.suffix, shaders, err)) {
-                Out::warning("Failed to write shader header %s.h: %s", fmt.suffix.c_str(), err.c_str());
+            if (!ShaderHeaderBuilder::writeShaderHeader(shadersDst / (fmtStr + ".h"), fmtStr, shaders, err)) {
+                Out::warning("Failed to write shader header %s.h: %s", fmtStr.c_str(), err.c_str());
                 hadFailure = true;
             }
         }
@@ -1758,15 +1711,14 @@ std::string editor::Exporter::getShaderDisplayName(ShaderType type, uint32_t pro
     return name;
 }
 
-std::string editor::Exporter::getPlatformName(::doriax::Platform platform) {
-    switch (platform) {
-        case Platform::MacOS:   return "macOS";
-        case Platform::iOS:     return "iOS";
-        case Platform::Web:     return "Web";
-        case Platform::Android: return "Android";
-        case Platform::Linux:   return "Linux";
-        case Platform::Windows: return "Windows";
-        default:                return "Unknown";
+std::string editor::Exporter::getCMakeGraphicBackend(::doriax::ShaderBackend backend) {
+    switch (backend) {
+        case ShaderBackend::GLES3:      return "gles3";
+        case ShaderBackend::D3D11:      return "d3d11";
+        case ShaderBackend::MetalMacOS:
+        case ShaderBackend::MetalIOS:   return "metal";
+        case ShaderBackend::Vulkan:     return "vulkan";
+        default:                        return "glcore";
     }
 }
 

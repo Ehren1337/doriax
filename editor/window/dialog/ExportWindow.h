@@ -49,13 +49,13 @@ namespace doriax::editor {
         int m_addShaderTypeIndex = 0;
         bool m_addShaderProps[32] = {};
 
-        // Platform selection (Source Code mode only)
-        struct PlatformEntry {
-            Platform platform;
+        // Graphic backend selection (Source Code mode only)
+        struct BackendEntry {
+            ShaderBackend backend;
             std::string name;
             bool selected;
         };
-        std::vector<PlatformEntry> m_platformEntries;
+        std::vector<BackendEntry> m_backendEntries;
 
         // Desktop backend selection. The entries themselves are host-specific
         // and live in ExportWindow.cpp.
@@ -69,7 +69,7 @@ namespace doriax::editor {
         Exporter m_exporter;
 
         void populateShaderList();
-        void populatePlatformList();
+        void populateBackendList();
         void refreshEmsdkStatus();
         void selectMode(ExportMode mode);
         void drawModeSelect();
@@ -82,7 +82,7 @@ namespace doriax::editor {
         void drawDesktopKitRows();
         void drawEmsdkRow();
         void drawShaderSection();
-        void drawPlatformSection();
+        void drawBackendSection();
         void drawProgress();
         void drawAddShaderDialog();
         void drawOverwriteConfirmDialog();

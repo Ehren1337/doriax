@@ -13,6 +13,18 @@ namespace doriax{
 
     typedef uint64_t ShaderKey;
 
+    // What a shader is compiled for. One value per shader language string, which is
+    // what names the file the runtime loads. Metal is split because the cross-compiler
+    // emits different MSL for macOS and iOS.
+    enum class ShaderBackend{
+        GLCore,      // glsl410
+        GLES3,       // glsl300es
+        D3D11,       // hlsl5
+        MetalMacOS,  // msl21macos
+        MetalIOS,    // msl21ios
+        Vulkan       // spirv10
+    };
+
     struct ShaderBuildResult {
         ShaderData data;
         ResourceLoadState state;

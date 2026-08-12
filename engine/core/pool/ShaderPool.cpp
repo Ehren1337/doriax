@@ -199,20 +199,85 @@ std::string ShaderPool::getShaderLangStr(ShaderLang lang, int version, bool es, 
     return "<unknown>";
 }
 
-std::string ShaderPool::getShaderLangStr(){
-    if (Engine::getGraphicBackend() == GraphicBackend::GLCORE){
-        return getShaderLangStr(ShaderLang::GLSL, 410, false, Engine::getPlatform());
-    }else if (Engine::getGraphicBackend() == GraphicBackend::GLES3){
-        return getShaderLangStr(ShaderLang::GLSL, 300, true, Engine::getPlatform());
-    }else if (Engine::getGraphicBackend() == GraphicBackend::METAL){
-        return getShaderLangStr(ShaderLang::MSL, 21, false, Engine::getPlatform());
-    }else if (Engine::getGraphicBackend() == GraphicBackend::D3D11){
-        return getShaderLangStr(ShaderLang::HLSL, 50, false, Engine::getPlatform());
-    }else if (Engine::getGraphicBackend() == GraphicBackend::VULKAN){
-        return getShaderLangStr(ShaderLang::SPIRV, 10, false, Engine::getPlatform());
+const std::vector<ShaderBackend>& ShaderPool::getShaderBackends() {
+    static const std::vector<ShaderBackend>* backends = new std::vector<ShaderBackend>{
+        ShaderBackend::GLCore,
+        ShaderBackend::GLES3,
+        ShaderBackend::D3D11,
+        ShaderBackend::MetalMacOS,
+        ShaderBackend::MetalIOS,
+        ShaderBackend::Vulkan
+    };
+    return *backends;
+}
+
+ShaderBackend ShaderPool::getShaderBackend() {
+    switch (Engine::getGraphicBackend()) {
+        case GraphicBackend::GLES3:  return ShaderBackend::GLES3;
+        case GraphicBackend::D3D11:  return ShaderBackend::D3D11;
+        case GraphicBackend::VULKAN: return ShaderBackend::Vulkan;
+        // only place the OS takes part: MSL differs between macOS and iOS
+        case GraphicBackend::METAL:  return (Engine::getPlatform() == Platform::iOS) ? ShaderBackend::MetalIOS : ShaderBackend::MetalMacOS;
+        default:                     return ShaderBackend::GLCore;
+    }
+}
+
+std::string ShaderPool::getShaderBackendName(ShaderBackend backend) {
+    switch (backend) {
+        case ShaderBackend::GLCore:     return "OpenGL";
+        case ShaderBackend::GLES3:      return "OpenGL ES 3";
+        case ShaderBackend::D3D11:      return "Direct3D 11";
+        case ShaderBackend::MetalMacOS: return "Metal (macOS)";
+        case ShaderBackend::MetalIOS:   return "Metal (iOS)";
+        case ShaderBackend::Vulkan:     return "Vulkan";
+        default:                        return "<unknown>";
+    }
+}
+
+std::string ShaderPool::getShaderBackendCliToken(ShaderBackend backend) {
+    switch (backend) {
+        case ShaderBackend::GLCore:     return "opengl";
+        case ShaderBackend::GLES3:      return "opengles";
+        case ShaderBackend::D3D11:      return "d3d11";
+        case ShaderBackend::MetalMacOS: return "metal-macos";
+        case ShaderBackend::MetalIOS:   return "metal-ios";
+        case ShaderBackend::Vulkan:     return "vulkan";
+        default:                        return "<target-backend>";
+    }
+}
+
+// Accepts the CLI token and the GRAPHIC_BACKEND value users see in the build settings
+bool ShaderPool::parseShaderBackend(const std::string& value, ShaderBackend& out) {
+    std::string token;
+    for (char c : value) {
+        if (std::isalnum((unsigned char)c))
+            token += std::tolower((unsigned char)c);
     }
 
-    return "<unknown>";
+    if (token == "opengl"   || token == "glcore") { out = ShaderBackend::GLCore;     return true; }
+    if (token == "opengles" || token == "gles3")  { out = ShaderBackend::GLES3;      return true; }
+    if (token == "d3d11")                         { out = ShaderBackend::D3D11;      return true; }
+    if (token == "metal"    || token == "metalmacos") { out = ShaderBackend::MetalMacOS; return true; }
+    if (token == "metalios")                      { out = ShaderBackend::MetalIOS;   return true; }
+    if (token == "vulkan")                        { out = ShaderBackend::Vulkan;     return true; }
+
+    return false;
+}
+
+std::string ShaderPool::getShaderLangStr(ShaderBackend backend) {
+    switch (backend) {
+        case ShaderBackend::GLCore:     return getShaderLangStr(ShaderLang::GLSL, 410, false);
+        case ShaderBackend::GLES3:      return getShaderLangStr(ShaderLang::GLSL, 300, true);
+        case ShaderBackend::D3D11:      return getShaderLangStr(ShaderLang::HLSL, 50);
+        case ShaderBackend::MetalMacOS: return getShaderLangStr(ShaderLang::MSL, 21, false, Platform::MacOS);
+        case ShaderBackend::MetalIOS:   return getShaderLangStr(ShaderLang::MSL, 21, false, Platform::iOS);
+        case ShaderBackend::Vulkan:     return getShaderLangStr(ShaderLang::SPIRV, 10);
+        default:                        return "<unknown>";
+    }
+}
+
+std::string ShaderPool::getShaderLangStr(){
+    return getShaderLangStr(getShaderBackend());
 }
 
 bool ShaderPool::getShaderCliSpec(const std::string& shaderStr, std::string& cliSpec) {
@@ -263,23 +328,8 @@ bool ShaderPool::getShaderCliSpec(const std::string& shaderStr, std::string& cli
     return true;
 }
 
-std::string ShaderPool::getSuggestedCliPlatform() {
-    switch (Engine::getPlatform()) {
-        case Platform::MacOS:
-            return "macos";
-        case Platform::iOS:
-            return "ios";
-        case Platform::Web:
-            return "web";
-        case Platform::Android:
-            return "android";
-        case Platform::Linux:
-            return "linux";
-        case Platform::Windows:
-            return "windows";
-        default:
-            return "<target-platform>";
-    }
+std::string ShaderPool::getSuggestedCliBackend() {
+    return getShaderBackendCliToken(getShaderBackend());
 }
 
 std::string ShaderPool::getMissingShadersCliArgs() {

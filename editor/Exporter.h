@@ -39,7 +39,8 @@ namespace doriax::editor {
         fs::path luaDir;
         uint32_t startSceneId = 0;
         std::set<ShaderKey> selectedShaderKeys;
-        std::set<::doriax::Platform> selectedPlatforms;
+        // graphic backends the shaders are compiled for
+        std::set<::doriax::ShaderBackend> selectedBackends;
         ShaderOutputFormat shaderOutputFormat = ShaderOutputFormat::Header;
         // Desktop: compiler kit from project settings ("" = CMake default toolchain)
         std::string cmakeCCompiler;
@@ -150,7 +151,7 @@ namespace doriax::editor {
         bool isRunning() const;
 
         static std::string getShaderDisplayName(ShaderType type, uint32_t properties, uint16_t customId = 0);
-        static std::string getPlatformName(::doriax::Platform platform);
+        static std::string getCMakeGraphicBackend(::doriax::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
     };
 

@@ -39,6 +39,7 @@ namespace doriax::editor {
         ShaderStorageBufferType mapStorageType(shadercompiler::storage_buffer_type_t type);
         ShaderStageType mapStageType(shadercompiler::stage_type_t type);
         ShaderLang mapLang(shadercompiler::lang_type_t lang);
+        static void applyShaderBackend(shadercompiler::args_t& args, ShaderBackend backend);
         static void setBackendLang(shadercompiler::args_t& args);
 
         ShaderData convertToShaderData(
@@ -75,7 +76,7 @@ namespace doriax::editor {
         virtual ~ShaderBuilder();
 
         ShaderBuildResult buildShader(ShaderKey shaderKey, Project* project);
-        ShaderData buildShaderForExport(ShaderKey shaderKey, Project* project, shadercompiler::lang_type_t lang, int version, bool es, shadercompiler::platform_t platform = shadercompiler::SHADER_DEFAULT);
+        ShaderData buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend);
 
         // Compiles the keys absent from the disk cache, synchronously (buildShader hands
         // async builds to the pool and returns before they land).
