@@ -495,6 +495,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         else()
             set(PLATFORM_ROOT ${DORIAX_ROOT}/platform/mac)
 
+            if(EXISTS "${PROJECT_ROOT}/assets")
+                set(ASSETS_DEST_DIR ${CMAKE_BINARY_DIR}/assets)
+            endif()
+            if(EXISTS "${PROJECT_ROOT}/lua")
+                set(LUA_DEST_DIR ${CMAKE_BINARY_DIR}/lua)
+            endif()
+
             # Gamepads come from the same GameController code iOS and the editor use
             include_directories(${DORIAX_ROOT}/platform/apple)
 
