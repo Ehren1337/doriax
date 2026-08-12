@@ -19,10 +19,10 @@ namespace doriax {
 
         int getSampleCount() override;
 
-#if defined(SOKOL_METAL)
+#if defined(SOKOL_METAL) || defined(SOKOL_VULKAN)
         // The GL backend renders into the default framebuffer, which the base
-        // class already describes. Metal has to hand sokol the device and the
-        // drawable this frame renders into instead.
+        // class already describes. Metal and Vulkan have to hand sokol the device
+        // and the drawable this frame renders into instead.
         sg_environment getSokolEnvironment() override;
         sg_swapchain getSokolSwapchain() override;
 #endif

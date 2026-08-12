@@ -15,7 +15,7 @@
 namespace doriax {
 
     struct VulkanContextConfig {
-        // VK_KHR_win32_surface, VK_KHR_xlib_surface, ...
+        // VK_KHR_win32_surface, VK_KHR_xlib_surface, VK_EXT_metal_surface, ...
         const char* surfaceExtension = nullptr;
         // Called once, before the physical device is picked: presentation
         // support is part of choosing one.

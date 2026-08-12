@@ -9,6 +9,8 @@
 
 #if defined(SOKOL_METAL)
 #import <MetalKit/MetalKit.h>
+#elif defined(SOKOL_VULKAN)
+#include "VulkanContext.h"
 #endif
 
 using namespace doriax;
@@ -66,6 +68,14 @@ sg_swapchain SystemMac::getSokolSwapchain() {
     swapchain.metal.msaa_color_texture = (__bridge const void*)view.multisampleColorTexture;
 
     return swapchain;
+}
+#elif defined(SOKOL_VULKAN)
+sg_environment SystemMac::getSokolEnvironment() {
+    return VulkanContext::environment();
+}
+
+sg_swapchain SystemMac::getSokolSwapchain() {
+    return VulkanContext::swapchain();
 }
 #endif
 

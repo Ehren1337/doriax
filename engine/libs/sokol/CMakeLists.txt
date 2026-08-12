@@ -78,6 +78,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
             list(APPEND SOKOL_LINK_LIBRARIES "-framework OpenGL")
         elseif(GRAPHIC_BACKEND STREQUAL "metal")
             list(APPEND SOKOL_LINK_LIBRARIES "-framework Metal -framework MetalKit -framework Quartz")
+        elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
+            if(TARGET Vulkan::Vulkan)
+                list(APPEND SOKOL_LINK_LIBRARIES
+                    Vulkan::Vulkan
+                )
+            else()
+                list(APPEND SOKOL_LINK_LIBRARIES
+                    vulkan
+                )
+            endif()
         endif()
     elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         list(APPEND SOKOL_LINK_LIBRARIES "-framework UIKit")

@@ -10,6 +10,9 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import "MacViewMetal.h"
+#elif defined(SOKOL_VULKAN)
+#import "MacViewVulkan.h"
+#include "VulkanContext.h"
 #else
 #import "MacViewGL.h"
 #endif
@@ -43,6 +46,23 @@ using namespace doriax;
 namespace {
 #if defined(SOKOL_METAL)
     MacViewMetal* gameView = nil;
+#elif defined(SOKOL_VULKAN)
+    MacViewVulkan* gameView = nil;
+
+    VkResult createWindowSurface(VkInstance instance, VkSurfaceKHR* surface) {
+        VkMetalSurfaceCreateInfoEXT surfaceInfo{};
+        surfaceInfo.sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
+        surfaceInfo.pLayer = gameView.metalLayer;
+        return vkCreateMetalSurfaceEXT(instance, &surfaceInfo, nullptr, surface);
+    }
+
+    bool createContext() {
+        VulkanContextConfig config;
+        config.surfaceExtension = VK_EXT_METAL_SURFACE_EXTENSION_NAME;
+        config.createSurface = createWindowSurface;
+        config.vsync = DORIAX_VSYNC_ENABLED != 0;
+        return VulkanContext::create(config);
+    }
 #else
     MacViewGL* gameView = nil;
 #endif
@@ -93,6 +113,18 @@ namespace {
 
     WindowMac::setContentView((__bridge void*)gameView);
     static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = DORIAX_VSYNC_ENABLED ? YES : NO;
+#elif defined(SOKOL_VULKAN)
+    gameView = [[MacViewVulkan alloc] initWithFrame:viewFrame];
+    WindowMac::setContentView((__bridge void*)gameView);
+
+    // The surface comes from the view's layer, so both go up before
+    // systemViewLoaded, where sokol reads the environment
+    if (!createContext()) {
+        VulkanContext::destroy();
+        NSLog(@"Error: Vulkan is not available on this Mac");
+        [NSApp terminate:nil];
+        return;
+    }
 #else
     gameView = [[MacViewGL alloc] initWithFrame:viewFrame];
     if (!gameView || ![gameView pixelFormat]) {
@@ -127,6 +159,10 @@ namespace {
 #if defined(SOKOL_METAL)
     // Runs drawInMTKView below, the only place currentDrawable is valid
     [gameView draw];
+#elif defined(SOKOL_VULKAN)
+    VulkanContext::beginFrame();
+    Engine::systemDraw();
+    VulkanContext::endFrame();
 #else
     [gameView makeContextCurrent];
     Engine::systemDraw();
@@ -164,6 +200,10 @@ namespace {
     self.frameTimer = nil;
     Engine::systemViewDestroyed();
     Engine::systemShutdown();
+#if defined(SOKOL_VULKAN)
+    // After sokol has released its own objects, which live on this device
+    VulkanContext::destroy();
+#endif
     gameView = nil;
     WindowMac::destroy();
 }

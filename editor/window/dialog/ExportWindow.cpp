@@ -18,6 +18,8 @@ namespace {
         ShaderBackend::GLCore, ShaderBackend::Vulkan, ShaderBackend::D3D11
     };
     #elif defined(__APPLE__)
+    // Vulkan is left out: MoltenVK has no VK_EXT_descriptor_buffer, which the
+    // renderer binds through, so an export would build and then fail at startup
     constexpr ShaderBackend desktopGraphicBackends[] = {
         ShaderBackend::MetalMacOS, ShaderBackend::GLCore
     };

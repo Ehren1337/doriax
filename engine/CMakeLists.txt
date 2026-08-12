@@ -152,9 +152,26 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # FindVulkan reads the VULKAN_SDK environment variable the SDK installer
     # sets. A macro, not a function, so Vulkan_FOUND lands in the caller.
     macro(doriax_find_vulkan backendOption)
+        # sokol_gfx binds every resource through VK_EXT_descriptor_buffer, which
+        # MoltenVK does not implement, so the build only fails at device selection
+        if(APPLE)
+            message(WARNING "${backendOption}=vulkan runs on MoltenVK here, which does not implement VK_EXT_descriptor_buffer: this build will fail at startup unless the driver provides it. ${backendOption}=metal is the working macOS backend.")
+        endif()
+
+        # An app started from the Dock inherits no shell environment, so on macOS
+        # the SDK is also looked for where its installer unpacks it
+        if(APPLE AND NOT DEFINED ENV{VULKAN_SDK})
+            file(GLOB doriaxVulkanSdkDirs "$ENV{HOME}/VulkanSDK/*/macOS")
+            if(doriaxVulkanSdkDirs)
+                list(SORT doriaxVulkanSdkDirs)
+                list(POP_BACK doriaxVulkanSdkDirs doriaxVulkanSdkNewest)
+                set(ENV{VULKAN_SDK} "${doriaxVulkanSdkNewest}")
+                message(STATUS "Using the Vulkan SDK at ${doriaxVulkanSdkNewest}")
+            endif()
+        endif()
         find_package(Vulkan QUIET)
         if(NOT Vulkan_FOUND)
-            message(FATAL_ERROR "${backendOption}=vulkan needs the Vulkan SDK (https://vulkan.lunarg.com/sdk/home), and VULKAN_SDK is not set here. If it is installed, restart the shell or editor this build was started from: Windows only gives the variable to processes started after the installer ran. Otherwise use ${backendOption}=glcore.")
+            message(FATAL_ERROR "${backendOption}=vulkan needs the Vulkan SDK (https://vulkan.lunarg.com/sdk/home), and VULKAN_SDK is not set here. If it is installed outside the default location, restart the shell or editor this build was started from with VULKAN_SDK in its environment: Windows only gives the variable to processes started after the installer ran. Otherwise use ${backendOption}=glcore, or metal on macOS.")
         endif()
     endmacro()
 
@@ -406,10 +423,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        # The native Cocoa backend creates a GL context, a Metal device, or a
+        # Vulkan surface and swapchain over a CAMetalLayer.
         if(GRAPHIC_BACKEND STREQUAL "glcore")
             add_definitions("-DSOKOL_GLCORE")
         elseif(GRAPHIC_BACKEND STREQUAL "metal")
             add_definitions("-DSOKOL_METAL")
+        elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
+            add_definitions("-DSOKOL_VULKAN")
+            add_definitions("-DVK_USE_PLATFORM_METAL_EXT")
+        else()
+            message(FATAL_ERROR "APP_BACKEND=apple supports GRAPHIC_BACKEND glcore, metal or vulkan (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-DWITH_MINIAUDIO")
@@ -490,10 +514,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "-framework GameController"
             )
 
-            # MTKView has no GL drawable, so OpenGL gets an NSOpenGLView
+            # MTKView has no GL or Vulkan drawable, so those get views of their own
             if(GRAPHIC_BACKEND STREQUAL "glcore")
                 list(APPEND PLATFORM_SOURCE ${PLATFORM_ROOT}/MacViewGL.mm)
                 list(APPEND PLATFORM_LIBS "-framework OpenGL")
+            elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
+                # Device and swapchain are shared with the other desktops
+                include_directories(${DORIAX_ROOT}/platform/common)
+                list(APPEND PLATFORM_SOURCE
+                    ${PLATFORM_ROOT}/MacViewVulkan.mm
+                    ${DORIAX_ROOT}/platform/common/VulkanContext.cpp
+                )
+                doriax_find_vulkan("GRAPHIC_BACKEND")
+                list(APPEND PLATFORM_LIBS Vulkan::Vulkan)
             else()
                 list(APPEND PLATFORM_SOURCE ${PLATFORM_ROOT}/MacViewMetal.mm)
                 list(APPEND PLATFORM_LIBS "-framework Metal" "-framework MetalKit")

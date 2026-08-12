@@ -26,6 +26,10 @@ namespace {
         VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME
     };
 
+    // A portability driver only creates a device when this is enabled too. Spelled
+    // out because the constant lives behind VK_ENABLE_BETA_EXTENSIONS.
+    constexpr char PORTABILITY_SUBSET_EXTENSION[] = "VK_KHR_portability_subset";
+
     struct FrameSync {
         VkSemaphore presentComplete = VK_NULL_HANDLE;  // signaled by the acquire
         VkSemaphore renderFinished = VK_NULL_HANDLE;   // signaled by sokol's submit
@@ -71,24 +75,27 @@ namespace {
         return false;
     }
 
-    bool hasDeviceExtensions(VkPhysicalDevice device) {
+    std::vector<VkExtensionProperties> deviceExtensions(VkPhysicalDevice device) {
         uint32_t count = 0;
         if (vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr) != VK_SUCCESS)
-            return false;
+            return {};
         std::vector<VkExtensionProperties> extensions(count);
         if (vkEnumerateDeviceExtensionProperties(
                 device, nullptr, &count, extensions.data()) != VK_SUCCESS)
-            return false;
-        for (const char* required : DEVICE_EXTENSIONS) {
-            bool found = false;
-            for (const VkExtensionProperties& extension : extensions) {
-                if (std::strcmp(extension.extensionName, required) == 0) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) return false;
-        }
+            return {};
+        return extensions;
+    }
+
+    bool hasExtension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
+        for (const VkExtensionProperties& extension : extensions)
+            if (std::strcmp(extension.extensionName, name) == 0) return true;
+        return false;
+    }
+
+    bool hasDeviceExtensions(VkPhysicalDevice device) {
+        const std::vector<VkExtensionProperties> extensions = deviceExtensions(device);
+        for (const char* required : DEVICE_EXTENSIONS)
+            if (!hasExtension(extensions, required)) return false;
         return true;
     }
 
@@ -111,8 +118,17 @@ namespace {
         if (hasInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
+        // A portability driver is hidden from vkEnumeratePhysicalDevices unless the
+        // instance asks for it, and on macOS MoltenVK is the only driver there is.
+        VkInstanceCreateFlags flags = 0;
+        if (hasInstanceExtension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+            extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+            flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        }
+
         VkInstanceCreateInfo instanceInfo{};
         instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        instanceInfo.flags = flags;
         instanceInfo.pApplicationInfo = &application;
         instanceInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
         instanceInfo.ppEnabledExtensionNames = extensions.data();
@@ -176,6 +192,10 @@ namespace {
         if (gPhysicalDevice == VK_NULL_HANDLE) {
             std::fprintf(stderr,
                 "Error: Vulkan 1.3 with swapchain and descriptor-buffer support is required.\n");
+#if defined(__APPLE__)
+            std::fprintf(stderr,
+                "       MoltenVK has no VK_EXT_descriptor_buffer, so macOS needs the Metal backend.\n");
+#endif
             return false;
         }
         return true;
@@ -218,6 +238,11 @@ namespace {
         required.features.textureCompressionETC2 = supported.features.textureCompressionETC2;
         required.features.textureCompressionASTC_LDR = supported.features.textureCompressionASTC_LDR;
 
+        std::vector<const char*> extensions;
+        for (const char* required : DEVICE_EXTENSIONS) extensions.push_back(required);
+        if (hasExtension(deviceExtensions(gPhysicalDevice), PORTABILITY_SUBSET_EXTENSION))
+            extensions.push_back(PORTABILITY_SUBSET_EXTENSION);
+
         const float priority = 1.0f;
         VkDeviceQueueCreateInfo queueInfo{};
         queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -230,9 +255,8 @@ namespace {
         deviceInfo.pNext = &required;
         deviceInfo.queueCreateInfoCount = 1;
         deviceInfo.pQueueCreateInfos = &queueInfo;
-        deviceInfo.enabledExtensionCount =
-            static_cast<uint32_t>(sizeof(DEVICE_EXTENSIONS) / sizeof(DEVICE_EXTENSIONS[0]));
-        deviceInfo.ppEnabledExtensionNames = DEVICE_EXTENSIONS;
+        deviceInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+        deviceInfo.ppEnabledExtensionNames = extensions.data();
 
         const VkResult result = vkCreateDevice(gPhysicalDevice, &deviceInfo, nullptr, &gDevice);
         if (result != VK_SUCCESS) {
