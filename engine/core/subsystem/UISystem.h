@@ -45,7 +45,7 @@ namespace doriax{
         int anchorReferenceWidth;
         int anchorReferenceHeight;
 
-        void createOrUpdateUiComponent(double dt, UILayoutComponent& layout, Entity entity, Signature signature);
+        void createOrUpdateUiComponent(UILayoutComponent& layout, Entity entity, Signature signature);
         void getPanelEdges(const PanelComponent& panel, const UILayoutComponent& layout, const Transform& transform, const UILayoutComponent& headerlayout,  Rect& edgeRight, Rect& edgeRightBottom, Rect& edgeBottom, Rect& edgeLeftBottom, Rect& edgeLeft);
         Rect fitOnPanel(Rect uiRect, Entity parentPanel);
         void calculateUIAABB(UIComponent& ui);

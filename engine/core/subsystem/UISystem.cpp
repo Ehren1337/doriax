@@ -1041,7 +1041,9 @@ void UISystem::updateTextEdit(Entity entity, TextEditComponent& textedit, ImageC
         PolygonComponent& cursor = scene->getComponent<PolygonComponent>(textedit.cursor);
 
         bool showCursor = ui.focused && !textedit.disabled && !showingPlaceholder;
-        cursortransform.visible = showCursor;
+        if (!showCursor){
+            cursortransform.visible = false;
+        }
 
         if (showCursor){
             createOrUpdatePolygon(cursor, cursorui, cursorlayout);
@@ -1070,18 +1072,28 @@ void UISystem::blinkCursorTextEdit(double dt, TextEditComponent& textedit, UICom
         return;
     }
 
-    textedit.cursorBlinkTimer += dt;
-
     Transform& cursortransform = scene->getComponent<Transform>(textedit.cursor);
 
-    if (ui.focused && !textedit.disabled){
-        if (textedit.cursorBlinkTimer > textedit.cursorBlink) {
-            cursortransform.visible = !cursortransform.visible;
-            textedit.cursorBlinkTimer = 0;
-        }
-    }else{
+    if (!ui.focused || textedit.disabled){
         cursortransform.visible = false;
+        textedit.cursorBlinkTimer = 0;
+        return;
     }
+
+    float period = textedit.cursorBlink;
+    if (period <= 0.0f){
+        cursortransform.visible = true;
+        textedit.cursorBlinkTimer = 0;
+        return;
+    }
+
+    textedit.cursorBlinkTimer += static_cast<float>(dt);
+    float cycle = period * 2.0f;
+    if (textedit.cursorBlinkTimer >= cycle){
+        textedit.cursorBlinkTimer = std::fmod(textedit.cursorBlinkTimer, cycle);
+    }
+
+    cursortransform.visible = textedit.cursorBlinkTimer < period;
 }
 
 void UISystem::setTextEditCursorFromLocalX(TextEditComponent& textedit, TextComponent& text, ImageComponent& img, float localX, bool extendSelection){
@@ -1706,7 +1718,7 @@ void UISystem::destroy(){
 void UISystem::draw(){
 }
 
-void UISystem::createOrUpdateUiComponent(double dt, UILayoutComponent& layout, Entity entity, Signature signature){
+void UISystem::createOrUpdateUiComponent(UILayoutComponent& layout, Entity entity, Signature signature){
     if (signature.test(scene->getComponentId<UIComponent>())){
         UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
@@ -1789,8 +1801,6 @@ void UISystem::createOrUpdateUiComponent(double dt, UILayoutComponent& layout, E
 
                     textedit.needUpdateTextEdit = false;
                 }
-
-                blinkCursorTextEdit(dt, textedit, ui);
             }
         }
     }
@@ -1929,7 +1939,7 @@ void UISystem::update(double dt){
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
-        createOrUpdateUiComponent(dt, layout, entity, signature);
+        createOrUpdateUiComponent(layout, entity, signature);
 
         if (signature.test(scene->getComponentId<UIContainerComponent>())){
             UIContainerComponent& container = scene->getComponent<UIContainerComponent>(entity);
@@ -2395,8 +2405,17 @@ void UISystem::update(double dt){
             layout.needUpdateSizes = false;
         }
 
-        createOrUpdateUiComponent(dt, layout, entity, signature);
+        createOrUpdateUiComponent(layout, entity, signature);
         
+    }
+
+    auto textedits = scene->getComponentArray<TextEditComponent>();
+    for (int i = 0; i < textedits->size(); i++){
+        Entity entity = textedits->getEntity(i);
+        UIComponent* ui = scene->findComponent<UIComponent>(entity);
+        if (ui){
+            blinkCursorTextEdit(dt, textedits->getComponentFromIndex(i), *ui);
+        }
     }
 
 }
