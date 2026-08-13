@@ -27,6 +27,11 @@ namespace {
 // single backend performRequest() below through this.
 using BodySink = std::function<bool(const char*, size_t)>;
 
+std::string requestTimeoutError(long timeoutSeconds) {
+    return "Request timed out (configured timeout: " + std::to_string(timeoutSeconds) +
+           " seconds). Raise \"Request Timeout (s)\" in AI settings for slow local models.";
+}
+
 #ifdef _WIN32
 
 // ---------------------------------------------------------------------------
@@ -54,8 +59,12 @@ std::string toUtf8(const std::wstring& wide) {
     return utf8;
 }
 
-std::string winHttpError(const char* context) {
-    return std::string(context) + " (WinHTTP error " + std::to_string(GetLastError()) + ")";
+std::string winHttpError(const char* context, long timeoutSeconds = 0) {
+    const DWORD error = GetLastError();
+    if (error == ERROR_WINHTTP_TIMEOUT && timeoutSeconds > 0) {
+        return requestTimeoutError(timeoutSeconds);
+    }
+    return std::string(context) + " (WinHTTP error " + std::to_string(error) + ")";
 }
 
 // RAII wrapper so every error path closes its handles automatically.
@@ -104,7 +113,7 @@ HttpResponse performRequest(const HttpRequest& request,
         return response;
     }
 
-    const DWORD timeoutMs = static_cast<DWORD>(request.timeoutSeconds) * 1000;
+    DWORD timeoutMs = static_cast<DWORD>(request.timeoutSeconds) * 1000;
     WinHttpSetTimeouts(session, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
 
     // AI endpoints require modern TLS; pre-22H2 Windows still defaults WinHTTP
@@ -132,7 +141,7 @@ HttpResponse performRequest(const HttpRequest& request,
 
     Handle connect(WinHttpConnect(session, host.c_str(), parts.nPort, 0));
     if (!connect) {
-        response.error = winHttpError("WinHttpConnect failed");
+        response.error = winHttpError("WinHttpConnect failed", request.timeoutSeconds);
         return response;
     }
 
@@ -142,6 +151,15 @@ HttpResponse performRequest(const HttpRequest& request,
                                   secure ? WINHTTP_FLAG_SECURE : 0));
     if (!req) {
         response.error = winHttpError("WinHttpOpenRequest failed");
+        return response;
+    }
+
+    // WinHttpSetTimeouts does not change WinHTTP's separate 90-second wait for
+    // response headers. Local inference servers may not send those headers until
+    // generation finishes, so apply the configured request timeout here too.
+    if (!WinHttpSetOption(req, WINHTTP_OPTION_RECEIVE_RESPONSE_TIMEOUT,
+                          &timeoutMs, sizeof(timeoutMs))) {
+        response.error = winHttpError("Failed to set the response-header timeout");
         return response;
     }
 
@@ -163,12 +181,12 @@ HttpResponse performRequest(const HttpRequest& request,
                                  : const_cast<char*>(request.body.data()),
             static_cast<DWORD>(request.body.size()),
             static_cast<DWORD>(request.body.size()), 0)) {
-        response.error = winHttpError("WinHttpSendRequest failed");
+        response.error = winHttpError("WinHttpSendRequest failed", request.timeoutSeconds);
         return response;
     }
 
     if (!WinHttpReceiveResponse(req, nullptr)) {
-        response.error = winHttpError("WinHttpReceiveResponse failed");
+        response.error = winHttpError("WinHttpReceiveResponse failed", request.timeoutSeconds);
         return response;
     }
 
@@ -193,7 +211,7 @@ HttpResponse performRequest(const HttpRequest& request,
         }
         DWORD available = 0;
         if (!WinHttpQueryDataAvailable(req, &available)) {
-            response.error = winHttpError("WinHttpQueryDataAvailable failed");
+            response.error = winHttpError("WinHttpQueryDataAvailable failed", request.timeoutSeconds);
             break;
         }
         if (available == 0) break;
@@ -201,7 +219,7 @@ HttpResponse performRequest(const HttpRequest& request,
         std::string buffer(available, '\0');
         DWORD read = 0;
         if (!WinHttpReadData(req, buffer.data(), available, &read)) {
-            response.error = winHttpError("WinHttpReadData failed");
+            response.error = winHttpError("WinHttpReadData failed", request.timeoutSeconds);
             break;
         }
         if (read == 0) break;
@@ -300,7 +318,9 @@ HttpResponse performRequest(const HttpRequest& request,
     const CURLcode result = curl_easy_perform(curl);
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status);
     if (result != CURLE_OK) {
-        response.error = curl_easy_strerror(result);
+        response.error = result == CURLE_OPERATION_TIMEDOUT
+            ? requestTimeoutError(request.timeoutSeconds)
+            : curl_easy_strerror(result);
     }
 
     if (headers) {
