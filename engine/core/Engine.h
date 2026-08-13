@@ -80,6 +80,11 @@
 #define MAX_SPRITE_FRAMES 128
 #endif
 
+// main font of a text plus its fallbacks
+#ifndef MAX_TEXT_FONTS
+#define MAX_TEXT_FONTS 4
+#endif
+
 #ifndef MAX_BONES
 #define MAX_BONES 128
 #endif

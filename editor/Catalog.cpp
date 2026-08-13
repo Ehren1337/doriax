@@ -567,8 +567,7 @@ namespace {
 
     static const FastPropertyDescriptor kTextProperties[] = {
         makeFastProperty<TextComponent, std::string, &TextComponent::text>("text", PropertyType::String, UpdateFlags_Text),
-        makeFastProperty<TextComponent, std::string, &TextComponent::font>("font", PropertyType::String, UpdateFlags_Text_Atlas),
-        makeFastProperty<TextComponent, std::string, &TextComponent::fontFallbacks>("fontFallbacks", PropertyType::String, UpdateFlags_Text_Atlas),
+        makeFastProperty<TextComponent, FontArray, &TextComponent::font>("font", PropertyType::Font, UpdateFlags_Text_Atlas),
         makeFastProperty<TextComponent, unsigned int, &TextComponent::fontSize>("fontSize", PropertyType::UInt, UpdateFlags_Text_Atlas),
         makeFastProperty<TextComponent, bool, &TextComponent::multiline>("multiline", PropertyType::Bool, UpdateFlags_Text),
         makeFastProperty<TextComponent, unsigned int, &TextComponent::maxTextSize>("maxTextSize", PropertyType::UInt, UpdateFlags_Text),
@@ -3612,6 +3611,9 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
             case PropertyType::String:
                 changed = *static_cast<std::string*>(oldProp.ref) != *static_cast<std::string*>(newProp.ref);
                 break;
+            case PropertyType::Font:
+                changed = *static_cast<FontArray*>(oldProp.ref) != *static_cast<FontArray*>(newProp.ref);
+                break;
             case PropertyType::Vector2:
                 changed = *static_cast<Vector2*>(oldProp.ref) != *static_cast<Vector2*>(newProp.ref);
                 break;
@@ -4270,6 +4272,12 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         case PropertyType::String: {
             std::string* source = Catalog::getPropertyRef<std::string>(sourceRegistry, sourceEntity, compType, property);
             std::string* target = Catalog::getPropertyRef<std::string>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::Font: {
+            FontArray* source = Catalog::getPropertyRef<FontArray>(sourceRegistry, sourceEntity, compType, property);
+            FontArray* target = Catalog::getPropertyRef<FontArray>(targetRegistry, targetEntity, compType, property);
             if (source && target) *target = *source;
             break;
         }

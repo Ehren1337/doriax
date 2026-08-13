@@ -690,9 +690,11 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
     });
 
     visitComponents(registry->getComponentArray<TextComponent>(), [&](TextComponent& text) {
-        if (!text.font.empty() && transform(text.font)) {
-            text.needReloadAtlas = true;
-            changed = true;
+        for (std::string& font : text.font) {
+            if (!font.empty() && transform(font)) {
+                text.needReloadAtlas = true;
+                changed = true;
+            }
         }
     });
 

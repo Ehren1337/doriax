@@ -117,7 +117,12 @@ Json propertyValueFields(std::initializer_list<std::pair<const char*, Json>> ext
         {"bool_value", boolSchema("Boolean property value")},
         {"int_value", integerSchema("Integer/enum property value")},
         {"number_value", numberSchema("Float/double property value")},
-        {"string_value", stringSchema("String property value. The asset-path properties filename and font take a project-relative path inside the assets directory (get_project_summary reports it as assets_dir), or an empty string to clear it")},
+        {"string_value", stringSchema("String property value. The asset-path property filename takes a project-relative path inside the assets directory (get_project_summary reports it as assets_dir), or an empty string to clear it. On a Font property it sets the main font and keeps the fallbacks")},
+        {"font_paths", {
+            {"type", "array"},
+            {"description", "Font property value: project-relative font paths inside the assets directory, main font first and fallback fonts after it. Slots not listed are cleared"},
+            {"items", {{"type", "string"}}}
+        }},
         {"vector2_value", vector2Schema("Vector2 property value")},
         {"vector3_value", vector3Schema("Vector3 or Color3 property value")},
         {"vector4_value", vector4Schema("Vector4 or Color4 property value")},
@@ -1142,7 +1147,7 @@ bool hasAnyValueField(const Json& args) {
     static const char* keys[] = {
         "bool_value", "int_value", "number_value", "string_value",
         "vector2_value", "vector3_value", "vector4_value", "quat_value",
-        "texture_path", "entity_value"
+        "texture_path", "font_paths", "entity_value"
     };
     for (const char* key : keys) {
         if (args.contains(key)) return true;

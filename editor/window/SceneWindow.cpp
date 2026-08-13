@@ -270,7 +270,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
     static Material cachedDragMaterial;
     static std::string cachedDragPath;
     static Texture originalTex;
-    static std::string originalFont;
+    static FontArray originalFont;
     static Entity lastSelEntity = NULL_ENTITY;
 
     if (ImGui::BeginDragDropTarget()) {
@@ -372,8 +372,9 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         selText = text;
                                         originalFont = text->font;
                                     }
-                                    if (text->font != droppedAssetPath) {
-                                        text->font = droppedAssetPath;
+                                    // the drop replaces the main font, the fallbacks stay
+                                    if (text->font[0] != droppedAssetPath) {
+                                        text->font[0] = droppedAssetPath;
                                         text->needReloadAtlas = true;
                                         text->needUpdateText = true;
                                     }
@@ -384,7 +385,9 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         text->needUpdateText = true;
 
                                         if (insideAssets) {
-                                            PropertyCmd<std::string>* cmd = new PropertyCmd<std::string>(project, sceneProject->id, selEntity, ComponentType::TextComponent, propName, droppedAssetPath);
+                                            FontArray newFonts = originalFont;
+                                            newFonts[0] = droppedAssetPath;
+                                            PropertyCmd<FontArray>* cmd = new PropertyCmd<FontArray>(project, sceneProject->id, selEntity, ComponentType::TextComponent, propName, newFonts);
                                             CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
                                         } else {
                                             Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);

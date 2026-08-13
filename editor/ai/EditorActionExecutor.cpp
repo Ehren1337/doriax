@@ -1161,6 +1161,7 @@ std::string propertyTypeName(PropertyType type) {
         case PropertyType::UInt: return "uint";
         case PropertyType::Material: return "material";
         case PropertyType::Texture: return "texture";
+        case PropertyType::Font: return "font";
         case PropertyType::Enum: return "enum";
         case PropertyType::Ease: return "ease";
         case PropertyType::Custom: return "custom";
@@ -1193,7 +1194,7 @@ std::string assetPathToAi(Project* project, const std::string& stored) {
 
 // String properties holding an asset reference instead of plain text
 bool isAssetPathProperty(const std::string& propertyName) {
-    return propertyName == "filename" || propertyName == "font";
+    return propertyName == "filename";
 }
 
 Json propertyValueToJson(Project* project, const std::string& propertyName, const PropertyData& property) {
@@ -1223,6 +1224,19 @@ Json propertyValueToJson(Project* project, const std::string& propertyName, cons
             return *static_cast<int*>(property.ref);
         case PropertyType::UInt:
             return *static_cast<unsigned int*>(property.ref);
+        case PropertyType::Font: {
+            // the chain in use: the main font first, then its fallbacks
+            const FontArray& fonts = *static_cast<FontArray*>(property.ref);
+            size_t numFonts = 0;
+            for (size_t i = 0; i < fonts.size(); i++) {
+                if (!fonts[i].empty()) numFonts = i + 1;
+            }
+            Json list = Json::array();
+            for (size_t i = 0; i < numFonts; i++) {
+                list.push_back(assetPathToAi(project, fonts[i]));
+            }
+            return list;
+        }
         case PropertyType::Texture: {
             // Report scaled SVG sources in the round-trippable "<path>?svgScale=N" form:
             // Texture(path) absorbs the suffix, so the model can echo it back into
@@ -1447,6 +1461,56 @@ Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity,
             }
             return new PropertyCmd<unsigned int>(project, sceneId, entity, component, propertyName,
                                                 static_cast<unsigned int>(std::max(0, args["int_value"].get<int>())), onChanged);
+        case PropertyType::Font: {
+            // font_paths sets the whole chain, string_value only the main font
+            FontArray fonts;
+            if (property.ref) {
+                fonts = *static_cast<FontArray*>(property.ref);
+            }
+
+            std::vector<std::string> requested;
+            bool wholeChain = valueFieldPresent(args, "font_paths");
+            if (wholeChain) {
+                if (!args["font_paths"].is_array() || args["font_paths"].size() > fonts.size()) {
+                    error = "font_paths takes up to " + std::to_string(fonts.size()) + " project-relative font paths.";
+                    return nullptr;
+                }
+                for (const Json& item : args["font_paths"]) {
+                    if (!item.is_string()) {
+                        error = "font_paths must hold strings.";
+                        return nullptr;
+                    }
+                    requested.push_back(item.get<std::string>());
+                }
+            } else if (valueFieldPresent(args, "string_value") && args["string_value"].is_string()) {
+                requested.push_back(args["string_value"].get<std::string>());
+            } else {
+                error = "Property requires font_paths or string_value.";
+                return nullptr;
+            }
+
+            for (size_t i = 0; i < fonts.size(); i++) {
+                if (i >= requested.size()) {
+                    if (wholeChain) fonts[i].clear();
+                    continue;
+                }
+                std::string value = requested[i];
+                if (!value.empty()) {
+                    if (!PathUtils::isSafeRelativePath(value)) {
+                        error = propertyName + " must hold safe project-relative paths.";
+                        return nullptr;
+                    }
+                    if (!isInsideAssets(project, value)) {
+                        error = outsideAssetsError(project, propertyName);
+                        return nullptr;
+                    }
+                    value = assetPathFromAi(project, value);
+                }
+                fonts[i] = value;
+            }
+
+            return new PropertyCmd<FontArray>(project, sceneId, entity, component, propertyName, fonts, onChanged);
+        }
         case PropertyType::Texture: {
             if (!valueFieldPresent(args, "texture_path") || !args["texture_path"].is_string()) {
                 error = "Property requires texture_path.";

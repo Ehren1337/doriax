@@ -121,6 +121,7 @@ namespace doriax::editor{
         UInt,
         Material,
         Texture,
+        Font,
         Enum,
         Ease,
         Custom,

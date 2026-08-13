@@ -173,7 +173,7 @@ std::string Panel::getTitleFont() const{
     PanelComponent& panelcomp = getComponent<PanelComponent>();
     TextComponent& textcomp = scene->getComponent<TextComponent>(panelcomp.headertext);
 
-    return textcomp.font;
+    return textcomp.font[0];
 }
 
 void Panel::setTitleFontSize(unsigned int fontSize){

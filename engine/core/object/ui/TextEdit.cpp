@@ -172,7 +172,7 @@ std::string TextEdit::getTextFont() const{
     TextEditComponent& tecomp = getComponent<TextEditComponent>();
     TextComponent& textcomp = scene->getComponent<TextComponent>(tecomp.text);
 
-    return textcomp.font;
+    return textcomp.font[0];
 }
 
 void TextEdit::setFontSize(unsigned int fontSize){

@@ -9,16 +9,20 @@
 #include "math/Vector2.h"
 #include "util/CharExtent.h"
 
+#include <array>
+
 namespace doriax{
 
     class STBText;
 
+    //like a CSS font-family list: the main font first, then the fallbacks tried in order
+    //for what it misses. Empty slots are skipped, the built-in fonts close the chain
+    typedef std::array<std::string, MAX_TEXT_FONTS> FontArray;
+
     struct DORIAX_API TextComponent{
         bool loaded = false;
 
-        std::string font = "";
-        //";" separated, like a CSS font-family list. The built-in fonts close the chain
-        std::string fontFallbacks = "";
+        FontArray font;
         std::string text = "";
         unsigned int fontSize = 20;
         bool multiline = true;

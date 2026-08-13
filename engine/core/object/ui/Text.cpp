@@ -4,6 +4,7 @@
 
 #include "Text.h"
 
+#include "Log.h"
 #include "util/Color.h"
 #include "util/STBText.h"
 #include "subsystem/RenderSystem.h"
@@ -114,10 +115,19 @@ std::string Text::getText() const{
 }
 
 void Text::setFont(const std::string &font){
+    setFont(0, font);
+}
+
+void Text::setFont(unsigned int index, const std::string &font){
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    if (textcomp.font != font){
-        textcomp.font = font;
+    if (index >= textcomp.font.size()){
+        Log::error("Cannot use invalid font index: %u", index);
+        return;
+    }
+
+    if (textcomp.font[index] != font){
+        textcomp.font[index] = font;
 
         textcomp.needReloadAtlas = true;
         textcomp.needUpdateText = true;
@@ -125,26 +135,18 @@ void Text::setFont(const std::string &font){
 }
 
 std::string Text::getFont() const{
-    TextComponent& textcomp = getComponent<TextComponent>();
-
-    return textcomp.font;
+    return getFont(0);
 }
 
-void Text::setFontFallbacks(const std::string& fontFallbacks){
+std::string Text::getFont(unsigned int index) const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    if (textcomp.fontFallbacks != fontFallbacks){
-        textcomp.fontFallbacks = fontFallbacks;
-
-        textcomp.needReloadAtlas = true;
-        textcomp.needUpdateText = true;
+    if (index >= textcomp.font.size()){
+        Log::error("Cannot use invalid font index: %u", index);
+        return "";
     }
-}
 
-std::string Text::getFontFallbacks() const{
-    TextComponent& textcomp = getComponent<TextComponent>();
-
-    return textcomp.fontFallbacks;
+    return textcomp.font[index];
 }
 
 

@@ -106,7 +106,7 @@ std::string Button::getLabelFont() const{
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     TextComponent& textcomp = scene->getComponent<TextComponent>(btcomp.label);
 
-    return textcomp.font;
+    return textcomp.font[0];
 }
 
 void Button::setLabelFontSize(unsigned int fontSize){

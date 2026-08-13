@@ -196,13 +196,15 @@ bool UISystem::createImagePatches(ImageComponent& img, UIComponent& ui, UILayout
 }
 
 std::string UISystem::getFontId(const TextComponent& text) const{
-    std::string fontId = text.font;
-    if (text.font.empty())
+    std::string fontId = text.font[0];
+    if (fontId.empty())
         fontId = "font";
 
     //two texts only share an atlas when they fall back the same way
-    if (!text.fontFallbacks.empty())
-        fontId += std::string(";") + text.fontFallbacks;
+    for (size_t i = 1; i < text.font.size(); i++){
+        if (!text.font[i].empty())
+            fontId += std::string(";") + text.font[i];
+    }
 
     return fontId + std::string("|") + std::to_string(text.fontSize);
 }
@@ -238,9 +240,15 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, UILayoutCompo
 
     text.stbtext = FontPool::get(fontId);
     if (!text.stbtext){
-        text.stbtext = FontPool::get(fontId, text.font, StringUtils::split(text.fontFallbacks, ';'), text.fontSize);
+        std::vector<std::string> fallbacks;
+        for (size_t i = 1; i < text.font.size(); i++){
+            if (!text.font[i].empty())
+                fallbacks.push_back(text.font[i]);
+        }
+
+        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, text.fontSize);
         if (!text.stbtext) {
-            Log::error("Cannot load font atlas from: %s", text.font.c_str());
+            Log::error("Cannot load font atlas from: %s", text.font[0].c_str());
             return false;
         }
     }

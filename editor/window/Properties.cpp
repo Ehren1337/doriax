@@ -760,6 +760,8 @@ std::string editor::Properties::formatPropertyLabelValue(const PropertyData& pro
             return std::to_string(*static_cast<Entity*>(prop.ref));
         case PropertyType::String:
             return *static_cast<std::string*>(prop.ref);
+        case PropertyType::Font:
+            return static_cast<FontArray*>(prop.ref)->front();
         case PropertyType::Ease: {
             EaseType type = static_cast<Ease*>(prop.ref)->getType();
             for (const auto& entry : entriesEaseType) {
@@ -993,7 +995,7 @@ void editor::Properties::drawImageWithBorderAndRounding(Texture* texture, const 
 }
 
 
-void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType){
+void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string id, size_t slot, SceneProject* sceneProject, std::vector<Entity> entities, ComponentType componentType){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
         return;
@@ -1002,6 +1004,15 @@ void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string
     if (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) {
         return;
     }
+
+    const std::string slotId = id + "#" + std::to_string(slot);
+
+    auto markTextDirty = [sceneProject, componentType](Entity entity){
+        if (componentType == ComponentType::TextComponent){
+            sceneProject->scene->getComponent<TextComponent>(entity).needReloadAtlas = true;
+            sceneProject->scene->getComponent<TextComponent>(entity).needUpdateText = true;
+        }
+    };
 
     if (ImGui::BeginDragDropTarget()){
 
@@ -1014,32 +1025,32 @@ void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string
                 bool isFont = Util::isFontFile(droppedRelativePath);
 
                 if (isFont) {
-                    if (!hasFontDrag.count(id)){
-                        hasFontDrag[id] = true;
+                    if (!hasFontDrag.count(slotId)){
+                        hasFontDrag[slotId] = true;
                         for (Entity& entity : entities){
-                            std::string* valueRef = Catalog::getPropertyRef<std::string>(sceneProject->scene, entity, cpType, id);
-                            originalFont[id][entity] = *valueRef;
-                            if (*valueRef != droppedRelativePath){
-                                *valueRef = droppedRelativePath;
-                                if (componentType == ComponentType::TextComponent){
-                                    sceneProject->scene->getComponent<TextComponent>(entity).needReloadAtlas = true;
-                                    sceneProject->scene->getComponent<TextComponent>(entity).needUpdateText = true;
-                                }
+                            FontArray* valueRef = Catalog::getPropertyRef<FontArray>(sceneProject->scene, entity, cpType, id);
+                            if (!valueRef)
+                                continue;
+                            originalFont[slotId][entity] = *valueRef;
+                            if ((*valueRef)[slot] != droppedRelativePath){
+                                (*valueRef)[slot] = droppedRelativePath;
+                                markTextDirty(entity);
                             }
                         }
                     }
                     if (payload->IsDelivery()){
                         for (Entity& entity : entities){
-                            std::string* valueRef = Catalog::getPropertyRef<std::string>(sceneProject->scene, entity, cpType, id);
-                            *valueRef = originalFont[id][entity];
+                            FontArray* valueRef = Catalog::getPropertyRef<FontArray>(sceneProject->scene, entity, cpType, id);
+                            if (!valueRef)
+                                continue;
+                            *valueRef = originalFont[slotId][entity];
                             if (!insideAssets){
-                                if (componentType == ComponentType::TextComponent){
-                                    sceneProject->scene->getComponent<TextComponent>(entity).needReloadAtlas = true;
-                                    sceneProject->scene->getComponent<TextComponent>(entity).needUpdateText = true;
-                                }
+                                markTextDirty(entity);
                                 continue;
                             }
-                            cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, droppedRelativePath);
+                            FontArray newValue = originalFont[slotId][entity];
+                            newValue[slot] = droppedRelativePath;
+                            cmd = new PropertyCmd<FontArray>(project, sceneProject->id, entity, cpType, id, newValue);
                             CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
                                 finishProperty = true;
@@ -1051,30 +1062,193 @@ void editor::Properties::dragDropResourcesFont(ComponentType cpType, std::string
                         }
 
                         ImGui::SetWindowFocus(Properties::WINDOW_NAME);
-                        hasFontDrag.erase(id);
-                        originalFont.erase(id);
+                        hasFontDrag.erase(slotId);
+                        originalFont.erase(slotId);
                     }
                 }
             }
         }
         ImGui::EndDragDropTarget();
     }else{
-        if (hasFontDrag.count(id) && hasFontDrag[id]){
+        if (hasFontDrag.count(slotId) && hasFontDrag[slotId]){
             for (Entity& entity : entities){
-                std::string* valueRef = Catalog::getPropertyRef<std::string>(sceneProject->scene, entity, cpType, id);
-                if (*valueRef != originalFont[id][entity]){
-                    *valueRef = originalFont[id][entity];
-                    if (componentType == ComponentType::TextComponent){
-                        sceneProject->scene->getComponent<TextComponent>(entity).needReloadAtlas = true;
-                        sceneProject->scene->getComponent<TextComponent>(entity).needUpdateText = true;
-                    }
+                FontArray* valueRef = Catalog::getPropertyRef<FontArray>(sceneProject->scene, entity, cpType, id);
+                if (!valueRef)
+                    continue;
+                if (*valueRef != originalFont[slotId][entity]){
+                    *valueRef = originalFont[slotId][entity];
+                    markTextDirty(entity);
                 }
             }
 
-            hasFontDrag.erase(id);
-            originalFont.erase(id);
+            hasFontDrag.erase(slotId);
+            originalFont.erase(slotId);
         }
     }
+}
+
+// The Catalog property is the whole array, so a slot edit commits a modified copy of it
+void editor::Properties::setFontSlot(ComponentType cpType, const std::string& id, size_t slot, const std::string& path, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
+    for (Entity& entity : entities){
+        FontArray* valueRef = Catalog::getPropertyRef<FontArray>(sceneProject->scene, entity, cpType, id);
+        if (!valueRef || (*valueRef)[slot] == path)
+            continue;
+
+        FontArray newValue = *valueRef;
+        newValue[slot] = path;
+
+        cmd = new PropertyCmd<FontArray>(project, sceneProject->id, entity, cpType, id, newValue, onValueChanged);
+        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+        finishProperty = true;
+    }
+}
+
+void editor::Properties::drawFontSlot(ComponentType cpType, const std::string& id, size_t slot, bool dif, const FontArray& value, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged, float width, const std::function<void(const ImVec2&)>& extraButton){
+    ImGui::BeginGroup();
+    ImGui::PushID(("font_" + id + "_" + std::to_string(slot)).c_str());
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
+
+    // reserve room for the action buttons, with one gap between each item and a trailing one
+    ImVec2 fontButtonSize = ImGui::CalcItemSize(ImVec2(0, 0), ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
+    int fontButtonCount = extraButton ? 3 : 2;
+    float fontButtonsReserve = fontButtonSize.x * fontButtonCount + ImGui::GetStyle().ItemSpacing.x * (fontButtonCount + 1);
+
+    // a fill width cannot be measured by an auto sized window, those pass an explicit one
+    float frameWidth = (width > 0.0f) ? std::max(1.0f, width - fontButtonsReserve) : -fontButtonsReserve;
+
+    ImGui::BeginChild("fontframe", ImVec2(frameWidth, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2),
+        false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+    std::string fontName = value[slot];
+    std::error_code ec;
+    if (std::filesystem::exists(fontName, ec)) {
+        fontName = std::filesystem::path(fontName).filename().string();
+    }
+    if (fontName.empty()) {
+        fontName = (slot == 0) ? "< Default >" : "< Not set >";
+    }
+
+    float textWidth = ImGui::CalcTextSize(fontName.c_str()).x;
+    float availWidth = ImGui::GetContentRegionAvail().x;
+    ImGui::SetCursorPosX(availWidth - textWidth - 2);
+    ImGui::SetCursorPosY(ImGui::GetStyle().FramePadding.y);
+    if (dif)
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::Text("%s", fontName.c_str());
+    if (dif)
+        ImGui::PopStyleColor();
+
+    ImGui::EndChild();
+    if (!value[slot].empty()){
+        ImGui::SetItemTooltip("%s", value[slot].c_str());
+    }
+
+    ImGui::PopStyleColor();
+
+    ImGui::SameLine();
+
+    // no horizontal frame padding so the icons fit centered in the square buttons
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, ImGui::GetStyle().FramePadding.y));
+
+    if (ImGui::Button(ICON_FA_FOLDER_OPEN, fontButtonSize)) {
+        std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_FONT);
+        if (!path.empty()) {
+            std::filesystem::path assetsPath = project->getAssetsPath();
+            std::filesystem::path filePath = std::filesystem::absolute(path);
+
+            // References are stored relative to the assets root
+            auto relative = std::filesystem::relative(filePath, assetsPath, ec);
+            if (ec || relative.string().find("..") != std::string::npos) {
+                ImGui::OpenPopup("File Import Error");
+            }else{
+                setFontSlot(cpType, id, slot, relative.string(), sceneProject, entities, onValueChanged);
+            }
+        }
+    }
+    ImGui::SetItemTooltip("Font file");
+
+    ImGui::SameLine();
+
+    ImGui::BeginDisabled(value[slot].empty());
+    if (ImGui::Button(ICON_FA_XMARK, fontButtonSize)) {
+        setFontSlot(cpType, id, slot, "", sceneProject, entities, onValueChanged);
+    }
+    ImGui::EndDisabled();
+    if (!value[slot].empty()){
+        ImGui::SetItemTooltip(slot == 0 ? "Use the built-in font" : "Clear this font");
+    }
+
+    if (extraButton){
+        ImGui::SameLine();
+        extraButton(fontButtonSize);
+    }
+
+    ImGui::PopStyleVar();
+
+    // Error popup modal
+    if (ImGui::BeginPopupModal("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Selected file must be within the assets directory.");
+        ImGui::Separator();
+
+        float buttonWidth = 120;
+        float windowWidth = ImGui::GetWindowSize().x;
+        ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::PopID();
+    ImGui::EndGroup();
+
+    dragDropResourcesFont(cpType, id, slot, sceneProject, entities, cpType);
+}
+
+void editor::Properties::drawFontFallbacksPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
+    const float slotWidth = 16 * ImGui::GetFontSize();
+    const float labelWidth = getLabelSize("Fallback 1");
+
+    ImGui::SetNextWindowSizeConstraints(ImVec2(labelWidth + slotWidth + ImGui::GetStyle().WindowPadding.x * 2 + ImGui::GetStyle().CellPadding.x * 2, 0), ImVec2(FLT_MAX, FLT_MAX));
+    if (!ImGui::BeginPopup(popupId))
+        return;
+
+    // first selected entity is the representative state, like the texture settings popup
+    PropertyData fontProp = Catalog::getProperty(sceneProject->scene, entities.front(), cpType, id);
+    FontArray* current = static_cast<FontArray*>(fontProp.ref);
+    if (!current){
+        ImGui::EndPopup();
+        return;
+    }
+    const FontArray defaults = fontProp.def ? *static_cast<FontArray*>(fontProp.def) : FontArray();
+
+    ImGui::Text("Additional fonts");
+    ImGui::SameLine();
+    helpMarker("Used, in order, for the characters the main font does not have.");
+    ImGui::Separator();
+
+    beginTable(cpType, labelWidth, "fontfallbacks_" + id);
+
+    for (size_t slot = 1; slot < current->size(); slot++){
+        bool dif = false;
+        for (Entity& entity : entities){
+            FontArray* valueRef = Catalog::getPropertyRef<FontArray>(sceneProject->scene, entity, cpType, id);
+            if (valueRef && (*valueRef)[slot] != (*current)[slot])
+                dif = true;
+        }
+
+        std::string label = "Fallback " + std::to_string(slot);
+        if (propertyHeader(label, slotWidth, (*current)[slot] != defaults[slot], false)){
+            setFontSlot(cpType, id, slot, defaults[slot], sceneProject, entities, onValueChanged);
+        }
+
+        drawFontSlot(cpType, id, slot, dif, *current, sceneProject, entities, onValueChanged, slotWidth);
+    }
+
+    endTable();
+
+    ImGui::EndPopup();
 }
 
 
@@ -3321,14 +3495,14 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             ImGui::PopStyleColor();
 
     }else if (type == RowPropertyType::Font){
-        std::string* value = nullptr;
-        std::map<Entity, std::string> eValue;
+        FontArray* value = nullptr;
+        std::map<Entity, FontArray> eValue;
         bool dif = false;
-        std::string* defArr = nullptr;
+        FontArray* defArr = nullptr;
         for (Entity& entity : entities){
             PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, cpType, id);
-            defArr = static_cast<std::string*>(prop.def);
-            eValue[entity] = *static_cast<std::string*>(prop.ref);
+            defArr = static_cast<FontArray*>(prop.def);
+            eValue[entity] = *static_cast<FontArray*>(prop.ref);
             if (value){
                 if (*value != eValue[entity])
                     dif = true;
@@ -3336,7 +3510,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
             value = &eValue[entity];
         }
 
-        std::string newValue = *value;
+        FontArray newValue = *value;
 
         bool defChanged = false;
         if (defArr){
@@ -3344,111 +3518,41 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
         }
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
             for (Entity& entity : entities){
-                cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
+                cmd = new PropertyCmd<FontArray>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                 finishProperty = true;
             }
         }
 
-        ImGui::BeginGroup();
-        ImGui::PushID(("font_"+id).c_str());
-
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
-
-        // Use calculated width for the frame
-        ImGui::BeginChild("fontframe", ImVec2(- ImGui::CalcTextSize(ICON_FA_GEAR).x - ImGui::GetStyle().ItemSpacing.x * 2 - ImGui::GetStyle().FramePadding.x * 2, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2), 
-            false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-
-        std::string fontName = newValue;
-        std::error_code ec;
-        if (std::filesystem::exists(fontName, ec)) {
-            fontName = std::filesystem::path(fontName).filename().string();
-        }
-        if (fontName.empty()) {
-            fontName = "< Default >";
+        // the row edits the main font, the fallbacks are in the popup
+        bool hasFallbacks = false;
+        for (size_t slot = 1; slot < newValue.size(); slot++){
+            if (!newValue[slot].empty()){
+                hasFallbacks = true;
+                break;
+            }
         }
 
-        float textWidth = ImGui::CalcTextSize(fontName.c_str()).x;
-        float availWidth = ImGui::GetContentRegionAvail().x;
-        ImGui::SetCursorPosX(availWidth - textWidth - 2);
-        ImGui::SetCursorPosY(ImGui::GetStyle().FramePadding.y);
-        if (dif)
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        ImGui::Text("%s", fontName.c_str());
-        if (dif)
-            ImGui::PopStyleColor();
+        // OpenPopup only reaches BeginPopup from the same id scope, outside drawFontSlot
+        bool openFallbacks = false;
 
-        ImGui::EndChild();
-        if (!newValue.empty()){
-            ImGui::SetItemTooltip("%s", newValue.c_str());
-        }
-
-        dragDropResourcesFont(cpType, id, sceneProject, entities, cpType);
-
-        ImGui::PopStyleColor();
-
-        ImGui::SameLine();
-
-        if (ImGui::Button(ICON_FA_FOLDER_OPEN)) {
-            std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_FONT);
-            if (!path.empty()) {
-                std::filesystem::path assetsPath = project->getAssetsPath();
-                std::filesystem::path filePath = std::filesystem::absolute(path);
-
-                // References are stored relative to the assets root
-                std::error_code ec;
-                auto relative = std::filesystem::relative(filePath, assetsPath, ec);
-                if (ec || relative.string().find("..") != std::string::npos) {
-                    ImGui::OpenPopup("File Import Error");
-                }else{
-                    std::string finalPath = relative.string();
-                    for (Entity& entity : entities){
-                        cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, finalPath, settings.onValueChanged);
-                        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                        finishProperty = true;
-                    }
+        drawFontSlot(cpType, id, 0, dif, newValue, sceneProject, entities, settings.onValueChanged, -1.0f,
+            [&openFallbacks, hasFallbacks](const ImVec2& buttonSize){
+                if (hasFallbacks)
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
+                if (ImGui::Button(ICON_FA_LAYER_GROUP, buttonSize)) {
+                    openFallbacks = true;
                 }
-            }
+                if (hasFallbacks)
+                    ImGui::PopStyleColor();
+                ImGui::SetItemTooltip("Additional fonts, used for what the main font misses");
+            });
+
+        const std::string fallbacksPopup = "fontfallbackspopup_" + id;
+        if (openFallbacks){
+            ImGui::OpenPopup(fallbacksPopup.c_str());
         }
-
-        // Error popup modal
-        if (ImGui::BeginPopupModal("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Selected file must be within the assets directory.");
-            ImGui::Separator();
-
-            float buttonWidth = 120;
-            float windowWidth = ImGui::GetWindowSize().x;
-            ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-        }
-
-        ImGui::PopID();
-        ImGui::EndGroup();
-
-        if (ImGui::BeginDragDropTarget()){
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
-                std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
-                if (receivedStrings.size() > 0){
-                    if (payload->IsDelivery() && !project->isInsideAssetsPath(receivedStrings[0])){
-                        Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
-                    }else if (payload->IsDelivery()){
-                        const std::string relativeFontPath = project->normalizeToAssetsRelative(receivedStrings[0]).generic_string();
-
-                        for (Entity& entity : entities){
-                            cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, relativeFontPath, settings.onValueChanged);
-                            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                            finishProperty = true;
-                        }
-
-                        ImGui::SetWindowFocus(Properties::WINDOW_NAME);
-                    }
-                }
-            }
-            ImGui::EndDragDropTarget();
-        }
+        drawFontFallbacksPopup(fallbacksPopup.c_str(), cpType, id, sceneProject, entities, settings.onValueChanged);
 
     }else if (type == RowPropertyType::Texture){
         Texture* value = nullptr;

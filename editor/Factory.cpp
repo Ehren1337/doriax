@@ -657,6 +657,15 @@ std::string editor::Factory::formatPropertyValue(const PropertyData& property, c
             std::string* value = static_cast<std::string*>(property.ref);
             return formatString(*value);
         }
+        case PropertyType::Font: {
+            FontArray* value = static_cast<FontArray*>(property.ref);
+            std::string code = "FontArray{";
+            for (size_t i = 0; i < value->size(); i++) {
+                if (i > 0) code += ", ";
+                code += formatString((*value)[i]);
+            }
+            return code + "}";
+        }
         case PropertyType::Enum: {
             int* value = static_cast<int*>(property.ref);
             return formatInt(*value);
@@ -1070,7 +1079,10 @@ std::string editor::Factory::createTextComponent(int indentSpaces, EntityRegistr
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
     code << ind << "TextComponent text;\n";
-    code << ind << "text.font = " << formatString(text.font) << ";\n";
+    for (size_t i = 0; i < text.font.size(); i++){
+        if (!text.font[i].empty())
+            code << ind << "text.font[" << i << "] = " << formatString(text.font[i]) << ";\n";
+    }
     code << ind << "text.text = " << formatString(text.text) << ";\n";
     code << ind << "text.fontSize = " << formatUInt(text.fontSize) << ";\n";
     code << ind << "text.multiline = " << formatBool(text.multiline) << ";\n";

@@ -780,8 +780,13 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addProperty("fixedHeight", &Text::isFixedHeight, &Text::setFixedHeight)
         .addProperty("maxTextSize", &Text::getMaxTextSize, &Text::setMaxTextSize)
         .addProperty("text", &Text::getText, &Text::setText)
-        .addProperty("font", &Text::getFont, &Text::setFont)
-        .addProperty("fontFallbacks", &Text::getFontFallbacks, &Text::setFontFallbacks)
+        .addProperty("font", luabridge::constOverload<>(&Text::getFont), luabridge::overload<const std::string&>(&Text::setFont))
+        .addFunction("setFont",
+            luabridge::overload<const std::string&>(&Text::setFont),
+            luabridge::overload<unsigned int, const std::string&>(&Text::setFont))
+        .addFunction("getFont",
+            luabridge::constOverload<>(&Text::getFont),
+            luabridge::constOverload<unsigned int>(&Text::getFont))
         .addProperty("fontSize", &Text::getFontSize, &Text::setFontSize)
         .addProperty("multiline", &Text::getMultiline, &Text::setMultiline)
         .addProperty("color", &Text::getColor, (void(Text::*)(Vector4))&Text::setColor)

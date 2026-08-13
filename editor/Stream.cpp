@@ -7,6 +7,7 @@
 #include "pool/ShaderPool.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
+#include "util/StringUtils.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
@@ -4526,8 +4527,16 @@ UIContainerComponent editor::Stream::decodeUIContainerComponent(const YAML::Node
 YAML::Node editor::Stream::encodeTextComponent(const TextComponent& text) {
     YAML::Node node;
 
-    node["font"] = text.font;
-    node["fontFallbacks"] = text.fontFallbacks;
+    // cut after the last font in use, but always written so a merging decode sees a cleared chain
+    size_t numFonts = 0;
+    for (size_t i = 0; i < text.font.size(); i++){
+        if (!text.font[i].empty()) numFonts = i + 1;
+    }
+    node["font"] = YAML::Node(YAML::NodeType::Sequence);
+    node["font"].SetStyle(YAML::EmitterStyle::Flow);
+    for (size_t i = 0; i < numFonts; i++){
+        node["font"].push_back(text.font[i]);
+    }
     node["text"] = text.text;
     node["fontSize"] = text.fontSize;
     node["multiline"] = text.multiline;
@@ -4547,8 +4556,17 @@ TextComponent editor::Stream::decodeTextComponent(const YAML::Node& node, const 
         text = *oldText;
     }
 
-    if (node["font"]) text.font = node["font"].as<std::string>();
-    if (node["fontFallbacks"]) text.fontFallbacks = node["fontFallbacks"].as<std::string>();
+    if (node["font"]){
+        text.font = FontArray();
+        if (node["font"].IsSequence()){
+            for (size_t i = 0; i < node["font"].size() && i < text.font.size(); i++){
+                text.font[i] = node["font"][i].as<std::string>();
+            }
+        }else{
+            // before the array: a single font plus a ";" separated fontFallbacks
+            text.font[0] = node["font"].as<std::string>();
+        }
+    }
     if (node["text"]) text.text = node["text"].as<std::string>();
     if (node["fontSize"]) text.fontSize = node["fontSize"].as<unsigned int>();
     if (node["multiline"]) text.multiline = node["multiline"].as<bool>();
