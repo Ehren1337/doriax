@@ -1,4 +1,5 @@
 #include "SceneWindow.h"
+#include "util/BidiText.h"
 
 #include "Engine.h"
 #include "Input.h"
@@ -229,7 +230,8 @@ std::string editor::SceneWindow::getWindowTitle(const SceneProject& sceneProject
     }else if (sceneProject.sceneType == SceneType::SCENE_UI){
         icon = ICON_FA_WINDOW_RESTORE + std::string("  ");
     }
-    return icon + sceneProject.name + ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
+    // everything before "###" is drawn, the id after it keeps docking state stable
+    return icon + BidiText::toVisual(sceneProject.name) + ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
 }
 
 Vector3 editor::SceneWindow::getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity) {

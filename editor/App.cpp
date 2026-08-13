@@ -1186,6 +1186,11 @@ void editor::App::setup() {
     ImFontConfig configArabic;
     configArabic.MergeMode = true;
     configArabic.FontDataOwnedByAtlas = false;
+    //same rasterizer settings as the font it merges into, or Arabic comes out thinner
+    //and fainter than the Latin beside it
+    configArabic.OversampleH = 2;
+    configArabic.OversampleV = 2;
+    configArabic.RasterizerMultiply = 1.5f;
     io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configArabic);
 
     ImFontConfig config3;
@@ -1199,6 +1204,8 @@ void editor::App::setup() {
     ImFontConfig configCodeArabic;
     configCodeArabic.MergeMode = true;
     configCodeArabic.FontDataOwnedByAtlas = false;
+    configCodeArabic.OversampleH = 2;
+    configCodeArabic.OversampleV = 2;
     io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configCodeArabic);
 
     io.FontDefault = font1;
