@@ -157,6 +157,7 @@ bool AppSettings::loadSettings() {
             if (aiNode["model"]) aiSettings.model = aiNode["model"].as<std::string>();
             if (aiNode["custom_endpoint"]) aiSettings.customEndpoint = aiNode["custom_endpoint"].as<std::string>();
             if (aiNode["approval_mode"]) aiSettings.approvalMode = ai::approvalModeFromString(aiNode["approval_mode"].as<std::string>());
+            if (aiNode["request_timeout_seconds"]) aiSettings.requestTimeoutSeconds = aiNode["request_timeout_seconds"].as<int>();
             if (aiNode["max_output_tokens"]) aiSettings.maxOutputTokens = aiNode["max_output_tokens"].as<int>();
             if (aiNode["max_tool_rounds"]) aiSettings.maxToolRounds = aiNode["max_tool_rounds"].as<int>();
             if (aiSettings.model.empty()) {
@@ -248,6 +249,7 @@ bool AppSettings::saveSettings() {
         aiNode["model"] = aiSettings.model;
         aiNode["custom_endpoint"] = aiSettings.customEndpoint;
         aiNode["approval_mode"] = ai::toString(aiSettings.approvalMode);
+        aiNode["request_timeout_seconds"] = aiSettings.requestTimeoutSeconds;
         aiNode["max_output_tokens"] = aiSettings.maxOutputTokens;
         aiNode["max_tool_rounds"] = aiSettings.maxToolRounds;
         settingsData["ai_assistant"] = aiNode;

@@ -344,6 +344,7 @@ AiService::~AiService() {
 void AiService::setSettings(const Settings& newSettings) {
     std::lock_guard<std::mutex> lock(mutex);
     settings = newSettings;
+    settings.requestTimeoutSeconds = std::clamp(settings.requestTimeoutSeconds, 1, 3600);
     settings.maxOutputTokens = std::clamp(settings.maxOutputTokens, 256, 16000);
     settings.maxToolRounds = std::clamp(settings.maxToolRounds, 1, 100);
     if (settings.model.empty()) {
@@ -862,6 +863,7 @@ void AiService::runProviderRequest(ProviderRequest request, int retryAttempt) {
     try {
         std::unique_ptr<Provider> provider = createProvider(request.settings.provider);
         HttpRequest httpRequest = provider->buildRequest(request);
+        httpRequest.timeoutSeconds = request.settings.requestTimeoutSeconds;
         HttpResponse httpResponse = httpClient.send(httpRequest, &cancelRequested);
 
         if (cancelRequested.load()) {

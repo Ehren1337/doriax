@@ -10,7 +10,7 @@ namespace ai { class AiService; }
 
 // Modal dialog that manages API keys for every provider (add one, switch
 // provider, add another - like VS Code) plus the OpenAI-compatible endpoint and
-// the output budget. Model and approval controls live in the chat composer.
+// request limits. Model and approval controls live in the chat composer.
 class AiSettingsWindow {
 private:
     static constexpr int kProviderCount = 5;
@@ -21,6 +21,7 @@ private:
     std::array<std::array<char, 512>, kProviderCount> m_keyBuffers{};
     std::array<bool, kProviderCount> m_keySet{};
     std::array<char, 512> m_endpointBuffer{};
+    int m_requestTimeoutSeconds = 90;
     int m_maxOutputTokens = 8192;
     int m_maxToolRounds = 24;
 

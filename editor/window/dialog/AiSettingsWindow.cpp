@@ -32,6 +32,7 @@ void AiSettingsWindow::open(ai::AiService* service) {
     m_service = service;
 
     ai::Settings settings = AppSettings::getAiSettings();
+    m_requestTimeoutSeconds = settings.requestTimeoutSeconds;
     m_maxOutputTokens = settings.maxOutputTokens;
     m_maxToolRounds = settings.maxToolRounds;
     std::snprintf(m_endpointBuffer.data(), m_endpointBuffer.size(), "%s", settings.customEndpoint.c_str());
@@ -54,6 +55,7 @@ void AiSettingsWindow::refreshKeyState() {
 void AiSettingsWindow::apply() {
     ai::Settings settings = AppSettings::getAiSettings();
     settings.customEndpoint = m_endpointBuffer.data();
+    settings.requestTimeoutSeconds = std::clamp(m_requestTimeoutSeconds, 1, 3600);
     settings.maxOutputTokens = std::clamp(m_maxOutputTokens, 256, 16000);
     settings.maxToolRounds = std::clamp(m_maxToolRounds, 1, 100);
     AppSettings::setAiSettings(settings);
@@ -180,6 +182,23 @@ void AiSettingsWindow::drawSettings() {
     ImGui::SetNextItemWidth(-1);
     ImGui::InputTextWithHint("##Endpoint", "https://openrouter.ai/api/v1/chat/completions",
                              m_endpointBuffer.data(), m_endpointBuffer.size());
+
+    // Per-request timeout
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Request Timeout (s)");
+    ImGui::SetItemTooltip(
+        "Maximum time to wait for each AI model response. Raise this for slow local models.");
+    if (m_requestTimeoutSeconds != defaults.requestTimeoutSeconds &&
+        resetToDefaultButton("reset_requesttimeout",
+                             "Reset to default (" + std::to_string(defaults.requestTimeoutSeconds) + " seconds)")) {
+        m_requestTimeoutSeconds = defaults.requestTimeoutSeconds;
+    }
+    ImGui::TableNextColumn();
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputInt("##RequestTimeout", &m_requestTimeoutSeconds, 30, 60);
+    m_requestTimeoutSeconds = std::clamp(m_requestTimeoutSeconds, 1, 3600);
 
     // Max output tokens
     ImGui::TableNextRow();
