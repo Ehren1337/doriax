@@ -2441,6 +2441,8 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
         maxValues.maxSubmeshes = std::max(maxValues.maxSubmeshes, mesh.numSubmeshes);
         maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, mesh.numExternalBuffers);
+        maxValues.maxBones = std::max(maxValues.maxBones,
+            static_cast<unsigned int>(mesh.bonesMatrix.size()));
     }
 
     auto sprites = sceneProject->scene->getComponentArray<SpriteComponent>();
@@ -4076,6 +4078,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     }
 
     SceneMaxValues maxValues;
+    maxValues.maxBones = sceneProject->maxValues.maxBones;
     calculateSceneMaxValues(sceneProject, maxValues);
     sceneProject->maxValues = maxValues;
 

@@ -2160,9 +2160,8 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
         if (boneIdBuffer && boneWeightBuffer){
             influences = std::min(boneIdAttr.getElements(), boneWeightAttr.getElements());
         }
-        if (influences > 0 && mesh.bonesAABB.empty()){
-            mesh.bonesAABB.resize(MAX_BONES);
-        }
+        if (influences > 0 && mesh.bonesAABB.empty())
+            mesh.bonesAABB.resize(mesh.bonesMatrix.size());
 
         int verticesize = int(vertexAttr.getCount());
         for (int v = 0; v < verticesize; v++){
@@ -2177,7 +2176,7 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
                 if (!readAttributeElement(boneIdBuffer, boneIdAttr, v, e, boneId)) continue;
 
                 int bone = (int)boneId;
-                if (bone >= 0 && bone < MAX_BONES){
+                if (bone >= 0 && static_cast<size_t>(bone) < mesh.bonesAABB.size()){
                     mesh.bonesAABB[bone].merge(position);
                 }
             }
@@ -3406,9 +3405,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     mesh.numExternalBuffers = 0;
     mesh.normAdjustJoint = 1.0f;
     mesh.normAdjustWeight = 1.0f;
-    for (int b = 0; b < MAX_BONES; b++) {
-        mesh.bonesMatrix[b].identity();
-    }
+    mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+    mesh.needUpdateBones = false;
 
     bool res = false;
 
@@ -3696,6 +3694,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
 
         MeshComponent& mesh = scene->getComponent<MeshComponent>(meshEntity); // shadows root mesh
+        const int nodeSkinIndex = model.gltfModel->nodes[nodeIdx].skin;
+        const tinygltf::Skin* nodeSkin = isValidGLTFIndex(nodeSkinIndex, model.gltfModel->skins)
+            ? &model.gltfModel->skins[nodeSkinIndex] : nullptr;
 
         // Per-node fresh setup for the child path only. The flatten path keeps the root mesh's state
         // set once before the loop so all nodes accumulate (a continuous submeshIndex, shared buffers).
@@ -3706,9 +3707,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.numExternalBuffers = 0;
             mesh.normAdjustJoint = 1.0f;
             mesh.normAdjustWeight = 1.0f;
-            for (int b = 0; b < MAX_BONES; b++) {
-                mesh.bonesMatrix[b].identity();
-            }
+            mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+            mesh.needUpdateBones = false;
 
             mesh.numSubmeshes = static_cast<unsigned int>(gltfmesh.primitives.size());
             if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)) {
@@ -3733,6 +3733,19 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
         }
 
+        if (!bakingFlatten && nodeSkin && !nodeSkin->joints.empty()){
+            const int lastBone = static_cast<int>(nodeSkin->joints.size()) - 1;
+            if (!mesh.bonesMatrix.validIndex(lastBone)){
+                Log::error("Model %s has more bones than the maximum allowed (%zu)",
+                    filename.c_str(), mesh.bonesMatrix.size());
+                if (asyncLoad) {
+                    ResourceProgress::failBuild(buildId);
+                }
+                return false;
+            }
+            mesh.bonesMatrix[lastBone].identity();
+        }
+
         for (size_t p = 0; p < gltfmesh.primitives.size(); p++) {
             if (submeshIndex >= mesh.numSubmeshes) {
                 break;
@@ -3747,6 +3760,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
 
             mesh.submeshes[i].attributes.clear();
+            mesh.submeshes[i].normAdjustJoint = 1.0f;
+            mesh.submeshes[i].normAdjustWeight = 1.0f;
+            mesh.submeshes[i].hasSkinningNormalization = false;
             mesh.submeshes[i].primitiveType = PrimitiveType::TRIANGLES;
             applyDefaultGLTFMaterial(mesh.submeshes[i].material);
 
@@ -3983,28 +3999,34 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 if (attrib.first == "JOINTS_0") {
                     attType = AttributeType::BONEIDS;
                     foundAttrs = true;
+                    mesh.submeshes[i].hasSkinningNormalization = true;
                     // Sokol has no non-normalized USHORT4 format — USHORT4N is always used,
                     // so the shader must expand the [0,1] value back to an integer index.
                     if (dataType == AttributeDataType::UNSIGNED_SHORT) {
                         mesh.normAdjustJoint = 65535.0;
+                        mesh.submeshes[i].normAdjustJoint = 65535.0f;
                     } else if (dataType == AttributeDataType::UNSIGNED_BYTE) {
                         // `a_boneIds` is declared as vec4 in the shader, so use the normalized
                         // float path for byte joints as well and expand back in the shader.
                         mesh.normAdjustJoint = 255.0;
+                        mesh.submeshes[i].normAdjustJoint = 255.0f;
                         attributeNormalized = true;
                     }
                 }
                 if (attrib.first == "WEIGHTS_0") {
                     attType = AttributeType::BONEWEIGHTS;
                     foundAttrs = true;
+                    mesh.submeshes[i].hasSkinningNormalization = true;
                     if (accessor.normalized) {
-                        if (dataType == AttributeDataType::BYTE)               mesh.normAdjustWeight = 127.0;
-                        else if (dataType == AttributeDataType::UNSIGNED_BYTE) mesh.normAdjustWeight = 255.0;
-                        else if (dataType == AttributeDataType::SHORT)         mesh.normAdjustWeight = 32767.0;
+                        if (dataType == AttributeDataType::BYTE)               mesh.submeshes[i].normAdjustWeight = 127.0f;
+                        else if (dataType == AttributeDataType::UNSIGNED_BYTE) mesh.submeshes[i].normAdjustWeight = 255.0f;
+                        else if (dataType == AttributeDataType::SHORT)         mesh.submeshes[i].normAdjustWeight = 32767.0f;
+                        mesh.normAdjustWeight = mesh.submeshes[i].normAdjustWeight;
                     }
                     // Sokol always normalizes unsigned short
                     if (dataType == AttributeDataType::UNSIGNED_SHORT) {
                         mesh.normAdjustWeight = 65535.0;
+                        mesh.submeshes[i].normAdjustWeight = 65535.0f;
                     }
                 }
 
@@ -4199,13 +4221,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 model.skeleton = generateSketetalStructure(entity, model, skeletonRoot, skinIndex);
 
                 if (model.skeleton != NULL_ENTITY) {
-                    if (skin.joints.size() > MAX_BONES){
-                        Log::error("Cannot create skinning bigger than %i", MAX_BONES);
-                        if (asyncLoad) {
-                            ResourceProgress::failBuild(buildId);
-                        }
-                        return false;
-                    }
                     scene->addEntityChild(entity, model.skeleton, false);
                 }
             }

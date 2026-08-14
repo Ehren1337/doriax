@@ -90,6 +90,8 @@ sg_image_sample_type SokolShader::textureSamplerToSokolType(TextureSamplerType t
         return SG_IMAGESAMPLETYPE_SINT;
     }else if (type == TextureSamplerType::DEPTH){
         return SG_IMAGESAMPLETYPE_DEPTH;
+    }else if (type == TextureSamplerType::UNFILTERABLE_FLOAT){
+        return SG_IMAGESAMPLETYPE_UNFILTERABLE_FLOAT;
     }
 
     return _SG_IMAGESAMPLETYPE_DEFAULT;
@@ -114,6 +116,8 @@ sg_sampler_type SokolShader::samplerToSokolType(SamplerType type){
         return SG_SAMPLERTYPE_COMPARISON;
     }else if (type == SamplerType::FILTERING){
         return SG_SAMPLERTYPE_FILTERING;
+    }else if (type == SamplerType::NONFILTERING){
+        return SG_SAMPLERTYPE_NONFILTERING;
     }
 
     return _SG_SAMPLERTYPE_DEFAULT;

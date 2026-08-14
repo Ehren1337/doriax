@@ -336,6 +336,43 @@ bool SokolTexture::createTexture(
     return false;
 }
 
+bool SokolTexture::createDynamicTexture(const std::string& label, int width, int height){
+    sg_image_desc imageDesc = {};
+    imageDesc.usage.stream_update = true;
+    imageDesc.width = width;
+    imageDesc.height = height;
+    imageDesc.pixel_format = SG_PIXELFORMAT_RGBA32F;
+    imageDesc.label = label.c_str();
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_NEAREST;
+    samplerDesc.mag_filter = SG_FILTER_NEAREST;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(imageDesc);
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        image = sg_make_image(imageDesc);
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label.c_str());
+    return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
+void SokolTexture::updateTexture(const void* data, size_t size){
+    if (image.id == SG_INVALID_ID || !data || size == 0)
+        return;
+
+    sg_image_data imageData = {};
+    imageData.mip_levels[0] = {data, size};
+    if (Engine::isAsyncThread())
+        SokolCmdQueue::add_command_update_image(image, imageData);
+    else
+        sg_update_image(image, imageData);
+}
+
 bool SokolTexture::createTextureCubeWithMips(
             const std::string& label, int width,
             ColorFormat colorFormat, int numMipmaps, void* data[], size_t size[],

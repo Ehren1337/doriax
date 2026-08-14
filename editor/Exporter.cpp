@@ -1369,6 +1369,7 @@ std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
         agg.maxTilemapTiles     = std::max(agg.maxTilemapTiles, sceneProject.maxValues.maxTilemapTiles);
         agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
         agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
+        agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
     }
 
     // Floor each capacity at the engine default declared in core/Engine.h: growing past the
@@ -1390,6 +1391,7 @@ std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
     out += indent + define("MAX_TILEMAP_TILES", agg.maxTilemapTiles, MAX_TILEMAP_TILES);
     out += indent + define("MAX_SPRITE_FRAMES", agg.maxSpriteFrames, MAX_SPRITE_FRAMES);
     out += indent + define("MAX_EXTERNAL_BUFFERS", agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS);
+    out += indent + define("MAX_BONES", agg.maxBones, MAX_BONES);
     return out;
 }
 

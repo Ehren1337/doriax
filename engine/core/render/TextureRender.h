@@ -40,6 +40,9 @@ namespace doriax {
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
                 ColorFormat colorFormat = ColorFormat::RGBA);
 
+        bool createDynamicTexture(const std::string& label, int width, int height);
+        void updateTexture(const void* data, size_t size);
+
         void destroyTexture();
 
         uint32_t getGLHandler() const;

@@ -241,6 +241,8 @@ int ShaderData::getStorageBufferIndex(StorageBufferType type){
     
     if (type == StorageBufferType::VS_VERTEX){
         ustr = "sbo_vertex";
+    }else if (type == StorageBufferType::VS_SKINNING){
+        ustr = "sbo_skinning";
     }
 
     if (ustr.empty()){
@@ -288,6 +290,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_uiTexture";
     }else if (type == TextureShaderType::POINTS){
         texstr = "u_pointsTexture";
+    }else if (type == TextureShaderType::BONES){
+        texstr = "u_bonesTexture";
     }else if (type == TextureShaderType::HEIGHTMAP){
         texstr = "u_heightMap";
     }else if (type == TextureShaderType::BLENDMAP){

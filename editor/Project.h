@@ -64,6 +64,7 @@ namespace doriax::editor{
         unsigned int maxTilemapTiles = 0;
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
+        unsigned int maxBones = 0;
     };
 
     struct ChildSceneRef {

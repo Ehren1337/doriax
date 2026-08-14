@@ -164,6 +164,15 @@ void clearCustomSourceCache() {
     customSourceCache.clear();
 }
 
+bool hasAnnotation(const shadercompiler::args_t& args, const char* tag,
+                   const std::string& name, const char* value) {
+    const std::string annotation = std::string("@") + tag + " " + name + " " + value;
+    for (const auto& file : args.fileBuffers)
+        if (file.second.find(annotation) != std::string::npos)
+            return true;
+    return false;
+}
+
 } // namespace
 
 
@@ -387,7 +396,8 @@ ShaderData editor::ShaderBuilder::convertToShaderData(
             st.binding = tex.binding;
             st.slot = texCount++;
             st.type = mapTextureType(tex.type);
-            st.samplerType = mapSamplerType(tex.sampler_type);
+            st.samplerType = hasAnnotation(args, "image_sample_type", tex.name, "unfilterable_float")
+                ? TextureSamplerType::UNFILTERABLE_FLOAT : mapSamplerType(tex.sampler_type);
             stage.textures.push_back(st);
         }
 
@@ -398,7 +408,8 @@ ShaderData editor::ShaderBuilder::convertToShaderData(
             ss.set = s.set;
             ss.binding = s.binding;
             ss.slot = samplerCount++;
-            ss.type = mapSamplerFilterType(s.type);
+            ss.type = hasAnnotation(args, "sampler_type", s.name, "nonfiltering")
+                ? SamplerType::NONFILTERING : mapSamplerFilterType(s.type);
             stage.samplers.push_back(ss);
         }
 
@@ -672,13 +683,8 @@ bool editor::ShaderBuilder::setupShaderArgs(shadercompiler::args_t& args, Shader
         args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
         args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
         args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
-        args.defines.push_back({"MAX_BONES", std::to_string(MAX_BONES)});
-    }
-    if (shaderType == ShaderType::DEPTH){
-        args.defines.push_back({"MAX_BONES", std::to_string(MAX_BONES)});
     }
     if (shaderType == ShaderType::GBUFFER){
-        args.defines.push_back({"MAX_BONES", std::to_string(MAX_BONES)});
         // suppresses the terrain texture-coordinate varyings in the shared includes
         // (the G-buffer fragment does not consume them); mirrors depth.vert
         args.defines.push_back({"DEPTH_SHADER", "1"});
@@ -706,6 +712,11 @@ void editor::ShaderBuilder::setupBuildArgs(shadercompiler::args_t& args, ShaderK
     if (!setupShaderArgs(args, shaderType, properties)) {
         throw std::runtime_error("Unknown shader type");
     }
+
+    if (args.lang == shadercompiler::LANG_GLSL &&
+            (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH ||
+             shaderType == ShaderType::GBUFFER))
+        args.defines.push_back({"SKINNING_TEXTURE", "1"});
 
     if (customId == 0)
         return;

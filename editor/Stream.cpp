@@ -1402,6 +1402,11 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
     node["hasMorphNormal"] = submesh.hasMorphNormal;
     node["hasMorphTangent"] = submesh.hasMorphTangent;
 
+    if (submesh.hasSkinningNormalization) {
+        node["normAdjustJoint"] = submesh.normAdjustJoint;
+        node["normAdjustWeight"] = submesh.normAdjustWeight;
+    }
+
     return node;
 }
 
@@ -1433,6 +1438,13 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     submesh.hasMorphTarget = node["hasMorphTarget"].as<bool>();
     submesh.hasMorphNormal = node["hasMorphNormal"].as<bool>();
     submesh.hasMorphTangent = node["hasMorphTangent"].as<bool>();
+
+    submesh.hasSkinningNormalization = false;
+    if (node["normAdjustJoint"] || node["normAdjustWeight"]) {
+        submesh.normAdjustJoint = node["normAdjustJoint"] ? node["normAdjustJoint"].as<float>() : 1.0f;
+        submesh.normAdjustWeight = node["normAdjustWeight"] ? node["normAdjustWeight"].as<float>() : 1.0f;
+        submesh.hasSkinningNormalization = true;
+    }
 
     return submesh;
 }
@@ -1909,6 +1921,7 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxTilemapTiles"] = sceneProject->maxValues.maxTilemapTiles;
     maxValuesNode["maxExternalBuffers"] = sceneProject->maxValues.maxExternalBuffers;
     maxValuesNode["maxSpriteFrames"] = sceneProject->maxValues.maxSpriteFrames;
+    maxValuesNode["maxBones"] = sceneProject->maxValues.maxBones;
     root["maxValues"] = maxValuesNode;
 
     if (!sceneProject->shaderKeys.empty()) {
@@ -2013,6 +2026,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
         if (maxValuesNode["maxTilemapTiles"]) sceneProject->maxValues.maxTilemapTiles = maxValuesNode["maxTilemapTiles"].as<unsigned int>();
         if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = maxValuesNode["maxExternalBuffers"].as<unsigned int>();
         if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = maxValuesNode["maxSpriteFrames"].as<unsigned int>();
+        if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = maxValuesNode["maxBones"].as<unsigned int>();
     }
 
     sceneProject->shaderKeys.clear();
@@ -4026,15 +4040,11 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["submeshes"] = submeshesNode;
     //node["numSubmeshes"] = mesh.numSubmeshes;
 
-    // Encode bones matrix array. For model-backed meshes this is skipped: the skeleton is
-    // regenerated from the model source on load and bonesMatrix is recomputed each frame, so
-    // persisting MAX_BONES matrices per mesh is pure waste (and the dominant YAML node cost
-    // for many-node models).
+    // Model-backed meshes regenerate these matrices from their skeleton on load.
     if (encodeBones) {
         YAML::Node bonesNode;
-        for(int i = 0; i < MAX_BONES; i++) {
+        for (size_t i = 0; i < mesh.bonesMatrix.size(); i++)
             bonesNode.push_back(encodeMatrix4(mesh.bonesMatrix[i]));
-        }
         node["bonesMatrix"] = bonesNode;
     }
 
@@ -4116,12 +4126,14 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Decode bones matrix
     if (node["bonesMatrix"]) {
         auto bonesNode = node["bonesMatrix"];
-        for(int i = 0; i < MAX_BONES; i++) {
+        mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+        for (size_t i = 0; i < bonesNode.size() &&
+                mesh.bonesMatrix.validIndex(static_cast<int>(i)); i++)
             mesh.bonesMatrix[i] = decodeMatrix4(bonesNode[i]);
-        }
+        mesh.needUpdateBones = bonesNode.size() > 0;
     }
 
-    if (node["normAdjustJoint"]) mesh.normAdjustJoint = node["normAdjustJoint"].as<int>();
+    if (node["normAdjustJoint"]) mesh.normAdjustJoint = node["normAdjustJoint"].as<float>();
     if (node["normAdjustWeight"]) mesh.normAdjustWeight = node["normAdjustWeight"].as<float>();
 
     // Decode morph weights

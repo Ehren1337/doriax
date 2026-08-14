@@ -1962,7 +1962,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v19: Vulkan shadow atlas lookups and screen-space depth/texture orientation fixes,
     //      later widened from IS_VULKAN to every non-GL backend (Metal, D3D11) across
     //      the depth, G-buffer and fullscreen passes: same shaders, so still v19.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v19";
+    // v20: dynamically sized skinning uses storage buffers, or an unfilterable bone
+    //      texture with a nonfiltering sampler on GL/GLES.
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v20";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -145,7 +145,8 @@ namespace doriax{
     };
 
     enum class StorageBufferType{
-        VS_VERTEX // for future use only
+        VS_VERTEX,
+        VS_SKINNING
     };
 
     enum class TextureShaderType{
@@ -175,7 +176,8 @@ namespace doriax{
         GBUFFERTEXTURE,      // view-space normal (rg, octahedral) + roughness (b) + metallic (a)
         GBUFFERALBEDOTEXTURE, // linear base color (rgb) + hasIBL flag (a)
         SHADOW2DATLAS,       // 1D polar shadow rows (one per 2D light)
-        SPOTMASKATLAS        // projected spot masks, one horizontal tile per 3D light slot
+        SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
+        BONES
     };
 
     enum class TextureType {
@@ -189,12 +191,14 @@ namespace doriax{
         SINT,
         UINT,
         FLOAT,
-        DEPTH
+        DEPTH,
+        UNFILTERABLE_FLOAT
     };
 
     enum class SamplerType {
         COMPARISON,
-        FILTERING
+        FILTERING,
+        NONFILTERING
     };
 
     enum class ColorFormat{

@@ -51,6 +51,15 @@ bool TextureRender::createFramebufferTexture(
         return false;
 }
 
+bool TextureRender::createDynamicTexture(const std::string& label, int width, int height){
+    return Engine::isViewLoaded() && !isCreated() &&
+        backend.createDynamicTexture(label, width, height);
+}
+
+void TextureRender::updateTexture(const void* data, size_t size){
+    backend.updateTexture(data, size);
+}
+
 void TextureRender::destroyTexture(){
     backend.destroyTexture();
 }

@@ -106,6 +106,10 @@ namespace doriax{
         bool needUpdateGBufferTexture = false;
 
         bool generated = false;
+
+        float normAdjustJoint = 1.0f;
+        float normAdjustWeight = 1.0f;
+        bool hasSkinningNormalization = false;
     };
 
     struct MeshComponent{
@@ -128,7 +132,10 @@ namespace doriax{
         // depth/gbuffer passes keep the built-in shaders.
         std::string customShader;
 
-        Matrix4 bonesMatrix[MAX_BONES];
+        HybridArray<Matrix4, MAX_BONES> bonesMatrix;
+        BufferRender bonesBuffer;
+        TextureRender bonesTexture;
+        bool needUpdateBones = false;
         float normAdjustJoint = 1;
         float normAdjustWeight = 1;
 
