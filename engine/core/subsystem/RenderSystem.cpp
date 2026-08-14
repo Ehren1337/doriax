@@ -70,6 +70,12 @@ namespace {
             (material.alphaMode == MaterialAlphaMode::AUTO && textureShadow);
     }
 
+    bool usesAlphaBlend(const Material& material){
+        return material.alphaMode == MaterialAlphaMode::BLEND ||
+            (material.alphaMode == MaterialAlphaMode::AUTO &&
+             (material.baseColorTexture.isTransparent() || material.baseColorFactor.w != 1.0f));
+    }
+
     float readSpotMaskTexel(TextureData& source, int x, int y, bool useAlpha){
         x = std::clamp(x, 0, source.getWidth() - 1);
         y = std::clamp(y, 0, source.getHeight() - 1);
@@ -1897,7 +1903,7 @@ bool RenderSystem::loadOccluder2DPass(unsigned int vertexCapacity){
         render.addAttribute(shaderData.getAttrIndex(attr.first), occluder2DBuffer.getRender(), attr.second.getElements(), attr.second.getDataType(), occluder2DBuffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
     }
 
-    if (!render.endLoad(PIP_DEPTH, false, CullingMode::BACK, WindingOrder::CCW)){
+    if (!render.endLoad(PIP_DEPTH, false, true, CullingMode::BACK, WindingOrder::CCW)){
         return false;
     }
 
@@ -2530,14 +2536,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
         mesh.submeshes[i].needUpdateDepthTexture = false;
         mesh.submeshes[i].needUpdateGBufferTexture = false;
 
-        if (mesh.autoTransparency && !mesh.transparent){
-            const Material& material = mesh.submeshes[i].material;
-            const bool explicitBlend = material.alphaMode == MaterialAlphaMode::BLEND;
-            const bool autoBlend = material.alphaMode == MaterialAlphaMode::AUTO &&
-                (material.baseColorTexture.isTransparent() || material.baseColorFactor.w != 1.0f);
-            if (explicitBlend || autoBlend){
-                mesh.transparent = true;
-            }
+        const bool alphaBlend = usesAlphaBlend(mesh.submeshes[i].material);
+        mesh.submeshes[i].alphaBlend = alphaBlend;
+        if (mesh.autoTransparency && !mesh.transparent && alphaBlend){
+            mesh.transparent = true;
         }
     
         unsigned int indexCount = 0;
@@ -2590,7 +2592,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
         }
 
         bool faceCulling = disableFaceCulling ? false : mesh.submeshes[i].faceCulling;
-        if (!render.endLoad(pipelines, faceCulling, mesh.cullingMode, mesh.windingOrder)){
+        if (!render.endLoad(pipelines, faceCulling, !alphaBlend,
+                            mesh.cullingMode, mesh.windingOrder)){
             return false;
         }
 
@@ -2706,7 +2709,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
             CullingMode depthCullingMode = mesh.cullingMode;
             bool depthFaceCulling = (mesh.submeshes[i].textureShadow)? false : mesh.submeshes[i].faceCulling;
 
-            if (!depthRender.endLoad(PIP_DEPTH | PIP_SHADOW_DEPTH, depthFaceCulling, depthCullingMode, mesh.windingOrder)){
+            if (!depthRender.endLoad(PIP_DEPTH | PIP_SHADOW_DEPTH, depthFaceCulling, true, depthCullingMode, mesh.windingOrder)){
                 return false;
             }
         }
@@ -2817,7 +2820,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
             CullingMode gbufferCullingMode = mesh.cullingMode;
             bool gbufferFaceCulling = (mesh.submeshes[i].textureShadow)? false : mesh.submeshes[i].faceCulling;
 
-            if (!gbufferRender.endLoad(PIP_GBUFFER, gbufferFaceCulling, gbufferCullingMode, mesh.windingOrder)){
+            if (!gbufferRender.endLoad(PIP_GBUFFER, gbufferFaceCulling, true, gbufferCullingMode, mesh.windingOrder)){
                 return false;
             }
         }
@@ -3223,14 +3226,14 @@ void RenderSystem::loadSSAO(){
     ssaoRender.beginLoad(PrimitiveType::TRIANGLES);
     ssaoRender.setShader(ssaoShader.get());
     ssaoSlotParams = ssaoShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSAO_FS_PARAMS);
-    if (!ssaoRender.endLoad(PIP_RTT, false, CullingMode::BACK, WindingOrder::CCW))
+    if (!ssaoRender.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     // fullscreen blur pass
     ssaoBlurRender.beginLoad(PrimitiveType::TRIANGLES);
     ssaoBlurRender.setShader(ssaoBlurShader.get());
     ssaoBlurSlotParams = ssaoBlurShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSAO_BLUR_FS_PARAMS);
-    if (!ssaoBlurRender.endLoad(PIP_RTT, false, CullingMode::BACK, WindingOrder::CCW))
+    if (!ssaoBlurRender.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     ssaoLoaded = true;
@@ -3588,14 +3591,14 @@ void RenderSystem::loadSSR(){
     ssrRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrRender.setShader(ssrShader.get());
     ssrSlotParams = ssrShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_FS_PARAMS);
-    if (!ssrRender.endLoad(PIP_RTT, false, CullingMode::BACK, WindingOrder::CCW))
+    if (!ssrRender.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     // fullscreen glossy blur pass
     ssrBlurRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrBlurRender.setShader(ssrBlurShader.get());
     ssrBlurSlotParams = ssrBlurShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_BLUR_FS_PARAMS);
-    if (!ssrBlurRender.endLoad(PIP_RTT, false, CullingMode::BACK, WindingOrder::CCW))
+    if (!ssrBlurRender.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     // composite targets either an offscreen framebuffer (PIP_RTT) or the swapchain
@@ -3603,7 +3606,7 @@ void RenderSystem::loadSSR(){
     compositeRender.beginLoad(PrimitiveType::TRIANGLES);
     compositeRender.setShader(compositeShader.get());
     compositeSlotParams = compositeShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::COMPOSITE_FS_PARAMS);
-    if (!compositeRender.endLoad(PIP_RTT | PIP_DEFAULT, false, CullingMode::BACK, WindingOrder::CCW))
+    if (!compositeRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     ssrLoaded = true;
@@ -3807,7 +3810,7 @@ void RenderSystem::loadBlit(){
     blitRender.beginLoad(PrimitiveType::TRIANGLES);
     blitRender.setShader(blitShader.get());
     blitSlotParams = blitShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::BLIT_FS_PARAMS);
-    if (!blitRender.endLoad(PIP_RTT | PIP_DEFAULT, false, CullingMode::BACK, WindingOrder::CCW))
+    if (!blitRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     blitLoaded = true;
@@ -4128,7 +4131,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint8_t pipelines, boo
     
     ui.needUpdateTexture = false;
 
-    if (!render.endLoad(pipelines, false, CullingMode::BACK, WindingOrder::CCW)){
+    if (!render.endLoad(pipelines, false, true, CullingMode::BACK, WindingOrder::CCW)){
         return false;
     }
 
@@ -4297,7 +4300,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint8_t pi
 
     points.needUpdateTexture = false;
 
-    if (!render.endLoad(pipelines, false, CullingMode::BACK, WindingOrder::CCW)){
+    if (!render.endLoad(pipelines, false, true, CullingMode::BACK, WindingOrder::CCW)){
         return false;
     }
 
@@ -4362,7 +4365,7 @@ bool RenderSystem::loadLines(Entity entity, LinesComponent& lines, uint8_t pipel
     // buffer is dynamic
     lines.needUpdateBuffer = true;
 
-    if (!render.endLoad(pipelines, false, CullingMode::BACK, WindingOrder::CCW)){
+    if (!render.endLoad(pipelines, false, true, CullingMode::BACK, WindingOrder::CCW)){
         return false;
     }
 
@@ -4630,7 +4633,7 @@ bool RenderSystem::loadSky(Entity entity, SkyComponent& sky, uint8_t pipelines){
         }
     }
 
-    if (!render->endLoad(pipelines, true, CullingMode::BACK, WindingOrder::CCW)){
+    if (!render->endLoad(pipelines, true, true, CullingMode::BACK, WindingOrder::CCW)){
         return false;
     }
 
@@ -6202,8 +6205,15 @@ void RenderSystem::update(double dt){
                 }
             }
 
+            bool expectedTransparent = false;
             for (int s = 0; s < mesh.numSubmeshes; s++){
                 const MaterialAlphaMode alphaMode = mesh.submeshes[s].material.alphaMode;
+                const bool alphaBlend = usesAlphaBlend(mesh.submeshes[s].material);
+                expectedTransparent = expectedTransparent || alphaBlend;
+
+                if (mesh.submeshes[s].alphaBlend != alphaBlend){
+                    mesh.needReload = true;
+                }
 
                 // Explicit alpha modes own the derived shadow-cutout state. AUTO
                 // remains the compatibility path for setCastShadowsWithTexture().
@@ -6256,17 +6266,8 @@ void RenderSystem::update(double dt){
                 }
             }
 
-            if (mesh.autoTransparency){
-                bool expectedTransparent = false;
-                for (int s = 0; s < mesh.numSubmeshes && !expectedTransparent; s++){
-                    const Material& material = mesh.submeshes[s].material;
-                    expectedTransparent = material.alphaMode == MaterialAlphaMode::BLEND ||
-                        (material.alphaMode == MaterialAlphaMode::AUTO &&
-                         (material.baseColorTexture.isTransparent() || material.baseColorFactor.w != 1.0f));
-                }
-                if (mesh.transparent != expectedTransparent){
-                    mesh.needReload = true;
-                }
+            if (mesh.autoTransparency && mesh.transparent != expectedTransparent){
+                mesh.needReload = true;
             }
 
             if (mesh.loaded && mesh.needReload){

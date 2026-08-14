@@ -101,6 +101,7 @@ namespace doriax{
         bool hasMorphNormal = false;
         bool hasMorphTangent = false;
 
+        bool alphaBlend = false;
         bool needUpdateTexture = false;
         bool needUpdateDepthTexture = false;
         bool needUpdateGBufferTexture = false;

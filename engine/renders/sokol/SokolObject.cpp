@@ -230,7 +230,7 @@ void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, Te
     }
 }
 
-bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, CullingMode cullingMode, WindingOrder windingOrder){
+bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder){
 
     if (pipelines & (int)PipelineType::PIP_DEPTH) {
         sg_pipeline_desc pip_depth_desc = pipeline_desc;
@@ -325,7 +325,7 @@ bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, CullingMode
             pip_default_desc.face_winding = getFaceWinding(windingOrder);
         }
 
-        pip_default_desc.depth.write_enabled = true;
+        pip_default_desc.depth.write_enabled = enableDepthWrite;
         pip_default_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
 
         pip_default_desc.colors[0].write_mask = SG_COLORMASK_RGB;
@@ -350,7 +350,7 @@ bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, CullingMode
         sg_pipeline_desc pip_rtt_desc = pipeline_desc;
 
         pip_rtt_desc.sample_count = 1;
-        pip_rtt_desc.depth.write_enabled = true;
+        pip_rtt_desc.depth.write_enabled = enableDepthWrite;
         pip_rtt_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         pip_rtt_desc.colors[0].write_mask = SG_COLORMASK_RGBA;
         pip_rtt_desc.colors[0].blend.enabled = true;

@@ -34,7 +34,7 @@ namespace doriax {
         // (replacement), just before draw — used to bind a per-view instance buffer
         void replaceVertexBuffer(BufferRender* original, BufferRender* replacement);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
-        bool endLoad(uint8_t pipelines, bool enableFaceCulling, CullingMode cullingMode, WindingOrder windingOrder);
+        bool endLoad(uint8_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder);
 
         bool beginDraw(PipelineType pipType);
         void applyUniformBlock(int slot, unsigned int count, void* data);
