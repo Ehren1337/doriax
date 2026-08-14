@@ -1917,7 +1917,7 @@ void AiChatWindow::updateMentionFromInput(int displayCursor, float inputMinX, fl
     const std::string linePrefix = raw.substr(static_cast<size_t>(lineStart),
                                               static_cast<size_t>(clampedCursor - lineStart));
     const float caretX = inputMinX + framePaddingX + ImGui::CalcTextSize(linePrefix.c_str()).x;
-    mention.popupPos = ImVec2(caretX, inputMaxY + 2.0f);
+    mention.popupPos = ImVec2(caretX, inputMaxY + Theme::dpi(2.0f));
 
     if (queryChanged || mention.items.empty()) {
         refreshMentionItems();
@@ -2353,25 +2353,29 @@ void AiChatWindow::drawMentionPopup() {
         return;
     }
 
-    const float popupWidth = 360.0f;
-    const float itemHeight = ImGui::GetTextLineHeight() + 6.0f;
+    const float popupWidth = Theme::dpi(360.0f);
+    const float itemHeight = ImGui::GetTextLineHeight() + Theme::dpi(6.0f);
     const float maxVisible = 8.0f;
     const float popupHeight = mention.items.empty()
-        ? itemHeight + 12.0f
-        : std::min(maxVisible, static_cast<float>(mention.items.size())) * itemHeight + 8.0f;
+        ? itemHeight + Theme::dpi(12.0f)
+        : std::min(maxVisible, static_cast<float>(mention.items.size())) * itemHeight + Theme::dpi(8.0f);
 
-    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGuiViewport* viewport = ImGui::GetWindowViewport();
+    if (viewport == nullptr) {
+        viewport = ImGui::GetMainViewport();
+    }
     ImVec2 pos = mention.popupPos;
     if (pos.x + popupWidth > viewport->WorkPos.x + viewport->WorkSize.x) {
-        pos.x = viewport->WorkPos.x + viewport->WorkSize.x - popupWidth - 8.0f;
+        pos.x = viewport->WorkPos.x + viewport->WorkSize.x - popupWidth - Theme::dpi(8.0f);
     }
-    if (pos.x < viewport->WorkPos.x + 8.0f) {
-        pos.x = viewport->WorkPos.x + 8.0f;
+    if (pos.x < viewport->WorkPos.x + Theme::dpi(8.0f)) {
+        pos.x = viewport->WorkPos.x + Theme::dpi(8.0f);
     }
     if (pos.y + popupHeight > viewport->WorkPos.y + viewport->WorkSize.y) {
-        pos.y = mention.inputItemMinY - popupHeight - 2.0f;
+        pos.y = mention.inputItemMinY - popupHeight - Theme::dpi(2.0f);
     }
 
+    ImGui::SetNextWindowViewport(viewport->ID);
     ImGui::SetNextWindowPos(pos);
     ImGui::SetNextWindowSize(ImVec2(popupWidth, popupHeight));
 
@@ -2379,9 +2383,9 @@ void AiChatWindow::drawMentionPopup() {
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 4));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 0));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(4.0f, 4.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Theme::dpi(ImVec2(4.0f, 0.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Theme::dpi(4.0f));
 
     if (ImGui::Begin("##AiMentionPopup", nullptr, flags)) {
         if (mention.items.empty()) {
@@ -2411,9 +2415,9 @@ void AiChatWindow::drawMentionPopup() {
                 const ImU32 iconColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
                 const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
                 const float textY = rowMin.y + (itemHeight - ImGui::GetTextLineHeight()) * 0.5f;
-                draw->AddText(ImVec2(rowMin.x + 6.0f, textY), iconColor, icon);
+                draw->AddText(ImVec2(rowMin.x + Theme::dpi(6.0f), textY), iconColor, icon);
 
-                const float iconWidth = ImGui::CalcTextSize(icon).x + 10.0f;
+                const float iconWidth = ImGui::CalcTextSize(icon).x + Theme::dpi(10.0f);
                 draw->AddText(ImVec2(rowMin.x + iconWidth, textY), textColor, item.label.c_str());
 
                 std::string kind = mentionKindLabel(item.kind);
@@ -2421,8 +2425,8 @@ void AiChatWindow::drawMentionPopup() {
                     kind += " · " + item.detail;
                 }
                 const ImVec2 kindSize = ImGui::CalcTextSize(kind.c_str());
-                const float kindX = rowMin.x + ImGui::GetItemRectSize().x - kindSize.x - 8.0f;
-                if (kindX > rowMin.x + iconWidth + ImGui::CalcTextSize(item.label.c_str()).x + 12.0f) {
+                const float kindX = rowMin.x + ImGui::GetItemRectSize().x - kindSize.x - Theme::dpi(8.0f);
+                if (kindX > rowMin.x + iconWidth + ImGui::CalcTextSize(item.label.c_str()).x + Theme::dpi(12.0f)) {
                     draw->AddText(ImVec2(kindX, textY), iconColor, kind.c_str());
                 }
 
@@ -2484,7 +2488,7 @@ void AiChatWindow::drawEditableSettingLabel(const std::string& value, float widt
     const char* icon = ICON_FA_PEN_TO_SQUARE;
     float frameHeight = ImGui::GetFrameHeight();
     float iconWidth = ImGui::CalcTextSize(icon).x;
-    float gap = std::max(4.0f, style.ItemInnerSpacing.x);
+    float gap = std::max(Theme::dpi(4.0f), style.ItemInnerSpacing.x);
     float textWidth = std::max(1.0f, width - iconWidth - gap);
 
     std::string display = elideToWidth(value, textWidth);

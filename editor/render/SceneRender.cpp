@@ -114,20 +114,21 @@ AABB editor::SceneRender::getAABB(Entity entity, bool local){
                 return aabb;
             }
         }
-    }else if ((signature.test(scene->getComponentId<CameraComponent>()) || signature.test(scene->getComponentId<Light2DComponent>())) && signature.test(scene->getComponentId<Transform>())){
+    }else if ((signature.test(scene->getComponentId<CameraComponent>()) ||
+               signature.test(scene->getComponentId<LightComponent>()) ||
+               signature.test(scene->getComponentId<Light2DComponent>()) ||
+               signature.test(scene->getComponentId<SoundComponent>())) && signature.test(scene->getComponentId<Transform>())){
+        Transform& transform = scene->getComponent<Transform>(entity);
         CameraComponent& sceneCamera = scene->getComponent<CameraComponent>(camera->getEntity());
+        float halfSize = billboardScreenScale(transform.worldPosition, 16.0f);
+        AABB aabb = (sceneCamera.type == CameraType::CAMERA_ORTHO)
+            ? AABB(-halfSize, -halfSize, -1, halfSize, halfSize, 1)
+            : AABB(-halfSize, -halfSize, -halfSize, halfSize, halfSize, halfSize);
 
-        if (sceneCamera.type == CameraType::CAMERA_ORTHO) {
-            // matches the viewport icon: 128px sprite at 0.25*zoom scale => 16*zoom half-extent
-            float halfSize = 16.0f * zoom;
-            AABB aabb(-halfSize, -halfSize, -1, halfSize, halfSize, 1);
-
-            if (local){
-                return aabb;
-            }else{
-                Transform& transform = scene->getComponent<Transform>(entity);
-                return transform.modelMatrix * aabb;
-            }
+        if (local){
+            return aabb;
+        }else{
+            return transform.modelMatrix * aabb;
         }
     }else if (signature.test(scene->getComponentId<Occluder2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
         Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
@@ -328,19 +329,20 @@ OBB editor::SceneRender::getOBB(Entity entity, bool local, bool visual){
                               : modelMatrix * aabb.getOBB();
                 }
             }
-        }else if (signature.test(scene->getComponentId<CameraComponent>()) || signature.test(scene->getComponentId<Light2DComponent>())){
+        }else if (signature.test(scene->getComponentId<CameraComponent>()) ||
+                   signature.test(scene->getComponentId<LightComponent>()) ||
+                   signature.test(scene->getComponentId<Light2DComponent>()) ||
+                   signature.test(scene->getComponentId<SoundComponent>())){
             CameraComponent& sceneCamera = scene->getComponent<CameraComponent>(camera->getEntity());
-
-            if (sceneCamera.type == CameraType::CAMERA_ORTHO) {
-                // matches the viewport icon: 128px sprite at 0.25*zoom scale => 16*zoom half-extent
-                float halfSize = 16.0f * zoom;
-                AABB aabb(-halfSize, -halfSize, -1, halfSize, halfSize, 1);
-                if (local){
-                    return aabb.getOBB();
-                }else{
-                    return visual ? transformAABBPreservingShear(modelMatrix, aabb)
+            float halfSize = billboardScreenScale(transform.worldPosition, 16.0f);
+            AABB aabb = (sceneCamera.type == CameraType::CAMERA_ORTHO)
+                ? AABB(-halfSize, -halfSize, -1, halfSize, halfSize, 1)
+                : AABB(-halfSize, -halfSize, -halfSize, halfSize, halfSize, halfSize);
+            if (local){
+                return aabb.getOBB();
+            }else{
+                return visual ? transformAABBPreservingShear(modelMatrix, aabb)
                               : modelMatrix * aabb.getOBB();
-                }
             }
         }else if (signature.test(scene->getComponentId<Occluder2DComponent>())){
             Occluder2DComponent& occluder = scene->getComponent<Occluder2DComponent>(entity);
@@ -520,6 +522,30 @@ void editor::SceneRender::updateSize(int width, int height){
 
 }
 
+void editor::SceneRender::setOverlayScale(float scale){
+    if (scale <= 0.0f){
+        scale = 1.0f;
+    }
+    if (overlayScale == scale){
+        return;
+    }
+    overlayScale = scale;
+    uilayer.setOverlayScale(scale);
+}
+
+float editor::SceneRender::billboardScreenScale(const Vector3& worldPos, float logicalScale) const {
+    CameraComponent& cameracomp = scene->getComponent<CameraComponent>(camera->getEntity());
+    if (cameracomp.type == CameraType::CAMERA_PERSPECTIVE){
+        float dist = (worldPos - camera->getWorldPosition()).length();
+        float s = std::tan(cameracomp.yfov) * dist * (overlayPx(logicalScale) / (float)framebuffer.getHeight());
+        if (!std::isfinite(s) || s <= 0.0f) {
+            return 1.0f;
+        }
+        return s;
+    }
+    return overlayPx(logicalScale) * zoom;
+}
+
 void editor::SceneRender::updateRenderSystem(){
     if (!isPlaying){
         syncSceneCamera();
@@ -666,15 +692,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // position instead of reusing the entity-derived scale (otherwise the gizmo
     // is sized for the entity's distance and looks wrong).
     auto computeGizmoScale = [&](const Vector3& worldPos) -> float {
-        float s = gizmoScale * zoom;
-        if (cameracomp.type == CameraType::CAMERA_PERSPECTIVE){
-            float dist = (worldPos - camera->getWorldPosition()).length();
-            s = std::tan(cameracomp.yfov) * dist * (gizmoScale / (float)framebuffer.getHeight());
-            if (!std::isfinite(s) || s <= 0.0f) {
-                s = 1.0f;
-            }
-        }
-        return s;
+        return billboardScreenScale(worldPos, gizmoScale);
     };
 
     bool selectionVisibility = false;
@@ -1909,8 +1927,8 @@ int editor::SceneRender::hitTestOccluderPoint(Entity entity, float x, float y){
     RayReturn rr = ray.intersects(Plane(Vector3(0, 0, 1), transform.worldPosition));
     if (!rr) return -1;
 
-    // handles are drawn at 4*zoom half-extent; use a slightly larger grab radius
-    float hitRadius = 8.0f * zoom;
+    // handles are drawn at overlayPx(4)*zoom half-extent; use a slightly larger grab radius
+    float hitRadius = overlayPx(8.0f) * zoom;
     int bestIndex = -1;
     float bestDistance = hitRadius;
     for (size_t i = 0; i < occluder.points.size(); i++){
@@ -1936,7 +1954,7 @@ OBB editor::SceneRender::getOccluderPointOBB(Entity entity, int pointIndex){
     if (pointIndex < 0 || pointIndex >= (int)occluder.points.size()) return OBB();
 
     Vector3 worldPoint = transform.modelMatrix * Vector3(occluder.points[pointIndex].x, occluder.points[pointIndex].y, 0.0f);
-    float halfSize = 8.0f * zoom;
+    float halfSize = overlayPx(8.0f) * zoom;
     AABB aabb(worldPoint - Vector3(halfSize, halfSize, 1.0f), worldPoint + Vector3(halfSize, halfSize, 1.0f));
     return aabb.getOBB();
 }
@@ -1952,19 +1970,7 @@ void editor::SceneRender::clearLinePointSelection(){
 }
 
 float editor::SceneRender::getPointHandleHalfSize(const Vector3& worldPoint){
-    CameraComponent& cameracomp = scene->getComponent<CameraComponent>(camera->getEntity());
-
-    if (cameracomp.type == CameraType::CAMERA_PERSPECTIVE){
-        // same convention as the gizmo scale: constant ~8px on screen
-        float dist = (worldPoint - camera->getWorldPosition()).length();
-        float halfSize = std::tan(cameracomp.yfov) * dist * (8.0f / (float)framebuffer.getHeight());
-        if (!std::isfinite(halfSize) || halfSize <= 0.0f){
-            halfSize = 1.0f;
-        }
-        return halfSize;
-    }
-
-    return 8.0f * zoom;
+    return billboardScreenScale(worldPoint, 8.0f);
 }
 
 // Returns the line endpoint under the mouse (-1 when none), flattened as

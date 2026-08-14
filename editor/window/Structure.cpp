@@ -729,7 +729,7 @@ void editor::Structure::showIconMenu(){
 void editor::Structure::drawInsertionMarker(const ImVec2& p1, const ImVec2& p2) {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     ImU32 col = ImGui::GetColorU32(ImGuiCol_DragDropTarget);
-    float thickness = 2.0f;
+    float thickness = Theme::dpi(2.0f);
     draw_list->AddLine(p1, p2, col, thickness);
 }
 

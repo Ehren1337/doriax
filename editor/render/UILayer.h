@@ -45,9 +45,14 @@ namespace doriax::editor{
 
         void applyGaugeOpacity(float opacity);
         void updateGauge(float value, float minValue, float maxValue);
+        void applyOverlayLayout();
+
+        float overlayScale = 1.0f;
     public:
         UILayer(bool enable3DOverlays = true);
         virtual ~UILayer();
+
+        void setOverlayScale(float scale);
 
         void setViewportGizmoTexture(Framebuffer* framebuffer);
 

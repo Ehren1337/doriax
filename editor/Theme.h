@@ -28,6 +28,11 @@ namespace doriax::editor {
         };
 
         static void apply();
+        static void applyDpiScale(float dpiScale);
+
+        static float dpiScale();
+        static float dpi(float value);
+        static ImVec2 dpi(const ImVec2& value);
     };
 
 }

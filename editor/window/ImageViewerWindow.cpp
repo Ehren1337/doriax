@@ -1,6 +1,7 @@
 #include "ImageViewerWindow.h"
 
 #include "Backend.h"
+#include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "Log.h"
 #include "Project.h"
@@ -335,7 +336,7 @@ void editor::ImageViewerWindow::drawImage(Instance& instance) {
     );
 
     if (visibleImageMin.x < visibleImageMax.x && visibleImageMin.y < visibleImageMax.y) {
-        constexpr float checkerSize = 16.0f;
+        const float checkerSize = Theme::dpi(16.0f);
         const int startX = std::max(0, static_cast<int>(std::floor((visibleImageMin.x - imageMin.x) / checkerSize)));
         const int startY = std::max(0, static_cast<int>(std::floor((visibleImageMin.y - imageMin.y) / checkerSize)));
         const int endX = static_cast<int>(std::ceil((visibleImageMax.x - imageMin.x) / checkerSize));

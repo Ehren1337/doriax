@@ -23,6 +23,8 @@
 
 #include "sokol_time.h"
 
+#include <algorithm>
+
 using namespace doriax;
 
 // thread_local cannot be a data member of a DLL-exported class (MSVC C2492).
@@ -933,11 +935,19 @@ void Engine::systemViewChanged(){
     viewRect.setRect(viewX, viewY, viewWidth, viewHeight);
 
     if (framebuffer){
-        framebuffer->setWidth(screenWidth);
-        framebuffer->setHeight(screenHeight);
+        const unsigned int fbWidth = static_cast<unsigned int>(std::max(screenWidth, 0));
+        const unsigned int fbHeight = static_cast<unsigned int>(std::max(screenHeight, 0));
+        const bool sizeChanged = framebuffer->getWidth() != fbWidth
+            || framebuffer->getHeight() != fbHeight;
+        framebuffer->setWidth(fbWidth);
+        framebuffer->setHeight(fbHeight);
 
-        if (framebuffer->isCreated()){
-            framebuffer->destroy();
+        // Create on first use as well as on resize so the editor viewport
+        // is not left at the default 512x512.
+        if (fbWidth > 0 && fbHeight > 0 && (sizeChanged || !framebuffer->isCreated())){
+            if (framebuffer->isCreated()){
+                framebuffer->destroy();
+            }
             framebuffer->create();
         }
     }

@@ -47,6 +47,44 @@ namespace {
         return style;
     }
 
+    UINT monitorDpi(HMONITOR monitor) {
+        using GetDpiForMonitorFn = HRESULT (WINAPI*)(HMONITOR, int, UINT*, UINT*);
+        static GetDpiForMonitorFn getDpiForMonitor = nullptr;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            if (HMODULE shcore = LoadLibraryW(L"shcore.dll")) {
+                getDpiForMonitor = reinterpret_cast<GetDpiForMonitorFn>(
+                    GetProcAddress(shcore, "GetDpiForMonitor"));
+            }
+        }
+        UINT xdpi = 96;
+        UINT ydpi = 96;
+        if (getDpiForMonitor && monitor
+                && SUCCEEDED(getDpiForMonitor(monitor, 0, &xdpi, &ydpi))
+                && xdpi > 0) {
+            return xdpi;
+        }
+        return 96;
+    }
+
+    bool adjustWindowRectForDpi(RECT& rect, DWORD style, BOOL menu, DWORD exStyle, UINT dpi) {
+        using AdjustFn = BOOL (WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+        static AdjustFn adjustForDpi = nullptr;
+        static bool tried = false;
+        if (!tried) {
+            tried = true;
+            if (HMODULE user32 = GetModuleHandleW(L"user32.dll")) {
+                adjustForDpi = reinterpret_cast<AdjustFn>(
+                    GetProcAddress(user32, "AdjustWindowRectExForDpi"));
+            }
+        }
+        if (adjustForDpi) {
+            return adjustForDpi(&rect, style, menu, exStyle, dpi) != FALSE;
+        }
+        return AdjustWindowRectEx(&rect, style, menu, exStyle) != FALSE;
+    }
+
 }
 
 std::wstring doriax::winUtf8ToWide(const std::string& text) {
@@ -96,7 +134,8 @@ bool WindowWin::create(const WindowWinConfig& config) {
     constexpr DWORD exStyle = WS_EX_APPWINDOW;
 
     RECT rect{0, 0, std::max(config.width, 1), std::max(config.height, 1)};
-    AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+    const HMONITOR monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    adjustWindowRectForDpi(rect, style, FALSE, exStyle, monitorDpi(monitor));
     const int totalWidth = rect.right - rect.left;
     const int totalHeight = rect.bottom - rect.top;
 
@@ -260,9 +299,11 @@ void WindowWin::setSize(int width, int height) {
     }
 
     RECT rect{0, 0, width, height};
-    AdjustWindowRect(&rect,
-                     static_cast<DWORD>(GetWindowLongPtrW(gWindow, GWL_STYLE)),
-                     GetMenu(gWindow) != nullptr);
+    const DWORD style = static_cast<DWORD>(GetWindowLongPtrW(gWindow, GWL_STYLE));
+    const DWORD exStyle = static_cast<DWORD>(GetWindowLongPtrW(gWindow, GWL_EXSTYLE));
+    const HMONITOR monitor = MonitorFromWindow(gWindow, MONITOR_DEFAULTTONEAREST);
+    adjustWindowRectForDpi(rect, style, GetMenu(gWindow) != nullptr, exStyle,
+                           monitorDpi(monitor));
     SetWindowPos(gWindow, nullptr, 0, 0,
                  rect.right - rect.left, rect.bottom - rect.top,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);

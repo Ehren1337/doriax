@@ -1419,21 +1419,7 @@ void editor::SceneRender3D::createOrUpdateLightIcon(Entity entity, const Transfo
     // Update light icon position
     lo.icon->setPosition(transform.worldPosition);
     lo.icon->setVisible(transform.visible);
-
-    // Update light icon scale
-    CameraComponent& cameracomp = scene->getComponent<CameraComponent>(camera->getEntity());
-    float lightIconScale = 0.25f;
-    float scale = lightIconScale * zoom;
-
-    if (cameracomp.type == CameraType::CAMERA_PERSPECTIVE){
-        float dist = (lo.icon->getPosition() - camera->getWorldPosition()).length();
-        scale = std::tan(cameracomp.yfov) * dist * (lightIconScale / (float)framebuffer.getHeight());
-        if (!std::isfinite(scale) || scale <= 0.0f) {
-            scale = 1.0f;
-        }
-    }
-
-    lo.icon->setScale(scale);
+    lo.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
 }
 
 void editor::SceneRender3D::createOrUpdateCameraIcon(Entity entity, const Transform& transform, bool newCamera) {
@@ -1447,21 +1433,7 @@ void editor::SceneRender3D::createOrUpdateCameraIcon(Entity entity, const Transf
     // Update camera icon position
     co.icon->setPosition(transform.worldPosition);
     co.icon->setVisible(transform.visible);
-
-    // Update camera icon scale
-    CameraComponent& cameracomp = scene->getComponent<CameraComponent>(camera->getEntity());
-    float iconScale = 0.25f;
-    float scale = iconScale * zoom;
-
-    if (cameracomp.type == CameraType::CAMERA_PERSPECTIVE){
-        float dist = (co.icon->getPosition() - camera->getWorldPosition()).length();
-        scale = std::tan(cameracomp.yfov) * dist * (iconScale / (float)framebuffer.getHeight());
-        if (!std::isfinite(scale) || scale <= 0.0f) {
-            scale = 1.0f;
-        }
-    }
-
-    co.icon->setScale(scale);
+    co.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
 }
 
 void editor::SceneRender3D::createOrUpdateSoundIcon(Entity entity, const Transform& transform, bool newSound) {
@@ -1474,20 +1446,7 @@ void editor::SceneRender3D::createOrUpdateSoundIcon(Entity entity, const Transfo
 
     so.icon->setPosition(transform.worldPosition);
     so.icon->setVisible(transform.visible);
-
-    CameraComponent& cameracomp = scene->getComponent<CameraComponent>(camera->getEntity());
-    float iconScale = 0.25f;
-    float scale = iconScale * zoom;
-
-    if (cameracomp.type == CameraType::CAMERA_PERSPECTIVE){
-        float dist = (so.icon->getPosition() - camera->getWorldPosition()).length();
-        scale = std::tan(cameracomp.yfov) * dist * (iconScale / (float)framebuffer.getHeight());
-        if (!std::isfinite(scale) || scale <= 0.0f) {
-            scale = 1.0f;
-        }
-    }
-
-    so.icon->setScale(scale);
+    so.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
 }
 
 void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera) {
@@ -1778,6 +1737,15 @@ void editor::SceneRender3D::activate(){
     if (!isPreviewCameraActive()){
         Engine::addSceneLayer(viewgizmo.getScene());
     }
+}
+
+void editor::SceneRender3D::setOverlayScale(float scale){
+    float previous = overlayScale;
+    SceneRender::setOverlayScale(scale);
+    if (overlayScale == previous){
+        return;
+    }
+    viewgizmo.setFramebufferSize(std::max(128, (int)std::lround(100.0f * overlayScale)));
 }
 
 void editor::SceneRender3D::zoomCamera(float amount){

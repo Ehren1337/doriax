@@ -202,7 +202,7 @@ void editor::SceneRender2D::createOrUpdateLight2DLines(Entity entity, const Tran
     LineDrawUtils::addCircle2D(lightLinesObj, center, light.range, lightColor, 48);
 
     // small center cross
-    float markSize = 6.0f * zoom;
+    float markSize = overlayPx(6.0f) * zoom;
     lightLinesObj->addLine(center + Vector3(-markSize, 0.0f, 0.0f), center + Vector3(markSize, 0.0f, 0.0f), lightColor);
     lightLinesObj->addLine(center + Vector3(0.0f, -markSize, 0.0f), center + Vector3(0.0f, markSize, 0.0f), lightColor);
 }
@@ -266,7 +266,7 @@ void editor::SceneRender2D::createOrUpdateOccluder2DLines(Entity entity, const T
         for (size_t i = 0; i < worldPoints.size(); i++){
             bool pointSelected = hasPointSelection && ((int)i == getSelectedOccluderPointIndex());
             addPointHandle(occluderLinesObj, worldPoints[i],
-                           (pointSelected ? 6.0f : 4.0f) * zoom,
+                           overlayPx(pointSelected ? 6.0f : 4.0f) * zoom,
                            pointSelected ? selectedHandleColor : handleColor);
         }
     }
@@ -296,7 +296,7 @@ void editor::SceneRender2D::createOrUpdateLinePointLines(Entity entity, const Tr
 
             bool pointSelected = hasPointSelection && ((int)(i * 2) + e == getSelectedLinePointIndex());
             addPointHandle(handlesObj, worldPoint,
-                           (pointSelected ? 6.0f : 4.0f) * zoom,
+                           overlayPx(pointSelected ? 6.0f : 4.0f) * zoom,
                            pointSelected ? selectedHandleColor : handleColor);
         }
     }
@@ -344,7 +344,7 @@ void editor::SceneRender2D::createOrUpdateTrackLines(Entity entity, const Transl
 
         bool pointSelected = hasPointSelection && ((int)i == getSelectedTrackPointIndex());
         addPointHandle(trackObj, worldPoint,
-                       (pointSelected ? 6.0f : 4.0f) * zoom,
+                       overlayPx(pointSelected ? 6.0f : 4.0f) * zoom,
                        pointSelected ? selectedHandleColor : handleColor);
     }
 }
@@ -370,7 +370,7 @@ void editor::SceneRender2D::createOrUpdatePolygonPointLines(Entity entity, const
 
         bool pointSelected = hasPointSelection && ((int)i == getSelectedPolygonPointIndex());
         addPointHandle(handlesObj, worldPoint,
-                       (pointSelected ? 6.0f : 4.0f) * zoom,
+                       overlayPx(pointSelected ? 6.0f : 4.0f) * zoom,
                        pointSelected ? selectedHandleColor : handleColor);
     }
 }
@@ -627,7 +627,8 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
 
     jointLinesObj->addLine(anchorA, anchorB, jointColor);
 
-    float markSize = 8.0f * zoom;
+    const float sz = overlayScale * zoom;
+    float markSize = 8.0f * sz;
 
     jointLinesObj->addLine(anchorA + Vector3(-markSize, 0.0f, 0.0f), anchorA + Vector3(markSize, 0.0f, 0.0f), helperColor);
     jointLinesObj->addLine(anchorA + Vector3(0.0f, -markSize, 0.0f), anchorA + Vector3(0.0f, markSize, 0.0f), helperColor);
@@ -641,28 +642,28 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
             break;
         }
         case Joint2DType::REVOLUTE:{
-            LineDrawUtils::addCircle2D(jointLinesObj, anchorA, 10.0f * zoom, helperColor, 18);
+            LineDrawUtils::addCircle2D(jointLinesObj, anchorA, 10.0f * sz, helperColor, 18);
             if ((anchorB - anchorA).length() > 0.001f){
-                LineDrawUtils::addCircle2D(jointLinesObj, anchorB, 8.0f * zoom, helperColor, 16);
+                LineDrawUtils::addCircle2D(jointLinesObj, anchorB, 8.0f * sz, helperColor, 16);
             }
             break;
         }
         case Joint2DType::WHEEL:{
-            LineDrawUtils::addCircle2D(jointLinesObj, anchorA, 10.0f * zoom, helperColor, 18);
+            LineDrawUtils::addCircle2D(jointLinesObj, anchorA, 10.0f * sz, helperColor, 18);
             if ((anchorB - anchorA).length() > 0.001f){
-                LineDrawUtils::addCircle2D(jointLinesObj, anchorB, 8.0f * zoom, helperColor, 16);
+                LineDrawUtils::addCircle2D(jointLinesObj, anchorB, 8.0f * sz, helperColor, 16);
             }
             break;
         }
         case Joint2DType::WELD:{
             // Diamond shape to indicate rigid lock
-            float d = 10.0f * zoom;
+            float d = 10.0f * sz;
             jointLinesObj->addLine(anchorA + Vector3(0, d, 0), anchorA + Vector3(d, 0, 0), limitColor);
             jointLinesObj->addLine(anchorA + Vector3(d, 0, 0), anchorA + Vector3(0, -d, 0), limitColor);
             jointLinesObj->addLine(anchorA + Vector3(0, -d, 0), anchorA + Vector3(-d, 0, 0), limitColor);
             jointLinesObj->addLine(anchorA + Vector3(-d, 0, 0), anchorA + Vector3(0, d, 0), limitColor);
             if ((anchorB - anchorA).length() > 0.001f){
-                float d2 = 8.0f * zoom;
+                float d2 = 8.0f * sz;
                 jointLinesObj->addLine(anchorB + Vector3(0, d2, 0), anchorB + Vector3(d2, 0, 0), limitColor);
                 jointLinesObj->addLine(anchorB + Vector3(d2, 0, 0), anchorB + Vector3(0, -d2, 0), limitColor);
                 jointLinesObj->addLine(anchorB + Vector3(0, -d2, 0), anchorB + Vector3(-d2, 0, 0), limitColor);
@@ -672,7 +673,7 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
         }
         case Joint2DType::MOTOR:{
             // Arrow arc to indicate driven rotation
-            float radius = 10.0f * zoom;
+            float radius = 10.0f * sz;
             float startAngle = 0.0f;
             float endAngle = 1.5f * M_PI;
             LineDrawUtils::addArc2D(jointLinesObj, anchorA, radius, startAngle, endAngle, axisColor, 14);
@@ -680,7 +681,7 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
             float tipX = anchorA.x + std::cos(endAngle) * radius;
             float tipY = anchorA.y + std::sin(endAngle) * radius;
             Vector3 tip(tipX, tipY, anchorA.z);
-            float arrowSize = 4.0f * zoom;
+            float arrowSize = 4.0f * sz;
             Vector3 dir(std::cos(endAngle + M_PI * 0.5f), std::sin(endAngle + M_PI * 0.5f), 0.0f);
             Vector3 perp(-dir.y, dir.x, 0.0f);
             jointLinesObj->addLine(tip, tip - dir * arrowSize + perp * arrowSize * 0.5f, axisColor);
@@ -698,8 +699,8 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
             Vector3 axis3(axis2.x, axis2.y, 0.0f);
             Vector3 railPerp(-axis3.y, axis3.x, 0.0f);
 
-            float halfRail = 40.0f * zoom;
-            float railOffset = 5.0f * zoom;
+            float halfRail = 40.0f * sz;
+            float railOffset = 5.0f * sz;
 
             Vector3 railStart = anchorA - axis3 * halfRail;
             Vector3 railEnd = anchorA + axis3 * halfRail;
@@ -707,19 +708,19 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
             jointLinesObj->addLine(railStart + railPerp * railOffset, railEnd + railPerp * railOffset, axisColor);
             jointLinesObj->addLine(railStart - railPerp * railOffset, railEnd - railPerp * railOffset, axisColor);
 
-            float endCap = 6.0f * zoom;
+            float endCap = 6.0f * sz;
             jointLinesObj->addLine(railStart - railPerp * endCap, railStart + railPerp * endCap, limitColor);
             jointLinesObj->addLine(railEnd - railPerp * endCap, railEnd + railPerp * endCap, limitColor);
 
             float t = (anchorB - anchorA).x * axis3.x + (anchorB - anchorA).y * axis3.y;
             t = std::max(-halfRail, std::min(halfRail, t));
             Vector3 sliderCenter = anchorA + axis3 * t;
-            LineDrawUtils::addCircle2D(jointLinesObj, sliderCenter, 7.0f * zoom, jointColor, 14);
+            LineDrawUtils::addCircle2D(jointLinesObj, sliderCenter, 7.0f * sz, jointColor, 14);
             break;
         }
         case Joint2DType::MOUSE:{
             Vector3 target(joint.target.x, joint.target.y, 0.0f);
-            LineDrawUtils::addCircle2D(jointLinesObj, target, 8.0f * zoom, Vector4(1.0f, 0.4f, 0.4f, alpha), 16);
+            LineDrawUtils::addCircle2D(jointLinesObj, target, 8.0f * sz, Vector4(1.0f, 0.4f, 0.4f, alpha), 16);
             jointLinesObj->addLine(target + Vector3(-markSize, 0.0f, 0.0f), target + Vector3(markSize, 0.0f, 0.0f), limitColor);
             jointLinesObj->addLine(target + Vector3(0.0f, -markSize, 0.0f), target + Vector3(0.0f, markSize, 0.0f), limitColor);
             break;
@@ -732,7 +733,7 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
         axis.normalize();
 
         Vector3 center = (anchorA + anchorB) * 0.5f;
-        Vector3 axisEnd = center + Vector3(axis.x, axis.y, 0.0f) * (20.0f * zoom);
+        Vector3 axisEnd = center + Vector3(axis.x, axis.y, 0.0f) * (20.0f * sz);
         jointLinesObj->addLine(center, axisEnd, axisColor);
     }
 
@@ -1022,7 +1023,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             }
 
             lo.icon->setPosition(transform.worldPosition);
-            lo.icon->setScale(0.25f * zoom);
+            lo.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
             lo.icon->setVisible(transform.visible);
         }
 
@@ -1117,8 +1118,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
 
                 // Update icon position and scale
                 co.icon->setPosition(transform.worldPosition);
-                float iconScale = 0.25f * zoom;
-                co.icon->setScale(iconScale);
+                co.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
 
                 // Update frustum lines
                 co.lines->setPosition(transform.worldPosition);
@@ -1161,7 +1161,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             }
 
             so.icon->setPosition(transform.worldPosition);
-            so.icon->setScale(0.25f * zoom);
+            so.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
             so.icon->setVisible(transform.visible);
 
             if (displaySettings.hideSoundIcons) {

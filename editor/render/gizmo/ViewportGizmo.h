@@ -37,6 +37,7 @@ namespace doriax::editor{
         virtual ~ViewportGizmo();
 
         void applyRotation(Camera* sceneCam);
+        void setFramebufferSize(int size);
 
         ViewportGizmoAxis hitTest(float normalizedX, float normalizedY) const;
 

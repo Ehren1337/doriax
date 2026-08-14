@@ -2,6 +2,7 @@
 #include "math/Ray.h"
 #include "math/Sphere.h"
 #include "math/AABB.h"
+#include <algorithm>
 #include <limits>
 
 using namespace doriax;
@@ -84,6 +85,11 @@ void editor::ViewportGizmo::applyRotation(Camera* sceneCam){
     Vector3 up = direction.crossProduct(right);
 
     mainObject->setRotation(Quaternion(right, up, direction).inverse());
+}
+
+void editor::ViewportGizmo::setFramebufferSize(int size){
+    size = std::max(1, size);
+    camera->setFramebufferSize(size, size);
 }
 
 Framebuffer* editor::ViewportGizmo::getFramebuffer(){

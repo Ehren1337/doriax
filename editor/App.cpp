@@ -593,7 +593,7 @@ void editor::App::showFooter(){
     }
 
     const float fontScale = 0.9f;
-    const float footerHeight = (ImGui::GetTextLineHeight() * fontScale) + 10.0f;
+    const float footerHeight = (ImGui::GetTextLineHeight() * fontScale) + Theme::dpi(10.0f);
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
                             ImGuiWindowFlags_NoMove |
                             ImGuiWindowFlags_NoDocking |
@@ -608,7 +608,7 @@ void editor::App::showFooter(){
     ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, footerHeight));
     ImGui::SetNextWindowBgAlpha(1.0f);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(8.0f, 6.0f)));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::GetStyleColorVec4(ImGuiCol_Border));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.60f, 0.60f, 1.00f));
 
@@ -636,7 +636,7 @@ void editor::App::showFooter(){
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, footerButtonHovered);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, footerButtonActive);
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 1.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, Theme::dpi(ImVec2(6.0f, 1.0f)));
             ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
 
             bool pressed = ImGui::Button(label);
@@ -1216,9 +1216,26 @@ void editor::App::setup() {
 
     //ImGui::StyleColorsDark();
     Theme::apply();
+
+    // Fonts follow each viewport's monitor DPI. Style paddings are global, so
+    // App::show() re-scales them from the main viewport when that DPI changes.
+    io.ConfigDpiScaleFonts = true;
+    io.ConfigDpiScaleViewports = true;
+
+    float dpiScale = 1.0f;
+    if (ImGui::GetPlatformIO().Monitors.Size > 0) {
+        dpiScale = ImGui::GetPlatformIO().Monitors[0].DpiScale;
+    }
+    Theme::applyDpiScale(dpiScale);
 }
 
 void editor::App::show(){
+    float dpiScale = 1.0f;
+    if (const ImGuiViewport* mainViewport = ImGui::GetMainViewport()) {
+        dpiScale = mainViewport->DpiScale;
+    }
+    Theme::applyDpiScale(dpiScale);
+
     if (resourcesWindow->isFocused()) {
         lastFocusedWindow = LastFocusedWindow::Resources;
     } else if (codeEditor->isFocused()) {
@@ -1611,7 +1628,14 @@ void editor::App::engineRender(){
             }
 
             if (width != 0 && height != 0){
-                if (Platform::setSizes(width, height) || sceneChanged){
+                sceneRender->setOverlayScale(sceneWindow->getOverlayScale(sceneProject.id));
+                Framebuffer* framebuffer = Engine::getFramebuffer();
+                const bool framebufferMismatch = !framebuffer
+                    || !framebuffer->isCreated()
+                    || framebuffer->getWidth() != static_cast<unsigned int>(width)
+                    || framebuffer->getHeight() != static_cast<unsigned int>(height);
+
+                if (Platform::setSizes(width, height) || sceneChanged || framebufferMismatch){
                     Engine::systemViewChanged();
                     sceneRender->updateSize(width, height);
                     sceneChanged = false;

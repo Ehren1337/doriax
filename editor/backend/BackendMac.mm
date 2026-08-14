@@ -1053,6 +1053,13 @@ bool editor::Backend::isRunningOnWayland() {
     return false;
 }
 
+ImVec2 editor::Backend::sceneRenderScale(ImVec2 framebufferScale, float dpiScale) {
+    (void)dpiScale;
+    if (framebufferScale.x <= 0.0f) framebufferScale.x = 1.0f;
+    if (framebufferScale.y <= 0.0f) framebufferScale.y = 1.0f;
+    return framebufferScale;
+}
+
 float editor::Backend::setMainMenu(const PlatformMenuModel& model,
                                    PlatformMenuCallback callback) {
     if (!backend || !NSApp) return 0.0f;

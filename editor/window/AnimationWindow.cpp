@@ -5,6 +5,7 @@
 #include "Catalog.h"
 #include "Stream.h"
 #include "App.h"
+#include "Theme.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -43,8 +44,111 @@ using namespace doriax;
 
 namespace {
 
-constexpr float kMinimumTimelineBlockWidth = 10.0f;
-constexpr float kTrackLabelWidth = 80.0f;
+struct TimelineMetrics {
+    float scale;
+    float rulerHeight;
+    float trackHeight;
+    float trackPadding;
+    float labelWidth;
+    float trackEndPadding;
+    float minBlockWidth;
+    float tickMajor;
+    float tickMinor;
+    float playheadHalf;
+    float playheadTip;
+    float playheadThickness;
+    float targetMajorTickSpacing;
+    float inset;
+    float textPad;
+    float blockRounding;
+    float selectionThickness;
+    float keyMarkerRadius;
+    float keyHitRadius;
+    float resizeEdgeZone;
+};
+
+TimelineMetrics timelineMetrics() {
+    const float s = editor::Theme::dpiScale();
+    TimelineMetrics m;
+    m.scale = s;
+    m.rulerHeight = 20.0f * s;
+    m.trackHeight = 24.0f * s;
+    m.trackPadding = 2.0f * s;
+    m.labelWidth = 80.0f * s;
+    m.trackEndPadding = 32.0f * s;
+    m.minBlockWidth = 10.0f * s;
+    m.tickMajor = 10.0f * s;
+    m.tickMinor = 5.0f * s;
+    m.playheadHalf = 5.0f * s;
+    m.playheadTip = 8.0f * s;
+    m.playheadThickness = 2.0f * s;
+    m.targetMajorTickSpacing = 80.0f * s;
+    m.inset = 2.0f * s;
+    m.textPad = 4.0f * s;
+    m.blockRounding = 3.0f * s;
+    m.selectionThickness = 2.0f * s;
+    m.keyMarkerRadius = 3.0f * s;
+    m.keyHitRadius = 6.0f * s;
+    m.resizeEdgeZone = 5.0f * s;
+    return m;
+}
+
+// Lane packing converts a minimum *drawn* block width into time. Keep this
+// logical so opening the same clip at another DPI does not rewrite tracks.
+constexpr float kLogicalMinTimelineBlockWidth = 10.0f;
+
+// Display-only lanes for short blocks that overlap after DPI min-width
+// inflation. Does not write ActionFrame::track.
+void assignVisualSubLanes(const std::vector<ActionFrame>& actions,
+                          const std::vector<float>& visualEndPx,
+                          uint32_t numTracks,
+                          float pixelsPerSecond,
+                          std::vector<int>& outSubLane,
+                          std::vector<int>& outLaneCount) {
+    outSubLane.assign(actions.size(), 0);
+    outLaneCount.assign(numTracks, 1);
+    std::vector<std::vector<size_t>> byTrack(numTracks);
+    for (size_t i = 0; i < actions.size(); i++) {
+        uint32_t track = actions[i].track;
+        if (track >= numTracks) {
+            continue;
+        }
+        byTrack[track].push_back(i);
+    }
+    for (uint32_t t = 0; t < numTracks; t++) {
+        auto& indices = byTrack[t];
+        if (indices.empty()) {
+            continue;
+        }
+        std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+            float aStart = actions[a].startTime * pixelsPerSecond;
+            float bStart = actions[b].startTime * pixelsPerSecond;
+            if (aStart != bStart) {
+                return aStart < bStart;
+            }
+            return a < b;
+        });
+        std::vector<float> laneEnds;
+        for (size_t idx : indices) {
+            float startPx = actions[idx].startTime * pixelsPerSecond;
+            float endPx = visualEndPx[idx];
+            int lane = -1;
+            for (int l = 0; l < (int)laneEnds.size(); l++) {
+                if (startPx >= laneEnds[l]) {
+                    lane = l;
+                    laneEnds[l] = endPx;
+                    break;
+                }
+            }
+            if (lane == -1) {
+                lane = (int)laneEnds.size();
+                laneEnds.push_back(endPx);
+            }
+            outSubLane[idx] = lane;
+        }
+        outLaneCount[t] = std::max(1, (int)laneEnds.size());
+    }
+}
 
 }
 
@@ -369,10 +473,10 @@ float editor::AnimationWindow::getAnimationDuration(const AnimationComponent& an
 
 void editor::AnimationWindow::autoAssignTracks(AnimationComponent& anim, SceneProject* sceneProject) const {
     Scene* scene = sceneProject->scene;
-    // Lane packing must use the same minimum extent as rendering. Otherwise
-    // zero-duration frames do not mathematically overlap but their visible
-    // blocks are drawn on top of one another.
-    const float minimumLayoutDuration = kMinimumTimelineBlockWidth / std::max(pixelsPerSecond, 1.0f);
+    // Overlap uses the same logical minimum as a 1x display. Drawing still
+    // inflates short blocks by DPI, but packing must not depend on it or the
+    // clip's tracks change just from opening the window on another monitor.
+    const float minimumLayoutDuration = kLogicalMinTimelineBlockWidth / std::max(pixelsPerSecond, 1.0f);
     auto layoutFrameEnd = [&](const ActionFrame& frame) {
         return frame.startTime + std::max(effectiveFrameDuration(frame, scene), minimumLayoutDuration);
     };
@@ -1588,13 +1692,14 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
 
 void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd) {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    float rulerHeight = 20.0f;
-    float labelWidth = kTrackLabelWidth;
+    const TimelineMetrics metrics = timelineMetrics();
+    float rulerHeight = metrics.rulerHeight;
+    float labelWidth = metrics.labelWidth;
 
     // Label column header
     drawList->AddRectFilled(canvasPos, ImVec2(canvasPos.x + labelWidth, canvasPos.y + rulerHeight),
                             IM_COL32(50, 50, 50, 255));
-    drawList->AddText(ImVec2(canvasPos.x + 4, canvasPos.y + 3), IM_COL32(150, 150, 150, 255), "Track");
+    drawList->AddText(ImVec2(canvasPos.x + metrics.textPad, canvasPos.y + metrics.inset), IM_COL32(150, 150, 150, 255), "Track");
 
     // Timeline ruler background
     drawList->AddRectFilled(ImVec2(canvasPos.x + labelWidth, canvasPos.y),
@@ -1604,8 +1709,7 @@ void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize,
     // Choose a stable 1/2/5 interval that keeps major labels readable at every
     // zoom level. The old fixed thresholds put labels only ~20 px apart at
     // both minimum zoom and immediately above 200 px/s.
-    constexpr float targetMajorTickSpacing = 80.0f;
-    float rawTickInterval = targetMajorTickSpacing / pixelsPerSecond;
+    float rawTickInterval = metrics.targetMajorTickSpacing / pixelsPerSecond;
     float intervalMagnitude = std::pow(10.0f, std::floor(std::log10(rawTickInterval)));
     float normalizedInterval = rawTickInterval / intervalMagnitude;
     float niceInterval = normalizedInterval <= 1.0f ? 1.0f
@@ -1636,7 +1740,7 @@ void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize,
 
         bool isMajorTick = tickIndex % subdivisions == 0;
         if (isMajorTick) {
-            drawList->AddLine(ImVec2(x, canvasPos.y + rulerHeight - 10), ImVec2(x, canvasPos.y + rulerHeight),
+            drawList->AddLine(ImVec2(x, canvasPos.y + rulerHeight - metrics.tickMajor), ImVec2(x, canvasPos.y + rulerHeight),
                               IM_COL32(180, 180, 180, 255));
 
             char buf[16];
@@ -1644,9 +1748,9 @@ void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize,
             bool isWholeSecond = std::fabs(t - roundedTime) < 0.0001f;
             snprintf(buf, sizeof(buf), "%.*fs", isWholeSecond ? 0 : labelPrecision,
                      isWholeSecond ? roundedTime : t);
-            drawList->AddText(ImVec2(x + 2, canvasPos.y + 2), IM_COL32(180, 180, 180, 255), buf);
+            drawList->AddText(ImVec2(x + metrics.inset, canvasPos.y + metrics.inset), IM_COL32(180, 180, 180, 255), buf);
         } else {
-            drawList->AddLine(ImVec2(x, canvasPos.y + rulerHeight - 5), ImVec2(x, canvasPos.y + rulerHeight),
+            drawList->AddLine(ImVec2(x, canvasPos.y + rulerHeight - metrics.tickMinor), ImVec2(x, canvasPos.y + rulerHeight),
                               IM_COL32(100, 100, 100, 255));
         }
     }
@@ -1656,10 +1760,11 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                                          AnimationComponent& anim, SceneProject* sceneProject, bool allowSelection) {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     Scene* scene = sceneProject->scene;
-    float rulerHeight = 20.0f;
-    float trackHeight = 24.0f;
-    float trackPadding = 2.0f;
-    float labelWidth = kTrackLabelWidth;
+    const TimelineMetrics metrics = timelineMetrics();
+    float rulerHeight = metrics.rulerHeight;
+    float trackHeight = metrics.trackHeight;
+    float trackPadding = metrics.trackPadding;
+    float labelWidth = metrics.labelWidth;
 
     auto getFrameColor = [&](Entity actionEntity) -> ImU32 {
         if (actionEntity == NULL_ENTITY || !scene->isEntityCreated(actionEntity))
@@ -1772,6 +1877,21 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
     // Always draw at least 3 tracks, or maxTrack + 2 to give space to drag down
     uint32_t numTracks = std::max((uint32_t)3, maxTrack + 2);
 
+    std::vector<float> visualEndPx(anim.actions.size());
+    for (size_t i = 0; i < anim.actions.size(); i++) {
+        const ActionFrame& frame = anim.actions[i];
+        float frameDur = effectiveFrameDuration(frame, scene);
+        if (allowSelection && frame.duration <= 0.0f && isDraggingKey
+            && selectedKeyFrameIndex == (int)i) {
+            frameDur = std::max(frameDur, keyDragTime);
+        }
+        float startPx = frame.startTime * pixelsPerSecond;
+        visualEndPx[i] = startPx + std::max(frameDur * pixelsPerSecond, metrics.minBlockWidth);
+    }
+    std::vector<int> subLane;
+    std::vector<int> trackLaneCount;
+    assignVisualSubLanes(anim.actions, visualEndPx, numTracks, pixelsPerSecond, subLane, trackLaneCount);
+
     // 1. Draw track backgrounds and labels
     for (uint32_t t = 0; t < numTracks; t++) {
         float trackY = canvasPos.y + rulerHeight + t * (trackHeight + trackPadding);
@@ -1786,7 +1906,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
         drawList->AddRectFilled(ImVec2(canvasPos.x, trackY),
                                 ImVec2(canvasPos.x + labelWidth, trackY + trackHeight),
                                 IM_COL32(50, 50, 50, 255));
-        drawList->AddText(ImVec2(canvasPos.x + 4, trackY + 4), IM_COL32(200, 200, 200, 255), label.c_str());
+        drawList->AddText(ImVec2(canvasPos.x + metrics.textPad, trackY + metrics.textPad), IM_COL32(200, 200, 200, 255), label.c_str());
     }
 
     // 2. Draw blocks
@@ -1800,13 +1920,22 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             frameDur = std::max(frameDur, keyDragTime);
         }
 
+        int laneCount = (frame.track < numTracks) ? trackLaneCount[frame.track] : 1;
+        int lane = subLane[i];
+        float innerTop = trackY + metrics.inset;
+        float innerBot = trackY + trackHeight - metrics.inset;
+        float laneGap = (laneCount > 1) ? metrics.scale : 0.0f;
+        float laneH = (innerBot - innerTop - laneGap * (float)(laneCount - 1)) / (float)std::max(laneCount, 1);
+        float blockTop = innerTop + (float)lane * (laneH + laneGap);
+        float blockBot = blockTop + laneH;
+
         // Action frame block
         float blockStart = timeToX(frame.startTime, timeStart, ImVec2(canvasPos.x + labelWidth, 0));
         float blockEnd = timeToX(frame.startTime + frameDur, timeStart, ImVec2(canvasPos.x + labelWidth, 0));
 
         // Keep zero-length frames (auto duration not yet resolvable) visible and clickable
-        if (blockEnd - blockStart < kMinimumTimelineBlockWidth) {
-            blockEnd = blockStart + kMinimumTimelineBlockWidth;
+        if (blockEnd - blockStart < metrics.minBlockWidth) {
+            blockEnd = blockStart + metrics.minBlockWidth;
         }
 
         // Clamp to visible area
@@ -1815,12 +1944,12 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
 
         if (visEnd > visStart) {
             ImU32 blockColor = getFrameColor(frame.action);
-            drawList->AddRectFilled(ImVec2(visStart, trackY + 2), ImVec2(visEnd, trackY + trackHeight - 2),
-                                    blockColor, 3.0f);
+            drawList->AddRectFilled(ImVec2(visStart, blockTop), ImVec2(visEnd, blockBot),
+                                    blockColor, metrics.blockRounding);
 
             if ((int)i == selectedFrameIndex) {
-                drawList->AddRect(ImVec2(visStart, trackY + 2), ImVec2(visEnd, trackY + trackHeight - 2),
-                                  IM_COL32(255, 220, 120, 255), 3.0f, 0, 2.0f);
+                drawList->AddRect(ImVec2(visStart, blockTop), ImVec2(visEnd, blockBot),
+                                  IM_COL32(255, 220, 120, 255), metrics.blockRounding, 0, metrics.selectionThickness);
             }
 
             // Keyframe diamonds sit on the block's bottom edge, below the label.
@@ -1828,21 +1957,21 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             bool mouseOverKey = false;
             if (frame.action != NULL_ENTITY && scene->isEntityCreated(frame.action)) {
                 if (KeyframeTracksComponent* kfComp = scene->findComponent<KeyframeTracksComponent>(frame.action)) {
-                    constexpr float keyMarkerRadius = 3.0f;
-                    constexpr float keyHitRadius = 6.0f;
-                    float ky = trackY + trackHeight - 2.0f;
+                    const float keyMarkerRadius = metrics.keyMarkerRadius;
+                    const float keyHitRadius = metrics.keyHitRadius;
+                    float ky = blockBot;
                     int hoveredKeyIndex = -1;
                     float hoveredKeyDistanceSq = 1e9f;
                     ImVec2 mousePos = ImGui::GetIO().MousePos;
-                    drawList->PushClipRect(ImVec2(visStart, trackY),
-                                           ImVec2(visEnd, trackY + trackHeight + trackPadding), true);
+                    drawList->PushClipRect(ImVec2(visStart, blockTop),
+                                           ImVec2(visEnd, blockBot + trackPadding), true);
                     for (size_t keyIndex = 0; keyIndex < kfComp->times.size(); keyIndex++) {
                         bool selectedKey = allowSelection && selectedKeyFrameIndex == (int)i
                             && selectedKeyIndex == (int)keyIndex;
                         float kt = selectedKey && isDraggingKey ? keyDragTime : kfComp->times[keyIndex];
                         float kx = timeToX(frame.startTime + kt, timeStart, ImVec2(canvasPos.x + labelWidth, 0));
                         if (kx >= visStart && kx <= visEnd) {
-                            float radius = selectedKey ? keyMarkerRadius + 1.0f : keyMarkerRadius;
+                            float radius = selectedKey ? keyMarkerRadius + metrics.scale : keyMarkerRadius;
                             ImU32 color = selectedKey
                                 ? IM_COL32(255, 210, 80, 255)
                                 : IM_COL32(255, 255, 255, 230);
@@ -1899,7 +2028,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                     }
                 }
             }
-            float availWidth = blockEnd - blockStart - 8;
+            float availWidth = blockEnd - blockStart - metrics.textPad * 2.0f;
             const char* displayLabel = nullptr;
             if (ImGui::CalcTextSize(fullLabel.c_str()).x <= availWidth) {
                 displayLabel = fullLabel.c_str();
@@ -1917,17 +2046,17 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                 // scrolls out of view with the block instead of sticking to the
                 // left edge. Clip it to the visible block to protect the track
                 // label column when the text is partially offscreen.
-                drawList->PushClipRect(ImVec2(visStart, trackY),
-                                       ImVec2(visEnd, trackY + trackHeight), true);
-                drawList->AddText(ImVec2(blockStart + 4, trackY + 4),
+                drawList->PushClipRect(ImVec2(visStart, blockTop),
+                                       ImVec2(visEnd, blockBot), true);
+                drawList->AddText(ImVec2(blockStart + metrics.textPad, blockTop + metrics.textPad),
                                   IM_COL32(255, 255, 255, 255), displayLabel);
                 drawList->PopClipRect();
             }
 
             // Interaction: click to select, drag to move/resize
-            float edgeZone = 5.0f;
-            ImVec2 blockMin(visStart, trackY);
-            ImVec2 blockMax(visEnd, trackY + trackHeight);
+            float edgeZone = metrics.resizeEdgeZone;
+            ImVec2 blockMin(visStart, blockTop);
+            ImVec2 blockMax(visEnd, blockBot);
             ImGui::SetCursorScreenPos(blockMin);
             ImGui::InvisibleButton(("frame_" + std::to_string(i)).c_str(),
                                    ImVec2(blockMax.x - blockMin.x, blockMax.y - blockMin.y));
@@ -2254,7 +2383,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                     float ghostDur = scene->getSystem<ActionSystem>()->getDuration(dropped);
                     float ghostStart = timeToX(dropTime, timeStart, ImVec2(canvasPos.x + labelWidth, 0));
                     float ghostEnd = timeToX(dropTime + ghostDur, timeStart, ImVec2(canvasPos.x + labelWidth, 0));
-                    float ghostMinWidth = 10.0f;
+                    float ghostMinWidth = metrics.minBlockWidth;
                     if (ghostEnd - ghostStart < ghostMinWidth) {
                         ghostEnd = ghostStart + ghostMinWidth;
                     }
@@ -2264,14 +2393,14 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                     if (ghostVisEnd > ghostVisStart) {
                         ImU32 ghostColor = getFrameColor(dropped);
                         ImU32 ghostFill = (ghostColor & ~IM_COL32_A_MASK) | ((ImU32)110 << IM_COL32_A_SHIFT);
-                        drawList->AddRectFilled(ImVec2(ghostVisStart, ghostY + 2), ImVec2(ghostVisEnd, ghostY + trackHeight - 2),
-                                                ghostFill, 3.0f);
-                        drawList->AddRect(ImVec2(ghostVisStart, ghostY + 2), ImVec2(ghostVisEnd, ghostY + trackHeight - 2),
-                                          IM_COL32(255, 255, 255, 180), 3.0f, 0, 1.5f);
+                        drawList->AddRectFilled(ImVec2(ghostVisStart, ghostY + metrics.inset), ImVec2(ghostVisEnd, ghostY + trackHeight - metrics.inset),
+                                                ghostFill, metrics.blockRounding);
+                        drawList->AddRect(ImVec2(ghostVisStart, ghostY + metrics.inset), ImVec2(ghostVisEnd, ghostY + trackHeight - metrics.inset),
+                                          IM_COL32(255, 255, 255, 180), metrics.blockRounding, 0, 1.5f * metrics.scale);
 
                         std::string ghostLabel = getActionLabel(dropped, scene);
-                        if (ImGui::CalcTextSize(ghostLabel.c_str()).x <= ghostVisEnd - ghostVisStart - 8) {
-                            drawList->AddText(ImVec2(ghostVisStart + 4, ghostY + 4),
+                        if (ImGui::CalcTextSize(ghostLabel.c_str()).x <= ghostVisEnd - ghostVisStart - metrics.textPad * 2.0f) {
+                            drawList->AddText(ImVec2(ghostVisStart + metrics.textPad, ghostY + metrics.textPad),
                                               IM_COL32(255, 255, 255, 200), ghostLabel.c_str());
                         }
                     }
@@ -2298,20 +2427,21 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
 
 bool editor::AnimationWindow::drawPlayhead(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd) {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    float labelWidth = kTrackLabelWidth;
+    const TimelineMetrics metrics = timelineMetrics();
+    float labelWidth = metrics.labelWidth;
 
     float playheadX = canvasPos.x + labelWidth + (currentTime - timeStart) * pixelsPerSecond;
 
     if (playheadX >= canvasPos.x + labelWidth && playheadX <= canvasPos.x + canvasSize.x) {
         drawList->AddLine(ImVec2(playheadX, canvasPos.y),
                           ImVec2(playheadX, canvasPos.y + canvasSize.y),
-                          IM_COL32(255, 80, 80, 255), 2.0f);
+                          IM_COL32(255, 80, 80, 255), metrics.playheadThickness);
 
         // Playhead triangle at top
         drawList->AddTriangleFilled(
-            ImVec2(playheadX - 5, canvasPos.y),
-            ImVec2(playheadX + 5, canvasPos.y),
-            ImVec2(playheadX, canvasPos.y + 8),
+            ImVec2(playheadX - metrics.playheadHalf, canvasPos.y),
+            ImVec2(playheadX + metrics.playheadHalf, canvasPos.y),
+            ImVec2(playheadX, canvasPos.y + metrics.playheadTip),
             IM_COL32(255, 80, 80, 255));
     }
 
@@ -2561,12 +2691,13 @@ void editor::AnimationWindow::show() {
     // scrollbar is drawn in the parent below it, so reaching the last track is
     // never required to pan through time.
     ImVec2 timelineAvailable = ImGui::GetContentRegionAvail();
-    constexpr float labelWidth = kTrackLabelWidth;
+    const TimelineMetrics metrics = timelineMetrics();
+    const float labelWidth = metrics.labelWidth;
     constexpr float scrollbarGap = 1.0f;
-    constexpr float trackEndPadding = 32.0f;
-    constexpr float rulerHeight = 20.0f;
-    constexpr float trackHeight = 24.0f;
-    constexpr float trackPadding = 2.0f;
+    const float trackEndPadding = metrics.trackEndPadding;
+    const float rulerHeight = metrics.rulerHeight;
+    const float trackHeight = metrics.trackHeight;
+    const float trackPadding = metrics.trackPadding;
 
     ImVec2 viewportPos = ImGui::GetCursorScreenPos();
     // The ruler is part of the vertically scrolling child. Its zoom hit zone
@@ -2602,9 +2733,9 @@ void editor::AnimationWindow::show() {
             frameDuration = std::max(frameDuration, keyDragTime);
         }
         float blockEndPx = (frame.startTime + frameDuration) * pixelsPerSecond;
-        // Zero-length blocks still draw with a ten-pixel minimum width.
+        // Zero-length blocks still draw with a minimum width.
         blockContentWidth = std::max(blockContentWidth,
-            std::max(blockEndPx, blockStartPx + kMinimumTimelineBlockWidth));
+            std::max(blockEndPx, blockStartPx + metrics.minBlockWidth));
     }
 
     // Duration and the authoring playhead remain reachable even when they lie

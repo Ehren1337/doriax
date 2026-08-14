@@ -1894,7 +1894,7 @@ bool editor::Properties::drawSpriteFramePreview(Texture* texture, const Rect& re
 
     drawList->AddRectFilled(p_min, p_max, ImGui::GetColorU32(Theme::Colors::filenameLabel), rounding, ImDrawFlags_RoundCornersAll);
     drawList->AddImageRounded(Backend::getImGuiTexture(texture->getRender()), imageMin, imageMax, uv0, uv1, IM_COL32_WHITE, rounding, ImDrawFlags_RoundCornersAll);
-    drawList->AddRect(p_min, p_max, borderColor, rounding, ImDrawFlags_RoundCornersAll, 1.0f);
+    drawList->AddRect(p_min, p_max, borderColor, rounding, ImDrawFlags_RoundCornersAll, Theme::dpi(1.0f));
 
     ImGui::InvisibleButton(itemId, size);
     return true;
@@ -6517,12 +6517,12 @@ void editor::Properties::drawSpriteComponent(ComponentType cpType, SceneProject*
                             ImGui::BeginTooltip();
                             ImGui::Text("%s", frameLabel.c_str());
 
-                            float tooltipMaxSize = 200.0f;
+                            float tooltipMaxSize = Theme::dpi(200.0f);
                             float scale = std::min(tooltipMaxSize / std::max(1.0f, sprite.framesRect[i].rect.getWidth()),
                                                    tooltipMaxSize / std::max(1.0f, sprite.framesRect[i].rect.getHeight()));
                             scale = std::min(scale, 1.0f);
-                            ImVec2 tooltipSize(std::max(32.0f, sprite.framesRect[i].rect.getWidth() * scale),
-                                               std::max(32.0f, sprite.framesRect[i].rect.getHeight() * scale));
+                            ImVec2 tooltipSize(std::max(Theme::dpi(32.0f), sprite.framesRect[i].rect.getWidth() * scale),
+                                               std::max(Theme::dpi(32.0f), sprite.framesRect[i].rect.getHeight() * scale));
 
                             drawSpriteFramePreview(&previewTexture, sprite.framesRect[i].rect, tooltipSize, "##frame_preview_tooltip");
                             ImGui::EndTooltip();
@@ -7193,18 +7193,18 @@ void editor::Properties::drawTilemapComponent(ComponentType cpType, SceneProject
                         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
                             TileRectPayload payload{(uint32_t)sceneProject->id, entities[0], (int)i};
                             ImGui::SetDragDropPayload("tile_rect", &payload, sizeof(payload));
-                            drawSpriteFramePreview(rectTex, tilemap.tilesRect[i].rect, ImVec2(48, 48), "##rect_drag_preview");
+                            drawSpriteFramePreview(rectTex, tilemap.tilesRect[i].rect, Theme::dpi(ImVec2(48.0f, 48.0f)), "##rect_drag_preview");
                             ImGui::EndDragDropSource();
                         } else if (ImGui::IsItemHovered()) {
                             ImGui::BeginTooltip();
                             ImGui::Text("%s", label.c_str());
 
-                            float tooltipMaxSize = 200.0f;
+                            float tooltipMaxSize = Theme::dpi(200.0f);
                             float scale = std::min(tooltipMaxSize / std::max(1.0f, tilemap.tilesRect[i].rect.getWidth()),
                                                    tooltipMaxSize / std::max(1.0f, tilemap.tilesRect[i].rect.getHeight()));
                             scale = std::min(scale, 1.0f);
-                            ImVec2 tooltipSize(std::max(32.0f, tilemap.tilesRect[i].rect.getWidth() * scale),
-                                               std::max(32.0f, tilemap.tilesRect[i].rect.getHeight() * scale));
+                            ImVec2 tooltipSize(std::max(Theme::dpi(32.0f), tilemap.tilesRect[i].rect.getWidth() * scale),
+                                               std::max(Theme::dpi(32.0f), tilemap.tilesRect[i].rect.getHeight() * scale));
 
                             drawSpriteFramePreview(rectTex, tilemap.tilesRect[i].rect, tooltipSize, "##rect_preview_tooltip");
                             ImGui::EndTooltip();
@@ -7444,12 +7444,12 @@ void editor::Properties::drawTilemapComponent(ComponentType cpType, SceneProject
                             ImGui::BeginTooltip();
                             ImGui::Text("%s", label.c_str());
 
-                            float tooltipMaxSize = 200.0f;
+                            float tooltipMaxSize = Theme::dpi(200.0f);
                             float scale = std::min(tooltipMaxSize / std::max(1.0f, tileRect.getWidth()),
                                                    tooltipMaxSize / std::max(1.0f, tileRect.getHeight()));
                             scale = std::min(scale, 1.0f);
-                            ImVec2 tooltipSize(std::max(32.0f, tileRect.getWidth() * scale),
-                                               std::max(32.0f, tileRect.getHeight() * scale));
+                            ImVec2 tooltipSize(std::max(Theme::dpi(32.0f), tileRect.getWidth() * scale),
+                                               std::max(Theme::dpi(32.0f), tileRect.getHeight() * scale));
 
                             drawSpriteFramePreview(tileTex, tileRect, tooltipSize, "##tile_preview_tooltip");
                             ImGui::EndTooltip();
@@ -11666,12 +11666,12 @@ void editor::Properties::drawSpriteAnimationComponent(ComponentType cpType, Scen
                     ImGui::TextDisabled("%s", spriteComp->framesRect[frameId].name.c_str());
                 }
 
-                float tooltipMaxSize = 200.0f;
+                float tooltipMaxSize = Theme::dpi(200.0f);
                 float scale = std::min(tooltipMaxSize / std::max(1.0f, frameRect.getWidth()),
                                        tooltipMaxSize / std::max(1.0f, frameRect.getHeight()));
                 scale = std::min(scale, 1.0f);
-                ImVec2 tooltipSize(std::max(32.0f, frameRect.getWidth() * scale),
-                                   std::max(32.0f, frameRect.getHeight() * scale));
+                ImVec2 tooltipSize(std::max(Theme::dpi(32.0f), frameRect.getWidth() * scale),
+                                   std::max(Theme::dpi(32.0f), frameRect.getHeight() * scale));
 
                 drawSpriteFramePreview(&previewTexture, frameRect, tooltipSize, "##sprite_animation_frame_preview_tooltip");
                 ImGui::EndTooltip();

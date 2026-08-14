@@ -4280,16 +4280,26 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
               signature.test(scene->getComponentId<CameraComponent>()) ||
               signature.test(scene->getComponentId<SoundComponent>())){
         Transform& transform = scene->getComponent<Transform>(entity);
-        Transform& camtransform = mainScene->getComponent<Transform>(mainScene->getCamera());
-        CameraComponent& camera = mainScene->getComponent<CameraComponent>(mainScene->getCamera());
-        float size;
-        if (camera.type == CameraType::CAMERA_ORTHO){
-            // match the viewport icon gizmos: 128px sprite at 0.25*zoom => 16*zoom half-extent
-            float zoom = (camera.topClip - camera.bottomClip) / std::max(1.0f, (float)Engine::getCanvasHeight());
-            size = 16.0f * zoom;
+        float size = 16.0f;
+        SceneRender* editorRender = nullptr;
+        for (const SceneProject& sceneProject : scenes){
+            if (sceneProject.scene == mainScene){
+                editorRender = sceneProject.sceneRender;
+                break;
+            }
+        }
+        if (editorRender){
+            size = editorRender->billboardScreenScale(transform.worldPosition, 16.0f);
         }else{
-            float dist = (transform.worldPosition - camtransform.worldPosition).length();
-            size = dist * tan(camera.yfov) * 0.01;
+            Transform& camtransform = mainScene->getComponent<Transform>(mainScene->getCamera());
+            CameraComponent& camera = mainScene->getComponent<CameraComponent>(mainScene->getCamera());
+            if (camera.type == CameraType::CAMERA_ORTHO){
+                float zoom = (camera.topClip - camera.bottomClip) / std::max(1.0f, (float)Engine::getCanvasHeight());
+                size = 16.0f * zoom;
+            }else{
+                float dist = (transform.worldPosition - camtransform.worldPosition).length();
+                size = dist * tan(camera.yfov) * 0.01f;
+            }
         }
         aabb = transform.modelMatrix * AABB(-size, -size, -size, size, size, size);
     }else if (signature.test(scene->getComponentId<Occluder2DComponent>())){

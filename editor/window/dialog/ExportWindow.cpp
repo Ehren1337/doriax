@@ -7,6 +7,7 @@
 #include "window/Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "Out.h"
+#include "Theme.h"
 
 namespace doriax::editor {
 
@@ -31,6 +32,10 @@ namespace {
 
     constexpr int desktopGraphicBackendCount =
         static_cast<int>(sizeof(desktopGraphicBackends) / sizeof(desktopGraphicBackends[0]));
+
+    float textButtonWidth(const char* label) {
+        return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    }
 
     void beginSettingsRow(const char* label) {
         ImGui::TableNextRow(ImGuiTableRowFlags_None, ImGui::GetFrameHeight());
@@ -145,7 +150,7 @@ void ExportWindow::show() {
 
     ImGui::OpenPopup("Export Project##ExportModal");
 
-    float width = (m_step == Step::ModeSelect) ? 640.0f : 550.0f;
+    float width = Theme::dpi((m_step == Step::ModeSelect) ? 640.0f : 550.0f);
 
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -199,25 +204,25 @@ bool ExportWindow::drawModeCard(const char* id, const char* icon, const char* ti
     // NOTE: sizes derive from FontSizeBase, not GetFontSize() — passing the
     // latter to PushFont would apply the global font scale twice.
     const float baseSize = ImGui::GetStyle().FontSizeBase;
-    const float padX = 12.0f;
+    const float padX = Theme::dpi(12.0f);
 
     // Large centered icon
     ImGui::PushFont(ImGui::GetFont(), baseSize * 2.6f);
     ImVec2 iconSize = ImGui::CalcTextSize(icon);
-    ImGui::SetCursorPos(ImVec2(cardPos.x + (size.x - iconSize.x) * 0.5f, cardPos.y + 22.0f));
+    ImGui::SetCursorPos(ImVec2(cardPos.x + (size.x - iconSize.x) * 0.5f, cardPos.y + Theme::dpi(22.0f)));
     ImGui::TextUnformatted(icon);
     ImGui::PopFont();
 
     // Title
     ImGui::PushFont(ImGui::GetFont(), baseSize * 1.15f);
     ImVec2 titleSize = ImGui::CalcTextSize(title);
-    float titleY = cardPos.y + 22.0f + iconSize.y + 14.0f;
+    float titleY = cardPos.y + Theme::dpi(22.0f) + iconSize.y + Theme::dpi(14.0f);
     ImGui::SetCursorPos(ImVec2(cardPos.x + (size.x - titleSize.x) * 0.5f, titleY));
     ImGui::TextUnformatted(title);
     ImGui::PopFont();
 
     // Description
-    const float descriptionY = titleY + titleSize.y + 8.0f;
+    const float descriptionY = titleY + titleSize.y + Theme::dpi(8.0f);
     const float wrapWidth = size.x - padX * 2.0f;
     ImGui::SetCursorPos(ImVec2(cardPos.x + padX, descriptionY));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
@@ -228,7 +233,7 @@ bool ExportWindow::drawModeCard(const char* id, const char* icon, const char* ti
 
     if (disabledText) {
         const float descriptionHeight = ImGui::CalcTextSize(description, nullptr, false, wrapWidth).y;
-        ImGui::SetCursorPos(ImVec2(cardPos.x + padX, descriptionY + descriptionHeight + 4.0f));
+        ImGui::SetCursorPos(ImVec2(cardPos.x + padX, descriptionY + descriptionHeight + Theme::dpi(4.0f)));
         ImGui::PushTextWrapPos(cardPos.x + size.x - padX);
         ImGui::TextDisabled("%s", disabledText);
         ImGui::PopTextWrapPos();
@@ -249,7 +254,7 @@ void ExportWindow::drawModeSelect() {
 
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float cardWidth = (ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f;
-    const ImVec2 cardSize(cardWidth, 185.0f);
+    const ImVec2 cardSize(cardWidth, Theme::dpi(185.0f));
 
     if (drawModeCard("##mode_source", ICON_FA_CODE, "Source Code",
                      "C++ engine source for every supported platform:", cardSize,
@@ -271,8 +276,9 @@ void ExportWindow::drawModeSelect() {
     ImGui::Spacing();
 
     float windowWidth = ImGui::GetWindowSize().x;
-    ImGui::SetCursorPosX((windowWidth - 120) * 0.5f);
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    float cancelWidth = Theme::dpi(120.0f);
+    ImGui::SetCursorPosX((windowWidth - cancelWidth) * 0.5f);
+    if (ImGui::Button("Cancel", ImVec2(cancelWidth, 0))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }
@@ -461,18 +467,19 @@ void ExportWindow::drawShaderSection() {
     ImGui::Text(ICON_FA_WAND_MAGIC_SPARKLES "  Shaders");
     ImGui::SameLine();
 
-    // Align Add/Delete buttons to the right
-    float buttonsGroupWidth = ImGui::CalcTextSize(ICON_FA_PLUS " Add").x + ImGui::CalcTextSize(ICON_FA_TRASH " Delete").x + ImGui::GetStyle().ItemSpacing.x * 2 + 30;
+    const char* addLabel = ICON_FA_PLUS " Add";
+    const char* deleteLabel = ICON_FA_TRASH " Delete";
+    float buttonsGroupWidth = textButtonWidth(addLabel) + textButtonWidth(deleteLabel) + ImGui::GetStyle().ItemSpacing.x;
     ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonsGroupWidth);
 
-    if (ImGui::Button(ICON_FA_PLUS " Add")) {
+    if (ImGui::Button(addLabel)) {
         m_addShaderOpen = true;
         m_addShaderTypeIndex = 0;
         memset(m_addShaderProps, 0, sizeof(m_addShaderProps));
     }
     ImGui::SameLine();
     ImGui::BeginDisabled(m_selectedShaderIndex < 0 || m_selectedShaderIndex >= (int)m_shaderEntries.size());
-    if (ImGui::Button(ICON_FA_TRASH " Delete")) {
+    if (ImGui::Button(deleteLabel)) {
         m_shaderEntries.erase(m_shaderEntries.begin() + m_selectedShaderIndex);
         m_selectedShaderIndex = -1;
     }
@@ -480,8 +487,7 @@ void ExportWindow::drawShaderSection() {
 
     ImGui::Spacing();
 
-    float shaderListHeight = 160;
-    ImGui::BeginChild("ShaderList", ImVec2(0, shaderListHeight), true);
+    ImGui::BeginChild("ShaderList", ImVec2(0, Theme::dpi(160.0f)), true);
     {
         for (int i = 0; i < (int)m_shaderEntries.size(); i++) {
             const auto& entry = m_shaderEntries[i];
@@ -537,7 +543,7 @@ void ExportWindow::drawSettings() {
 
     ImGui::PushItemWidth(-1);
     ImGui::BeginTable("export_settings", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp);
-    ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 140);
+    ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(140.0f));
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
     drawOutputDirRow(m_mode == ExportMode::SourceCode ? "Target Directory" : "Destination Directory");
@@ -617,16 +623,17 @@ void ExportWindow::drawSettings() {
 
     // --- Buttons ---
     ImGui::Spacing();
-    if (ImGui::Button(ICON_FA_ARROW_LEFT " Back", ImVec2(90, 0))) {
+    if (ImGui::Button(ICON_FA_ARROW_LEFT " Back")) {
         m_step = Step::ModeSelect;
     }
 
     ImGui::SameLine();
-    float buttonsWidth = 120.0f * 2 + ImGui::GetStyle().ItemSpacing.x;
+    const float actionWidth = Theme::dpi(120.0f);
+    float buttonsWidth = actionWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
     ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
 
     ImGui::BeginDisabled(!canExport);
-    if (ImGui::Button("Export", ImVec2(120, 0))) {
+    if (ImGui::Button("Export", ImVec2(actionWidth, 0))) {
         if (targetNotEmpty) {
             ImGui::OpenPopup("Directory Not Empty##ExportOverwrite");
         } else {
@@ -636,7 +643,7 @@ void ExportWindow::drawSettings() {
     ImGui::EndDisabled();
 
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(actionWidth, 0))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }
@@ -647,7 +654,7 @@ void ExportWindow::drawSettings() {
 void ExportWindow::drawOverwriteConfirmDialog() {
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSizeConstraints(ImVec2(440, 0), ImVec2(440, FLT_MAX));
+    ImGui::SetNextWindowSizeConstraints(Theme::dpi(ImVec2(440.0f, 0.0f)), ImVec2(Theme::dpi(440.0f), FLT_MAX));
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize |
                              ImGuiWindowFlags_NoSavedSettings |
@@ -674,15 +681,16 @@ void ExportWindow::drawOverwriteConfirmDialog() {
     ImGui::Spacing();
 
     float windowWidth = ImGui::GetWindowSize().x;
-    float buttonsWidth = 250;
+    const float actionWidth = Theme::dpi(120.0f);
+    float buttonsWidth = actionWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
     ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
 
-    if (ImGui::Button("Overwrite", ImVec2(120, 0))) {
+    if (ImGui::Button("Overwrite", ImVec2(actionWidth, 0))) {
         ImGui::CloseCurrentPopup();
         startConfiguredExport(true);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    if (ImGui::Button("Cancel", ImVec2(actionWidth, 0))) {
         ImGui::CloseCurrentPopup();
     }
 
@@ -840,11 +848,12 @@ void ExportWindow::drawAddShaderDialog() {
 
         // Buttons
         float windowWidth = ImGui::GetWindowSize().x;
-        float buttonsWidth = 250;
+        const float actionWidth = Theme::dpi(120.0f);
+        float buttonsWidth = actionWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
         ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
 
         ImGui::BeginDisabled(isDuplicate);
-        if (ImGui::Button("Add", ImVec2(120, 0))) {
+        if (ImGui::Button("Add", ImVec2(actionWidth, 0))) {
             ShaderEntry entry;
             entry.key = newKey;
             entry.type = selectedType;
@@ -864,7 +873,7 @@ void ExportWindow::drawAddShaderDialog() {
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        if (ImGui::Button("Cancel", ImVec2(actionWidth, 0))) {
             m_addShaderOpen = false;
             ImGui::CloseCurrentPopup();
         }
@@ -878,7 +887,7 @@ void ExportWindow::drawAddShaderDialog() {
 void ExportWindow::drawProgress() {
     ExportProgress progress = m_exporter.getProgress();
 
-    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    ImGui::Dummy(ImVec2(0.0f, Theme::dpi(6.0f)));
     ImGui::Text("Exporting project...");
     ImGui::Spacing();
 
@@ -888,12 +897,12 @@ void ExportWindow::drawProgress() {
     ImGui::Text("%s", progress.currentStep.c_str());
 
     // Last build-output line, clipped to a single line so the modal keeps its size.
-    ImGui::BeginChild("##BuildDetail", ImVec2(0, ImGui::GetTextLineHeight() + 2.0f), false, ImGuiWindowFlags_NoScrollbar);
+    ImGui::BeginChild("##BuildDetail", ImVec2(0, ImGui::GetTextLineHeight() + Theme::dpi(2.0f)), false, ImGuiWindowFlags_NoScrollbar);
     if (!progress.detailLine.empty()) {
         ImGui::TextDisabled("%s", progress.detailLine.c_str());
     }
     ImGui::EndChild();
-    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    ImGui::Dummy(ImVec2(0.0f, Theme::dpi(6.0f)));
 
     if (progress.failed) {
         ImGui::Spacing();
@@ -903,8 +912,9 @@ void ExportWindow::drawProgress() {
         ImGui::Spacing();
 
         float windowWidth = ImGui::GetWindowSize().x;
-        ImGui::SetCursorPosX((windowWidth - 120) * 0.5f);
-        if (ImGui::Button("Close", ImVec2(120, 0))) {
+        float closeWidth = Theme::dpi(120.0f);
+        ImGui::SetCursorPosX((windowWidth - closeWidth) * 0.5f);
+        if (ImGui::Button("Close", ImVec2(closeWidth, 0))) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
@@ -914,16 +924,18 @@ void ExportWindow::drawProgress() {
         ImGui::Spacing();
 
         float windowWidth = ImGui::GetWindowSize().x;
-        ImGui::SetCursorPosX((windowWidth - 120) * 0.5f);
-        if (ImGui::Button("Close", ImVec2(120, 0))) {
+        float closeWidth = Theme::dpi(120.0f);
+        ImGui::SetCursorPosX((windowWidth - closeWidth) * 0.5f);
+        if (ImGui::Button("Close", ImVec2(closeWidth, 0))) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
     } else {
         // Still running: cancelling also terminates the compiler subprocess.
         float windowWidth = ImGui::GetWindowSize().x;
-        ImGui::SetCursorPosX((windowWidth - 120) * 0.5f);
-        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+        float cancelWidth = Theme::dpi(120.0f);
+        ImGui::SetCursorPosX((windowWidth - cancelWidth) * 0.5f);
+        if (ImGui::Button("Cancel", ImVec2(cancelWidth, 0))) {
             m_exporter.cancelExport();
         }
     }

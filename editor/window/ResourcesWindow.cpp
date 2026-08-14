@@ -154,7 +154,6 @@ editor::ResourcesWindow::ResourcesWindow(Project* project, CodeEditor* codeEdito
     this->firstOpen = true;
     this->requestSort = true;
     this->iconSize = 32;
-    this->iconPadding = 1.5 * this->iconSize;
     this->isExternalDragHovering = false;
     this->clipboardCut = false;
     this->isRenaming = false;
@@ -564,17 +563,16 @@ void editor::ResourcesWindow::renderHeader() {
         ImGui::OpenPopup("SettingsPopup");
     }
 
-    ImGui::SetNextWindowSize(ImVec2(300.0f, 0.0f));
+    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(300.0f), 0.0f));
     if (ImGui::BeginPopup("SettingsPopup")) {
         ImGui::Text("Settings");
         ImGui::SameLine();
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Theme::dpi(2.0f), ImGui::GetStyle().FramePadding.y));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
         if (ImGui::Button(ICON_FA_ROTATE_LEFT "##ResetSettings")) {
             iconSize = 32;
-            iconPadding = 1.5f * iconSize;
             currentLayout = LayoutType::AUTO;
             itemViewStyle = ItemViewStyle::CLASSIC;
             leftPanelWidth = 200.0f;
@@ -594,7 +592,7 @@ void editor::ResourcesWindow::renderHeader() {
         // Same label | input layout as SceneWindow's scene settings popup, but the
         // value column stretches to fill the remaining popup width
         if (ImGui::BeginTable("resources_settings_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
-            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(100.0f));
             // Explicit stretch: tables inside auto-resizing popups default to
             // SizingFixedFit, which would shrink this column to its content
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -605,7 +603,6 @@ void editor::ResourcesWindow::renderHeader() {
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(-1);
             if (ImGui::SliderInt("##IconSize", &iconSize, 16.0f, THUMBNAIL_SIZE)) {
-                iconPadding = 1.5f * iconSize;
                 AppSettings::setResourcesIconSize(iconSize);
                 AppSettings::saveSettings();
             }
@@ -780,8 +777,12 @@ void editor::ResourcesWindow::renderPathBreadcrumb(const ImVec2& size) {
 }
 
 void editor::ResourcesWindow::renderFileListing(bool showDirectories){
+    // Stored iconSize stays logical; layout/draw use the current window DPI.
+    const float uiIconSize = static_cast<float>(iconSize) * Theme::dpiScale();
+    const float uiIconPadding = 1.5f * uiIconSize;
+
     // --- Common grid sizing -------------------------------------------------
-    float columnWidth = iconSize + iconPadding;
+    float columnWidth = uiIconSize + uiIconPadding;
     float availableWidth = ImGui::GetContentRegionAvail().x;
     int columns = static_cast<int>(availableWidth / columnWidth);
     if (columns < 1) columns = 1;
@@ -789,7 +790,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
     const bool useCardView = (itemViewStyle == ItemViewStyle::CARD);
 
     // Card view gets a bit more vertical padding than classic.
-    ImVec2 cellPadding = useCardView ? ImVec2(6.0f, 8.0f) : ImVec2(8.0f, 8.0f);
+    ImVec2 cellPadding = Theme::dpi(useCardView ? ImVec2(6.0f, 8.0f) : ImVec2(8.0f, 8.0f));
     float  totalTableWidth = availableWidth;
 
     ImVec2 scrollRegionMin = ImGui::GetWindowPos();
@@ -816,7 +817,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
     // --- Update marquee rectangle and auto-scroll ---------------------------
     if (isDragging){
         ImVec2 mousePos = ImGui::GetMousePos();
-        float scrollMargin = 20.0f;
+        float scrollMargin = Theme::dpi(20.0f);
         float currentScroll = ImGui::GetScrollY();
 
         if (mousePos.y > scrollRegionMax.y - scrollMargin){
@@ -839,9 +840,9 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
     }
 
     // --- Card metrics (constants — only used in Card view) ------------------
-    const float pad = 8.0f;                     // Inner padding
-    const float thumbHeight = static_cast<float>(iconSize) + 4.0f;
-    const float lineThickness = 2.0f;
+    const float pad = Theme::dpi(8.0f);                     // Inner padding
+    const float thumbHeight = uiIconSize + Theme::dpi(4.0f);
+    const float lineThickness = Theme::dpi(2.0f);
     const int maxTextLines = 2;                         // At most 2 text lines
     const float fontScale = 0.80f;                     // Scale for card text
     const float lineHeight = ImGui::GetTextLineHeight();
@@ -876,7 +877,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
             }else{
                 itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
                 textSizeClassic = ImGui::CalcTextSize(file.displayName.c_str(), nullptr, true, cellWidth);
-                float cellHeight = iconSize + itemSpacingY + textSizeClassic.y;
+                float cellHeight = uiIconSize + itemSpacingY + textSizeClassic.y;
                 selectableSizeClassic = ImVec2(cellWidth, cellHeight);
                 itemSize = selectableSizeClassic;
             }
@@ -955,8 +956,8 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
 
             // --- Resolve icon/thumbnail common path ------------------------
             ImTextureID fileIconImage = Backend::getImGuiTexture(file.icon);
-            float dispW = static_cast<float>(iconSize);
-            float dispH = static_cast<float>(iconSize);
+            float dispW = uiIconSize;
+            float dispH = uiIconSize;
 
             // Only resolve thumbnails for items inside the visible region, so
             // the GPU texture cache stays bounded with large directories
@@ -966,8 +967,8 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 int th = 0;
                 if (ImTextureID thumbTex = getThumbnailTexture(file, tw, th)){
                     if (tw > 0 && th > 0){
-                        float scale = std::min(static_cast<float>(iconSize) / static_cast<float>(tw),
-                                               static_cast<float>(iconSize) / static_cast<float>(th));
+                        float scale = std::min(uiIconSize / static_cast<float>(tw),
+                                               uiIconSize / static_cast<float>(th));
                         dispW = std::max(1.0f, tw * scale);
                         dispH = std::max(1.0f, th * scale);
                     }
@@ -1004,7 +1005,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                     ImGui::Text("Moving %zu file(s)", selectedFiles.size());
 
                     if (selectedFiles.size() == 1){
-                        float imageDragSize = 32.0f;
+                        float imageDragSize = Theme::dpi(32.0f);
                         float scale = std::min(imageDragSize / dispW, imageDragSize / dispH);
                         float previewW = dispW * scale;
                         float previewH = dispH * scale;
@@ -1055,13 +1056,13 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
 
                 // Outer card
                 drawList->AddRectFilled(itemMin, itemMax, bgCol, rounding);
-                drawList->AddRect(itemMin, itemMax, borderCol, rounding, 0, 1.0f);
+                drawList->AddRect(itemMin, itemMax, borderCol, rounding, 0, Theme::dpi(1.0f));
 
                 // Slight inner shadow on top for depth
                 ImU32 shadowCol = IM_COL32(0, 0, 0, 40);
-                ImVec2 shadowMin(itemMin.x, itemMin.y + 1.0f);
+                ImVec2 shadowMin(itemMin.x, itemMin.y + Theme::dpi(1.0f));
                 ImVec2 shadowMax(itemMax.x, itemMax.y);
-                drawList->AddRect(shadowMin, shadowMax, shadowCol, rounding, 0, 1.0f);
+                drawList->AddRect(shadowMin, shadowMax, shadowCol, rounding, 0, Theme::dpi(1.0f));
 
                 // Content rect inside padding
                 ImVec2 contentMin(itemMin.x + pad, itemMin.y + pad);
@@ -1112,11 +1113,11 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                     extSize.x *= fontScale;
                     extSize.y *= fontScale;
 
-                    float badgePadX = 4.0f;
-                    float badgePadY = 1.0f;
+                    float badgePadX = Theme::dpi(4.0f);
+                    float badgePadY = Theme::dpi(1.0f);
 
                     ImVec2 badgeMax(
-                        contentMin.x + contentWidth - 2.0f,
+                        contentMin.x + contentWidth - Theme::dpi(2.0f),
                         contentMin.y + 2.0f + extSize.y + badgePadY * 2.0f
                     );
                     ImVec2 badgeMin(
@@ -1164,7 +1165,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 // ------------------------------------------------------------
                 // Classic layout: icon + wrapped text centered
                 // ------------------------------------------------------------
-                float iconOffsetX = (cellWidth - iconSize) * 0.5f;
+                float iconOffsetX = (cellWidth - uiIconSize) * 0.5f;
                 float iconOffsetY = itemSize.y + itemSpacingY;
 
                 // Move back up into the selectable rect
@@ -1172,8 +1173,8 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 ImGui::SetCursorPosY(ImGui::GetCursorPosY() - iconOffsetY);
 
                 // Center the scaled thumbnail inside the icon box
-                float offsetX = (iconSize - dispW) * 0.5f;
-                float offsetY = (iconSize - dispH) * 0.5f;
+                float offsetX = (uiIconSize - dispW) * 0.5f;
+                float offsetY = (uiIconSize - dispH) * 0.5f;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
                 ImGui::SetCursorPosY(ImGui::GetCursorPosY() + offsetY);
                 ImGui::Image(fileIconImage, ImVec2(dispW, dispH));
@@ -2355,7 +2356,6 @@ void editor::ResourcesWindow::show() {
     if (firstOpen) {
         // Load saved settings (AppSettings is initialized by now)
         iconSize = AppSettings::getResourcesIconSize();
-        iconPadding = 1.5f * iconSize;
         currentLayout = static_cast<LayoutType>(AppSettings::getResourcesLayout());
         itemViewStyle = static_cast<ItemViewStyle>(AppSettings::getResourcesItemViewStyle());
         leftPanelWidth = AppSettings::getResourcesLeftPanelWidth();
@@ -2487,7 +2487,7 @@ void editor::ResourcesWindow::show() {
     LayoutType effectiveLayout = currentLayout;
     if (currentLayout == LayoutType::AUTO) {
         float windowWidth = ImGui::GetWindowWidth();
-        effectiveLayout = (windowWidth < layoutAutoThreshold) ? LayoutType::GRID : LayoutType::SPLIT_FILES_ONLY;
+        effectiveLayout = (windowWidth < Theme::dpi(layoutAutoThreshold)) ? LayoutType::GRID : LayoutType::SPLIT_FILES_ONLY;
     }
 
     ImGuiTableFlags table_flags_for_sort_specs = ImGuiTableFlags_Sortable | ImGuiTableFlags_SortMulti | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_Borders;
@@ -2519,8 +2519,8 @@ void editor::ResourcesWindow::show() {
         renderFileListing(true);
         ImGui::EndChild();
     } else if (effectiveLayout == LayoutType::SPLIT_FILES_ONLY || effectiveLayout == LayoutType::SPLIT) {
-        float splitterWidth = 4.0f;
-        ImGui::BeginChild("LeftPanel", ImVec2(leftPanelWidth, 0), true);
+        float splitterWidth = Theme::dpi(4.0f);
+        ImGui::BeginChild("LeftPanel", ImVec2(Theme::dpi(leftPanelWidth), 0), true);
         renderDirectoryTree(project->getProjectPath());
         ImGui::EndChild();
         ImGui::SameLine();
@@ -2543,8 +2543,10 @@ void editor::ResourcesWindow::show() {
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
         }
         if (ImGui::IsItemActive()) {
-            leftPanelWidth += ImGui::GetIO().MouseDelta.x;
-            leftPanelWidth = ImClamp(leftPanelWidth, 100.0f, ImGui::GetWindowWidth() - 100.0f);
+            const float dpi = Theme::dpiScale();
+            leftPanelWidth += ImGui::GetIO().MouseDelta.x / dpi;
+            const float maxLogical = std::max(100.0f, ImGui::GetWindowWidth() / dpi - 100.0f);
+            leftPanelWidth = ImClamp(leftPanelWidth, 100.0f, maxLogical);
         }
         if (ImGui::IsItemDeactivated()) {
             AppSettings::setResourcesLeftPanelWidth(leftPanelWidth);

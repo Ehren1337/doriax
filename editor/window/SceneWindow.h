@@ -48,6 +48,8 @@ namespace doriax::editor {
 
         std::map<uint32_t, int> width;
         std::map<uint32_t, int> height;
+        std::map<uint32_t, ImVec2> framebufferScale;
+        std::map<uint32_t, float> canvasDpiScale;
 
         std::map<uint32_t, bool> hasNotification;
 
@@ -72,6 +74,10 @@ namespace doriax::editor {
         Entity resolveStructureSelection(uint32_t sceneId, Entity entity) const;
         Entity findSelectableObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId = nullptr);
         bool selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed);
+        ImVec2 canvasFramebufferScale(uint32_t sceneId) const;
+        ImVec2 canvasEngineScale(uint32_t sceneId) const;
+        float canvasDpi(uint32_t sceneId) const;
+        void toEngineCanvas(uint32_t sceneId, float& x, float& y) const;
         
     public:
         SceneWindow(Project* project);
@@ -90,6 +96,7 @@ namespace doriax::editor {
 
         int getWidth(uint32_t sceneId) const;
         int getHeight(uint32_t sceneId) const;
+        float getOverlayScale(uint32_t sceneId) const;
 
         template<typename T>
         void drawSceneProperty(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyType inputType, float minValue = 0.0f, float maxValue = 1.0f, float col2Size = -1.0f) {

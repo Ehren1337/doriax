@@ -2,6 +2,14 @@
 
 #include "imgui_internal.h"
 
+namespace {
+
+ImGuiStyle g_baseStyle;
+bool g_hasBaseStyle = false;
+float g_appliedDpiScale = 0.0f;
+
+}
+
 ImVec4 doriax::editor::Theme::Colors::ButtonActivated;
 ImVec4 doriax::editor::Theme::Colors::FileCardBackground;
 ImVec4 doriax::editor::Theme::Colors::FileCardBackgroundHovered;
@@ -146,4 +154,46 @@ void doriax::editor::Theme::apply() {
 
     // docking
     style.DockingSeparatorSize = 6;
+
+    g_baseStyle = style;
+    g_hasBaseStyle = true;
+    g_appliedDpiScale = 0.0f;
+}
+
+void doriax::editor::Theme::applyDpiScale(float dpiScale) {
+    if (!g_hasBaseStyle) {
+        return;
+    }
+    if (dpiScale < 0.5f || dpiScale > 8.0f) {
+        dpiScale = 1.0f;
+    }
+    if (g_appliedDpiScale == dpiScale) {
+        return;
+    }
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    const float fontScaleDpi = style.FontScaleDpi;
+    style = g_baseStyle;
+    style.ScaleAllSizes(dpiScale);
+    // ConfigDpiScaleFonts overwrites FontScaleDpi per window; keep the current
+    // value so this reset does not briefly unscale fonts.
+    style.FontScaleDpi = fontScaleDpi;
+    g_appliedDpiScale = dpiScale;
+}
+
+float doriax::editor::Theme::dpiScale() {
+    ImGuiContext* ctx = ImGui::GetCurrentContext();
+    if (ctx && ctx->CurrentWindow && ctx->CurrentWindow->Viewport && ctx->CurrentWindow->Viewport->DpiScale > 0.0f) {
+        return ctx->CurrentWindow->Viewport->DpiScale;
+    }
+    return (g_appliedDpiScale > 0.0f) ? g_appliedDpiScale : 1.0f;
+}
+
+float doriax::editor::Theme::dpi(float value) {
+    return value * dpiScale();
+}
+
+ImVec2 doriax::editor::Theme::dpi(const ImVec2& value) {
+    const float scale = dpiScale();
+    return ImVec2(value.x * scale, value.y * scale);
 }

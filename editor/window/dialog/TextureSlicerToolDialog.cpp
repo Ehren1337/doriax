@@ -1,5 +1,6 @@
 #include "TextureSlicerToolDialog.h"
 #include "Backend.h"
+#include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include <cstring>
 #include <algorithm>
@@ -357,7 +358,7 @@ void TextureSlicerToolDialog::show() {
 
                 drawList->AddRect(ImVec2(rx, ry), ImVec2(rx + rw, ry + rh), borderColor);
 
-                if (rw > 16 && rh > 12) {
+                if (rw > Theme::dpi(16.0f) && rh > Theme::dpi(12.0f)) {
                     char indexStr[8];
                     snprintf(indexStr, sizeof(indexStr), "%d", (int)i);
                     ImVec2 textSize = ImGui::CalcTextSize(indexStr);
@@ -372,7 +373,7 @@ void TextureSlicerToolDialog::show() {
                 IM_COL32(80, 80, 80, 255));
         };
 
-        const ImVec2 compactCanvasSize(100.0f, 100.0f);
+        const ImVec2 compactCanvasSize(Theme::dpi(100.0f), Theme::dpi(100.0f));
         ImVec2 compactCanvasPos = ImGui::GetCursorScreenPos();
         drawPreview(compactCanvasPos, compactCanvasSize, ImGui::GetWindowDrawList());
         ImGui::Dummy(compactCanvasSize);
@@ -390,7 +391,7 @@ void TextureSlicerToolDialog::show() {
 
     // Rect/frame list summary
     if (!m_previewRects.empty() && ImGui::TreeNode(detailsLabel)) {
-        ImGui::BeginChild("RectList", ImVec2(0, isTileset ? 120.0f : 150.0f), true);
+        ImGui::BeginChild("RectList", ImVec2(0, Theme::dpi(isTileset ? 120.0f : 150.0f)), true);
         for (size_t i = 0; i < m_previewRects.size(); i++) {
             const SlicedRect& slicedRect = m_previewRects[i];
             ImGui::Text("[%d] %s: (%.0f, %.0f, %.0f, %.0f)",

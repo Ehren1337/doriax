@@ -3,6 +3,7 @@
 #include "AppSettings.h"
 #include "Backend.h"
 #include "window/Widgets.h"
+#include "Theme.h"
 
 #include <algorithm>
 
@@ -51,14 +52,14 @@ static int findWindowModeIndex(WindowMode mode) {
 template <typename DrawContents>
 static void drawSettingsPanel(const char* panelId, DrawContents drawContents) {
     const ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(settingsPanelPadding, settingsPanelPadding));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(settingsPanelPadding, settingsPanelPadding)));
     ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x, 6.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x, Theme::dpi(6.0f)));
 
     // Allow vertical scrolling only when content exceeds the fixed dialog;
     // ImGui hides the scrollbar while everything fits.
     bool panelVisible = ImGui::BeginChild(panelId, ImVec2(0, 0), ImGuiChildFlags_Borders);
-    float labelWidth = std::min(settingsLabelWidth, ImGui::GetContentRegionAvail().x * 0.4f);
+    float labelWidth = std::min(Theme::dpi(settingsLabelWidth), ImGui::GetContentRegionAvail().x * 0.4f);
     if (panelVisible && ImGui::BeginTable("##SettingsTable", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, labelWidth);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -261,10 +262,10 @@ static void drawScalingPreview(Scaling mode, int canvasWidth, int canvasHeight) 
         ImVec2 triP2(triCX - triW * 0.5f, triCY + triH * 0.5f);
         ImVec2 triP3(triCX + triW * 0.5f, triCY + triH * 0.5f);
         dl->AddTriangleFilled(triP1, triP2, triP3, colTriangle);
-        dl->AddTriangle(triP1, triP2, triP3, colCanvasBorder, 1.0f);
+        dl->AddTriangle(triP1, triP2, triP3, colCanvasBorder, Theme::dpi(1.0f));
 
         // Canvas border
-        dl->AddRect(cMin, cMax, colCanvasBorder, 0, 0, 1.5f);
+        dl->AddRect(cMin, cMax, colCanvasBorder, 0, 0, Theme::dpi(1.5f));
 
         // Viewport border
         dl->AddRect(vpMin, vpMax, colVpBorder);
@@ -386,8 +387,8 @@ void ProjectSettingsWindow::show() {
     ImVec2 center = viewport->GetWorkCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImVec2 size(
-        std::min(dialogWidth, viewport->WorkSize.x * 0.9f),
-        std::min(dialogHeight, viewport->WorkSize.y * 0.9f)
+        std::min(Theme::dpi(dialogWidth), viewport->WorkSize.x * 0.9f),
+        std::min(Theme::dpi(dialogHeight), viewport->WorkSize.y * 0.9f)
     );
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 
@@ -455,7 +456,7 @@ void ProjectSettingsWindow::drawSettings() {
     ImGui::Separator();
 
     float footerWidth = std::max(1.0f, ImGui::GetWindowWidth() - style.WindowPadding.x * 2.0f);
-    float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, settingsButtonWidth);
+    float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, Theme::dpi(settingsButtonWidth));
     float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     float buttonX = style.WindowPadding.x + std::max(0.0f, (footerWidth - buttonsWidth) * 0.5f);
     ImGui::SetCursorPos(ImVec2(buttonX, footerY));
@@ -587,7 +588,7 @@ void ProjectSettingsWindow::drawWindowSettings() {
                 if (Texture* thumb = findThumbnail(m_windowIcon.string())) {
                     ImGui::Spacing();
 
-                    const float previewSize = 64.0f;
+                    const float previewSize = Theme::dpi(64.0f);
                     float thumbWidth = (float)thumb->getWidth();
                     float thumbHeight = (float)thumb->getHeight();
                     float scale = previewSize / std::max(1.0f, std::max(thumbWidth, thumbHeight));

@@ -20,6 +20,7 @@
 #include "Stream.h"
 #include "Out.h"
 #include "App.h"
+#include "Theme.h"
 
 #include "math/Vector2.h"
 #include "util/Angle.h"
@@ -85,6 +86,8 @@ void editor::SceneWindow::resetProjectState() {
     focusCanvasOnNextFrame.clear();
     width.clear();
     height.clear();
+    framebufferScale.clear();
+    canvasDpiScale.clear();
     hasNotification.clear();
     structureSelectionParents.clear();
     closeSceneQueue.clear();
@@ -103,6 +106,8 @@ void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
     focusCanvasOnNextFrame.erase(sceneId);
     width.erase(sceneId);
     height.erase(sceneId);
+    framebufferScale.erase(sceneId);
+    canvasDpiScale.erase(sceneId);
     hasNotification.erase(sceneId);
     structureSelectionParents.erase(sceneId);
 
@@ -298,6 +303,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                 ImVec2 mousePos = io.MousePos;
                 float x = mousePos.x - windowPos.x;
                 float y = mousePos.y - windowPos.y;
+                toEngineCanvas(sceneProject->id, x, y);
                 Entity selEntity = project->findObjectByRay(sceneProject->id, x, y);
 
                 if (selEntity == NULL_ENTITY || lastSelEntity != selEntity) {
@@ -633,6 +639,7 @@ void editor::SceneWindow::handleTileRectDragDrop(SceneProject* sceneProject) {
                         ImGuiIO& io = ImGui::GetIO();
                         float x = io.MousePos.x - windowPos.x;
                         float y = io.MousePos.y - windowPos.y;
+                        toEngineCanvas(sceneProject->id, x, y);
 
                         Ray ray = sceneProject->sceneRender->getCamera()->screenToRay(x, y);
                         Plane tilePlane(Vector3(0, 0, 1), transform->worldPosition);
@@ -832,6 +839,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (isMouseInWindow) {
             float x = mousePos.x - windowPos.x;
             float y = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneProject->id, x, y);
 
             Engine::systemMouseMove(x, y, mods);
 
@@ -899,8 +907,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     if (isMouseInWindow){
 
-        float x = mousePos.x - windowPos.x;
-        float y = mousePos.y - windowPos.y;
+        float logicalX = mousePos.x - windowPos.x;
+        float logicalY = mousePos.y - windowPos.y;
+        float x = logicalX;
+        float y = logicalY;
+        toEngineCanvas(sceneId, x, y);
 
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
             subSelectionClickConsumesRelease[sceneId] = false;
@@ -1174,17 +1185,20 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
             if (!mouseLeftDown){
-                mouseLeftStartPos = Vector2(x, y);
+                mouseLeftStartPos = Vector2(logicalX, logicalY);
                 mouseLeftDown = true;
             }
-            mouseLeftDragPos = Vector2(x, y);
+            mouseLeftDragPos = Vector2(logicalX, logicalY);
             // Terrain brush strokes skip the drag threshold: holding the button
             // keeps applying flow and tiny precise drags still paint.
             if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing()){
                 mouseLeftDraggedInside = true;
             }
             if (mouseLeftDraggedInside){
-                sceneProject->sceneRender->mouseDragEvent(x, y, mouseLeftStartPos.x, mouseLeftStartPos.y, project, sceneId, project->getSelectedEntities(sceneId), disableSelection, io.KeyCtrl, io.KeyShift);
+                float origX = mouseLeftStartPos.x;
+                float origY = mouseLeftStartPos.y;
+                toEngineCanvas(sceneId, origX, origY);
+                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(sceneId), disableSelection, io.KeyCtrl, io.KeyShift);
             }
         }
 
@@ -1240,6 +1254,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
         float x = mousePos.x - windowPos.x;
         float y = mousePos.y - windowPos.y;
+        toEngineCanvas(sceneId, x, y);
 
         if (suppressLeftMouse){
             suppressLeftMouseUntilRelease[sceneId] = false;
@@ -1441,9 +1456,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
             SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject->sceneRender);
             float currentZoom = sceneRender2D->getZoom();
+            const ImVec2 scale = canvasEngineScale(sceneId);
 
-            float slideX = -currentZoom * mouseDelta.x;
-            float slideY = -currentZoom * mouseDelta.y;
+            float slideX = -currentZoom * mouseDelta.x * scale.x;
+            float slideY = -currentZoom * mouseDelta.y * scale.y;
 
             if (sceneProject->sceneType == SceneType::SCENE_2D){
                 slideY = -slideY;
@@ -1459,13 +1475,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
                 float mouseX = mousePos.x - windowPos.x;
                 float mouseY = mousePos.y - windowPos.y;
+                toEngineCanvas(sceneProject->id, mouseX, mouseY);
 
                 if (sceneProject->sceneType == SceneType::SCENE_2D){
-                    mouseY = height[sceneProject->id] - mouseY;
+                    mouseY = getHeight(sceneProject->id) - mouseY;
                 }
 
                 SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject->sceneRender);
-                sceneRender2D->zoomAtPosition(width[sceneProject->id], height[sceneProject->id], Vector2(mouseX, mouseY), zoomFactor);
+                sceneRender2D->zoomAtPosition(getWidth(sceneProject->id), getHeight(sceneProject->id), Vector2(mouseX, mouseY), zoomFactor);
             }
         }
 
@@ -1642,18 +1659,20 @@ bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, f
     SceneRender3D* sceneRender3D = static_cast<SceneRender3D*>(sceneProject->sceneRender);
     ViewportGizmo* viewGizmo = sceneRender3D->getViewportGizmo();
 
-    // The gizmo Image is 100x100 anchored at TOP_RIGHT of the canvas
-    float gizmoLeft = canvasWidth - VIEWPORT_GIZMO_SIZE;
+    const float gizmoSize = VIEWPORT_GIZMO_SIZE * getOverlayScale(sceneProject->id);
+
+    // The gizmo Image is anchored at TOP_RIGHT of the canvas
+    float gizmoLeft = canvasWidth - gizmoSize;
     float gizmoTop = 0.0f;
 
     // Check if click is within the gizmo area
-    if (canvasX < gizmoLeft || canvasX > canvasWidth || canvasY < gizmoTop || canvasY > VIEWPORT_GIZMO_SIZE) {
+    if (canvasX < gizmoLeft || canvasX > canvasWidth || canvasY < gizmoTop || canvasY > gizmoSize) {
         return false;
     }
 
     // Normalize to [-1, 1] within the gizmo area
-    float normalizedX = ((canvasX - gizmoLeft) / VIEWPORT_GIZMO_SIZE) * 2.0f - 1.0f;
-    float normalizedY = -(((canvasY - gizmoTop) / VIEWPORT_GIZMO_SIZE) * 2.0f - 1.0f); // flip Y
+    float normalizedX = ((canvasX - gizmoLeft) / gizmoSize) * 2.0f - 1.0f;
+    float normalizedY = -(((canvasY - gizmoTop) / gizmoSize) * 2.0f - 1.0f); // flip Y
 
     ViewportGizmoAxis axis = viewGizmo->hitTest(normalizedX, normalizedY);
     if (axis == ViewportGizmoAxis::NONE) {
@@ -1768,9 +1787,9 @@ void editor::SceneWindow::show() {
             }
             ImGui::EndDisabled();
 
-            ImGui::SameLine(0, 10);
-            ImGui::Dummy(ImVec2(1, 20));
-            ImGui::SameLine(0, 10);
+            ImGui::SameLine(0, Theme::dpi(10.0f));
+            ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
+            ImGui::SameLine(0, Theme::dpi(10.0f));
 
             CursorSelected cursorSelected = sceneProject.sceneRender->getCursorSelected();
 
@@ -1796,14 +1815,14 @@ void editor::SceneWindow::show() {
             ImGui::SetItemTooltip("Pan view");
             ImGui::EndDisabled();
 
-            ImGui::SameLine(0, 10);
-            ImGui::Dummy(ImVec2(1, 20));
+            ImGui::SameLine(0, Theme::dpi(10.0f));
+            ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
 
             GizmoSelected gizmoSelected = sceneProject.sceneRender->getToolsLayer()->getGizmoSelected();
             bool multipleEntitiesSelected = sceneProject.sceneRender->isMultipleEntitesSelected();
 
             if (sceneProject.sceneType != SceneType::SCENE_UI){
-                ImGui::SameLine(0, 10);
+                ImGui::SameLine(0, Theme::dpi(10.0f));
 
                 if (sceneProject.sceneType != SceneType::SCENE_3D){
                     ImGui::BeginDisabled(gizmoSelected == GizmoSelected::OBJECT2D);
@@ -1839,9 +1858,9 @@ void editor::SceneWindow::show() {
                 ImGui::SetItemTooltip("Scale (R)");
                 ImGui::EndDisabled();
 
-                ImGui::SameLine(0, 10);
-                ImGui::Dummy(ImVec2(1, 20));
-                ImGui::SameLine(0, 10);
+                ImGui::SameLine(0, Theme::dpi(10.0f));
+                ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
+                ImGui::SameLine(0, Theme::dpi(10.0f));
 
                 bool useGlobalTransform = sceneProject.sceneRender->isUseGlobalTransform();
 
@@ -1861,8 +1880,8 @@ void editor::SceneWindow::show() {
                 ImGui::SetItemTooltip("Local transform (T)");
                 ImGui::EndDisabled();
 
-                ImGui::SameLine(0, 10);
-                ImGui::Dummy(ImVec2(1, 20));
+                ImGui::SameLine(0, Theme::dpi(10.0f));
+                ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
             }
 
             // Close the select/gizmo/transform disabled group opened before the cursor buttons.
@@ -1878,8 +1897,8 @@ void editor::SceneWindow::show() {
 
                 if (ImGui::BeginPopup(sceneSettingsPopupId.c_str())) {
                     if (ImGui::BeginTable("scene_settings_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
-                        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, 175.0f);
-                        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(175.0f));
+                        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(80.0f));
 
                         auto drawSettingRow = [this](const char* name, bool& value, bool disabled = false) {
                             ImGui::TableNextRow();
@@ -2023,14 +2042,14 @@ void editor::SceneWindow::show() {
                     ImGui::EndPopup();
                 }
 
-                ImGui::SameLine(0, 10);
-                ImGui::Dummy(ImVec2(1, 20));
+                ImGui::SameLine(0, Theme::dpi(10.0f));
+                ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
             }
 
             if (isCameraPreview) {
-                ImGui::SameLine(0, 10);
-                ImGui::Dummy(ImVec2(1, 20));
-                ImGui::SameLine(0, 10);
+                ImGui::SameLine(0, Theme::dpi(10.0f));
+                ImGui::Dummy(ImVec2(1.0f, Theme::dpi(20.0f)));
+                ImGui::SameLine(0, Theme::dpi(10.0f));
 
                 std::string cameraName = sceneProject.scene->getEntityName(previewCameraEntity);
                 if (cameraName.empty()) {
@@ -2062,9 +2081,29 @@ void editor::SceneWindow::show() {
                 int widthNew = ImGui::GetContentRegionAvail().x;
                 int heightNew = ImGui::GetContentRegionAvail().y;
 
-                if (widthNew != width[sceneProject.id] || heightNew != height[sceneProject.id]) {
-                    width[sceneProject.id] = ImGui::GetContentRegionAvail().x;
-                    height[sceneProject.id] = ImGui::GetContentRegionAvail().y;
+                ImGuiViewport* canvasViewport = ImGui::GetWindowViewport();
+                ImVec2 scale = (canvasViewport && canvasViewport->FramebufferScale.x > 0.0f && canvasViewport->FramebufferScale.y > 0.0f)
+                    ? canvasViewport->FramebufferScale
+                    : ImGui::GetIO().DisplayFramebufferScale;
+                if (scale.x <= 0.0f) scale.x = 1.0f;
+                if (scale.y <= 0.0f) scale.y = 1.0f;
+
+                float dpiScale = (canvasViewport && canvasViewport->DpiScale > 0.0f)
+                    ? canvasViewport->DpiScale
+                    : 1.0f;
+                if (dpiScale < 0.5f || dpiScale > 8.0f) {
+                    dpiScale = 1.0f;
+                }
+
+                const ImVec2 prevScale = framebufferScale[sceneProject.id];
+                const float prevDpi = canvasDpiScale[sceneProject.id];
+                if (widthNew != width[sceneProject.id] || heightNew != height[sceneProject.id]
+                    || prevScale.x != scale.x || prevScale.y != scale.y
+                    || prevDpi != dpiScale) {
+                    width[sceneProject.id] = widthNew;
+                    height[sceneProject.id] = heightNew;
+                    framebufferScale[sceneProject.id] = scale;
+                    canvasDpiScale[sceneProject.id] = dpiScale;
 
                     sceneProject.needUpdateRender = true;
                 }
@@ -2112,7 +2151,8 @@ void editor::SceneWindow::show() {
 
                     // Yellow frame as a "viewing through camera" cue (inset 1px so it's not clipped at the edge).
                     // Matches the previewed camera's highlight color in the Structure tree.
-                    drawList->AddRect(ImVec2(imageMin.x + 1, imageMin.y + 1), ImVec2(imageMax.x - 1, imageMax.y - 1), IM_COL32(255, 219, 51, 235), 0.0f, 0, 2.0f);
+                    const float frameInset = Theme::dpi(1.0f);
+                    drawList->AddRect(ImVec2(imageMin.x + frameInset, imageMin.y + frameInset), ImVec2(imageMax.x - frameInset, imageMax.y - frameInset), IM_COL32(255, 219, 51, 235), 0.0f, 0, Theme::dpi(2.0f));
                 } else {
                     ImGui::Image(previewTex, canvasAvail);
                 }
@@ -2148,7 +2188,8 @@ void editor::SceneWindow::show() {
                         ImGuiIO& io = ImGui::GetIO();
                         float canvasX = io.MousePos.x - windowPos.x;
                         float canvasY = io.MousePos.y - windowPos.y;
-                        suppressLeftMouseUntilRelease[sceneProject.id] = handleViewportGizmoClick(&sceneProject, canvasX, canvasY, width[sceneProject.id], height[sceneProject.id]);
+                        toEngineCanvas(sceneProject.id, canvasX, canvasY);
+                        suppressLeftMouseUntilRelease[sceneProject.id] = handleViewportGizmoClick(&sceneProject, canvasX, canvasY, getWidth(sceneProject.id), getHeight(sceneProject.id));
                     }
                 }
 
@@ -2173,18 +2214,40 @@ void editor::SceneWindow::show() {
     Backend::setGameCursorInSceneRect(gameCursorInSceneRect);
 }
 
-int editor::SceneWindow::getWidth(uint32_t sceneId) const{
-    if (width.count(sceneId)){
-        return width.at(sceneId);
-    }
+ImVec2 editor::SceneWindow::canvasFramebufferScale(uint32_t sceneId) const {
+    auto it = framebufferScale.find(sceneId);
+    return (it != framebufferScale.end()) ? it->second : ImVec2(1.0f, 1.0f);
+}
 
-    return 0;
+float editor::SceneWindow::canvasDpi(uint32_t sceneId) const {
+    auto it = canvasDpiScale.find(sceneId);
+    return (it != canvasDpiScale.end() && it->second > 0.0f) ? it->second : 1.0f;
+}
+
+ImVec2 editor::SceneWindow::canvasEngineScale(uint32_t sceneId) const {
+    return Backend::sceneRenderScale(canvasFramebufferScale(sceneId), canvasDpi(sceneId));
+}
+
+void editor::SceneWindow::toEngineCanvas(uint32_t sceneId, float& x, float& y) const {
+    ImVec2 scale = canvasEngineScale(sceneId);
+    x *= scale.x;
+    y *= scale.y;
+}
+
+int editor::SceneWindow::getWidth(uint32_t sceneId) const{
+    if (!width.count(sceneId) || width.at(sceneId) <= 0){
+        return 0;
+    }
+    return std::max(1, (int)std::lround((float)width.at(sceneId) * canvasEngineScale(sceneId).x));
 }
 
 int editor::SceneWindow::getHeight(uint32_t sceneId) const{
-    if (height.count(sceneId)){
-        return height.at(sceneId);
+    if (!height.count(sceneId) || height.at(sceneId) <= 0){
+        return 0;
     }
+    return std::max(1, (int)std::lround((float)height.at(sceneId) * canvasEngineScale(sceneId).y));
+}
 
-    return 0;
+float editor::SceneWindow::getOverlayScale(uint32_t sceneId) const {
+    return canvasDpi(sceneId) * canvasEngineScale(sceneId).x;
 }

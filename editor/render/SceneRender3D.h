@@ -108,6 +108,7 @@ namespace doriax::editor{
         virtual ~SceneRender3D();
 
         void activate() override;
+        void setOverlayScale(float scale) override;
         void updateSelLines(std::vector<OBB> obbs) override;
 
         void zoomCamera(float amount);

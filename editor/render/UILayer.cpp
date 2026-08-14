@@ -53,6 +53,10 @@ void setPolygonRect(doriax::Polygon* polygon, float width, float height){
     polygon->setSize(static_cast<unsigned int>(width), static_cast<unsigned int>(height));
 }
 
+unsigned scaledSize(float logical, float scale){
+    return (unsigned)std::max(1, (int)std::lround(logical * scale));
+}
+
 std::string formatDistance(float distance){
     char buffer[32];
     if (distance >= 1000.0f){
@@ -116,7 +120,6 @@ editor::UILayer::UILayer(bool enable3DOverlays){
         viewGizmoImage = new Image(scene);
 
         viewGizmoImage->setAnchorPreset(AnchorPreset::TOP_RIGHT);
-        viewGizmoImage->setSize(100, 100);
     }else{
         viewGizmoImage = nullptr;
     }
@@ -136,26 +139,19 @@ editor::UILayer::UILayer(bool enable3DOverlays){
     if (enable3DOverlays){
         gaugeBar = new Progressbar(scene);
         gaugeBar->setType(ProgressbarType::VERTICAL);
-        gaugeBar->setSize(GAUGE_TRACK_WIDTH, GAUGE_TRACK_HEIGHT);
         gaugeBar->setValue(0.0f);
-        placeAtLeftCenter(gaugeBar, GAUGE_TRACK_X, 0);
         // Keep the lazily-created fill behind the overlays.
         gaugeBar->setFillColor(withOpacity(GAUGE_DISTANCE_FILL_COLOR, gaugeOpacity));
 
         for (int i = 0; i < GAUGE_TICK_COUNT; i++){
-            Polygon* tick = new Polygon(scene);
-            setPolygonRect(tick, GAUGE_TICK_WIDTH, 1);
-            float fraction = static_cast<float>(i) / static_cast<float>(GAUGE_TICK_COUNT - 1);
-            placeAtLeftCenter(tick, GAUGE_TICK_X, (GAUGE_TRACK_HEIGHT * 0.5f) - fraction * GAUGE_TRACK_HEIGHT);
-            gaugeTicks.push_back(tick);
+            gaugeTicks.push_back(new Polygon(scene));
         }
 
         gaugeMarker = new Polygon(scene);
-        setPolygonRect(gaugeMarker, GAUGE_MARKER_WIDTH, GAUGE_MARKER_HEIGHT);
 
         gaugeLabel = new Text(scene);
-        gaugeLabel->setFontSize(GAUGE_LABEL_FONT_SIZE);
 
+        applyOverlayLayout();
         applyGaugeOpacity(gaugeOpacity);
         setCameraGaugeVisible(false);
     }
@@ -186,6 +182,43 @@ editor::UILayer::~UILayer(){
     }
 
     delete scene;
+}
+
+void editor::UILayer::applyOverlayLayout(){
+    const float s = overlayScale;
+
+    if (viewGizmoImage){
+        unsigned int size = scaledSize(100.0f, s);
+        viewGizmoImage->setSize(size, size);
+    }
+
+    if (!gaugeBar){
+        return;
+    }
+
+    gaugeBar->setSize(scaledSize(GAUGE_TRACK_WIDTH, s), scaledSize(GAUGE_TRACK_HEIGHT, s));
+    placeAtLeftCenter(gaugeBar, GAUGE_TRACK_X * s, 0.0f);
+
+    for (int i = 0; i < (int)gaugeTicks.size(); i++){
+        setPolygonRect(gaugeTicks[i], GAUGE_TICK_WIDTH * s, std::max(1.0f, s));
+        float fraction = (float)i / (float)(GAUGE_TICK_COUNT - 1);
+        placeAtLeftCenter(gaugeTicks[i], GAUGE_TICK_X * s, (GAUGE_TRACK_HEIGHT * s * 0.5f) - fraction * GAUGE_TRACK_HEIGHT * s);
+    }
+
+    setPolygonRect(gaugeMarker, GAUGE_MARKER_WIDTH * s, std::max(1.0f, GAUGE_MARKER_HEIGHT * s));
+    gaugeLabel->setFontSize(std::max(1u, scaledSize((float)GAUGE_LABEL_FONT_SIZE, s)));
+    gaugeLastValue = -1.0f;
+}
+
+void editor::UILayer::setOverlayScale(float scale){
+    if (scale <= 0.0f){
+        scale = 1.0f;
+    }
+    if (overlayScale == scale){
+        return;
+    }
+    overlayScale = scale;
+    applyOverlayLayout();
 }
 
 void editor::UILayer::setViewportGizmoTexture(Framebuffer* framebuffer){
@@ -247,9 +280,9 @@ void editor::UILayer::updateGauge(float value, float minValue, float maxValue){
             gaugeBar->setValue(fraction);
         }
         if (firstValue || fractionChanged){
-            float markerY = (GAUGE_TRACK_HEIGHT * 0.5f) - fraction * GAUGE_TRACK_HEIGHT;
-            placeAtLeftCenter(gaugeMarker, GAUGE_MARKER_X, markerY);
-            placeAtLeftCenter(gaugeLabel, GAUGE_LABEL_X, markerY);
+            float markerY = (GAUGE_TRACK_HEIGHT * overlayScale * 0.5f) - fraction * GAUGE_TRACK_HEIGHT * overlayScale;
+            placeAtLeftCenter(gaugeMarker, GAUGE_MARKER_X * overlayScale, markerY);
+            placeAtLeftCenter(gaugeLabel, GAUGE_LABEL_X * overlayScale, markerY);
         }
 
         std::string label = speedGaugeActive ? formatSpeedFactor(value) : formatDistance(value);
@@ -329,7 +362,7 @@ void editor::UILayer::hideSpeedGauge(){
 }
 
 void editor::UILayer::updateRect(Vector2 position, Vector2 size){
-    float thickness = 2;
+    float thickness = 2.0f * overlayScale;
 
     if (size.x < 0 && size.y < 0){
         position = position + size - Vector2(thickness);

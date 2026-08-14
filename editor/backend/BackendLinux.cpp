@@ -19,6 +19,7 @@
 #include <X11/Xatom.h>
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
+#include <X11/Xresource.h>
 #include <X11/Xutil.h>
 #include <X11/cursorfont.h>
 #include <X11/extensions/Xrandr.h>
@@ -1094,6 +1095,70 @@ bool isWindowMinimized(NativeWindow* window) {
     return attributes.map_state != IsViewable;
 }
 
+float envScale(const char* name) {
+    const char* value = std::getenv(name);
+    if (!value || !*value) return 0.0f;
+    const float scale = std::strtof(value, nullptr);
+    if (scale < 0.5f || scale > 8.0f) return 0.0f;
+    return scale;
+}
+
+// XResourceManagerString is a snapshot from XOpenDisplay. Read the live
+// RESOURCE_MANAGER property so GNOME/KDE scale changes apply while running.
+std::string resourceManagerString() {
+    Atom actualType = None;
+    int actualFormat = 0;
+    unsigned long nitems = 0;
+    unsigned long bytesAfter = 0;
+    unsigned char* prop = nullptr;
+    if (XGetWindowProperty(backend->display, backend->root, XA_RESOURCE_MANAGER,
+                           0, 65536, False, AnyPropertyType,
+                           &actualType, &actualFormat, &nitems, &bytesAfter,
+                           &prop) != Success || !prop) {
+        return {};
+    }
+    std::string result;
+    if (actualFormat == 8 && nitems > 0)
+        result.assign(reinterpret_cast<char*>(prop), nitems);
+    XFree(prop);
+    return result;
+}
+
+// GNOME/KDE UI scale is Xft.dpi / 96 (any value, not a fixed percent).
+// RandR mm-width is physical DPI and often disagrees, so prefer Xft.dpi
+// / toolkit env vars when they are set.
+float desktopUiScale() {
+    if (const float gdkScale = envScale("GDK_SCALE")) return gdkScale;
+    if (const float qtScale = envScale("QT_SCALE_FACTOR")) return qtScale;
+
+    const std::string resources = resourceManagerString();
+    if (resources.empty()) return 0.0f;
+    XrmInitialize();
+    XrmDatabase database = XrmGetStringDatabase(resources.c_str());
+    if (!database) return 0.0f;
+    XrmValue value;
+    char* type = nullptr;
+    float scale = 0.0f;
+    if (XrmGetResource(database, "Xft.dpi", "Xft.Dpi", &type, &value) && value.addr) {
+        const float dpi = std::strtof(value.addr, nullptr);
+        if (dpi > 0.0f) {
+            scale = std::clamp(dpi / 96.0f, 0.5f, 8.0f);
+        }
+    }
+    XrmDestroyDatabase(database);
+    return scale;
+}
+
+void applyDesktopUiScaleToMonitors() {
+    ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
+    const float uiScale = desktopUiScale();
+    if (uiScale <= 0.0f || platformIo.Monitors.empty()) return;
+    if (platformIo.Monitors[0].DpiScale == uiScale) return;
+    for (ImGuiPlatformMonitor& monitor : platformIo.Monitors)
+        monitor.DpiScale = uiScale;
+    backend->redrawRequested = true;
+}
+
 void updateMonitors() {
     ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
     platformIo.Monitors.resize(0);
@@ -1157,6 +1222,8 @@ void updateMonitors() {
             static_cast<float>(DisplayHeight(backend->display, backend->screen)));
         platformIo.Monitors.push_back(monitor);
     }
+
+    applyDesktopUiScaleToMonitors();
 }
 
 void updateMouseCursor() {
@@ -1471,6 +1538,13 @@ void processEvent(XEvent& event) {
         return;
     }
     if (event.type == SelectionClear) return;
+    if (event.type == PropertyNotify &&
+        event.xproperty.window == backend->root &&
+        event.xproperty.atom == XA_RESOURCE_MANAGER) {
+        updateMonitors();
+        backend->redrawRequested = true;
+        return;
+    }
     if (event.type == PropertyNotify && event.xproperty.state == PropertyDelete) {
         advanceOutgoingSelection(event.xproperty);
         return;
@@ -1536,10 +1610,14 @@ void processEvent(XEvent& event) {
             window->focused = true;
             if (window->inputContext) XSetICFocus(window->inputContext);
             io.AddFocusEvent(true);
-            if (window == backend->mainWindow && !backend->mouseControlSuspended &&
-                (backend->gameMouseMode == MouseMode::CAPTURED ||
-                 backend->gameMouseMode == MouseMode::CONFINED))
-                editor::Backend::setMouseMode(backend->gameMouseMode);
+            if (window == backend->mainWindow) {
+                // XWayland may not send RESOURCE_MANAGER PropertyNotify.
+                applyDesktopUiScaleToMonitors();
+                if (!backend->mouseControlSuspended &&
+                    (backend->gameMouseMode == MouseMode::CAPTURED ||
+                     backend->gameMouseMode == MouseMode::CONFINED))
+                    editor::Backend::setMouseMode(backend->gameMouseMode);
+            }
             break;
         case FocusOut:
             backend->redrawRequested = true;
@@ -2407,6 +2485,7 @@ bool initializeX11(int width, int height) {
     }
     backend->screen = DefaultScreen(backend->display);
     backend->root = RootWindow(backend->display, backend->screen);
+    XSelectInput(backend->display, backend->root, PropertyChangeMask);
     int randrErrorBase = 0;
     if (XRRQueryExtension(backend->display, &backend->randrEventBase, &randrErrorBase)) {
         XRRSelectInput(backend->display, backend->root,
@@ -2679,6 +2758,14 @@ bool editor::Backend::isRunningOnWayland() {
     // XWayland client, which retains the window positioning needed by ImGui's
     // detachable platform windows.
     return false;
+}
+
+ImVec2 editor::Backend::sceneRenderScale(ImVec2 framebufferScale, float dpiScale) {
+    if (framebufferScale.x <= 0.0f) framebufferScale.x = 1.0f;
+    if (framebufferScale.y <= 0.0f) framebufferScale.y = 1.0f;
+    if (dpiScale > framebufferScale.x) framebufferScale.x = dpiScale;
+    if (dpiScale > framebufferScale.y) framebufferScale.y = dpiScale;
+    return framebufferScale;
 }
 
 float editor::Backend::setMainMenu(const PlatformMenuModel& model,

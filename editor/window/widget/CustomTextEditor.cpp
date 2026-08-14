@@ -5,6 +5,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "App.h"
+#include "Theme.h"
 
 #include <algorithm>
 #include <cctype>
@@ -2462,16 +2463,16 @@ void CustomTextEditor::renderParamHint(const ImVec2& origin) {
 
     float textWidth = font->CalcTextSizeA(fontSize, FLT_MAX, 0, fullText.c_str()).x;
     float overloadWidth = overloadText.empty() ? 0 : font->CalcTextSizeA(fontSize, FLT_MAX, 0, overloadText.c_str()).x + 16.0f;
-    float padding = 8.0f;
+    float padding = Theme::dpi(8.0f);
     float popupWidth = textWidth + overloadWidth + padding * 2;
     float popupHeight = lineHeight + padding;
 
     // Ensure popup doesn't go off-screen
     ImVec2 displaySize = ImGui::GetIO().DisplaySize;
     if (screenPos.x + popupWidth > displaySize.x) {
-        screenPos.x = displaySize.x - popupWidth - 10;
+        screenPos.x = displaySize.x - popupWidth - Theme::dpi(10.0f);
     }
-    if (screenPos.x < 0) screenPos.x = 10;
+    if (screenPos.x < 0) screenPos.x = Theme::dpi(10.0f);
     if (screenPos.y < 0) {
         screenPos.y = textToScreen(paramHintAnchor, origin).y + lineHeight + 2.0f;
     }
@@ -2485,7 +2486,7 @@ void CustomTextEditor::renderParamHint(const ImVec2& origin) {
                              ImGuiWindowFlags_AlwaysAutoResize;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding, padding * 0.5f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Theme::dpi(4.0f));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.15f, 0.15f, 0.98f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.3f, 0.3f, 0.3f, 0.8f));
 
@@ -3744,10 +3745,10 @@ void CustomTextEditor::renderSuggestions(const ImVec2& origin) {
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_NoFocusOnAppearing;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 4));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 0));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 10.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(4.0f, 4.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Theme::dpi(ImVec2(4.0f, 0.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Theme::dpi(4.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, Theme::dpi(10.0f));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.12f, 0.12f, 0.98f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.3f, 0.3f, 0.3f, 0.8f));
     ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, ImVec4(0.12f, 0.12f, 0.12f, 0.5f));
@@ -3868,17 +3869,17 @@ void CustomTextEditor::renderTooltip() {
 void CustomTextEditor::renderFindDialog(const ImVec2& editorPos, const ImVec2& editorSize) {
     if (!showFindDialog) return;
 
-    const float padding = 8.0f;
-    const float spacing = 4.0f;
+    const float padding = Theme::dpi(8.0f);
+    const float spacing = Theme::dpi(4.0f);
 
-    ImVec2 dialogPos(editorPos.x + editorSize.x - 15.0f, editorPos.y + padding);
+    ImVec2 dialogPos(editorPos.x + editorSize.x - Theme::dpi(15.0f), editorPos.y + padding);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing, 4));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(8.0f, 6.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing, Theme::dpi(4.0f)));
 
     // Calculate dialog size first, then position it from the right edge
     ImGui::SetNextWindowPos(dialogPos, ImGuiCond_Always, ImVec2(1.0f, 0.0f)); // Pivot at right edge
@@ -3886,7 +3887,7 @@ void CustomTextEditor::renderFindDialog(const ImVec2& editorPos, const ImVec2& e
     if (ImGui::Begin("##FindDialog", nullptr, flags)) {
 
         // Input field with search input utility - use a fixed width group
-        const float inputWidth = 180.0f;
+        const float inputWidth = Theme::dpi(180.0f);
         const float controlHeight = ImGui::GetFrameHeight();
 
         bool focusInput = ImGui::IsWindowAppearing();
@@ -3898,10 +3899,11 @@ void CustomTextEditor::renderFindDialog(const ImVec2& editorPos, const ImVec2& e
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.3f, 0.3f, 0.3f, 0.5f));
 
         // Align arrow vertically with the input box
+        const float chevronSize = Theme::dpi(16.0f);
         float currentY = ImGui::GetCursorPosY();
-        ImGui::SetCursorPosY(currentY + (controlHeight - 16.0f) * 0.5f);
+        ImGui::SetCursorPosY(currentY + (controlHeight - chevronSize) * 0.5f);
 
-        if (ImGui::Button(showReplaceInput ? ICON_FA_CHEVRON_DOWN "##ToggleReplace" : ICON_FA_CHEVRON_RIGHT "##ToggleReplace", ImVec2(16, 16))) {
+        if (ImGui::Button(showReplaceInput ? ICON_FA_CHEVRON_DOWN "##ToggleReplace" : ICON_FA_CHEVRON_RIGHT "##ToggleReplace", ImVec2(chevronSize, chevronSize))) {
             showReplaceInput = !showReplaceInput;
         }
         ImGui::PopStyleColor(3);
@@ -4068,9 +4070,9 @@ void CustomTextEditor::renderContextMenu() {
                              ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing;
 
     ImGui::PushID(this);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4, 4));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 6));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(4.0f, 4.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, Theme::dpi(ImVec2(8.0f, 6.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Theme::dpi(4.0f));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.12f, 0.12f, 0.98f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.3f, 0.3f, 0.3f, 0.8f));
 

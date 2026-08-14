@@ -10,6 +10,7 @@
 
 #include "imgui_impl_vulkan.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
@@ -40,7 +41,17 @@ struct Renderer::State{
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     ImGui_ImplVulkanH_Window swapchain;
     std::vector<VkSemaphore> sokolFinishedSemaphores;
-    std::unordered_map<uint32_t, VkDescriptorSet> imguiTextures;
+    struct ImGuiTexture {
+        VkDescriptorSet descriptor = VK_NULL_HANDLE;
+        VkImageView imageView = VK_NULL_HANDLE;
+    };
+    struct RetiredImGuiTexture {
+        VkDescriptorSet descriptor = VK_NULL_HANDLE;
+        uint32_t retireAfterFrame = 0;
+    };
+    std::unordered_map<uint32_t, ImGuiTexture> imguiTextures;
+    std::vector<RetiredImGuiTexture> retiredImGuiTextures;
+    uint32_t completedFrameCount = 0;
     CameraRender render;
     bool swapchainRebuild = false;
     bool frameSynchronized = true;
@@ -54,6 +65,9 @@ struct Renderer::State{
     void destroySokolSemaphores();
     void rebuildImGuiPipeline();
     bool createMainSwapchain(int width, int height, bool synchronized);
+    void retireImGuiTexture(VkDescriptorSet descriptor);
+    void waitSecondaryViewportFences();
+    void flushRetiredImGuiTextures(bool all);
 };
 
 bool Renderer::State::failMainFrame(VkResult result){
@@ -292,6 +306,7 @@ bool Renderer::State::createMainSwapchain(
             checkVkResult(result);
             return false;
         }
+        flushRetiredImGuiTextures(true);
     }
     destroySokolSemaphores();
 
@@ -326,6 +341,84 @@ bool Renderer::State::createMainSwapchain(
     frameSynchronized = synchronized;
     platform.requestRedraw();
     return true;
+}
+
+void Renderer::State::retireImGuiTexture(VkDescriptorSet descriptor){
+    if (descriptor == VK_NULL_HANDLE) return;
+    uint32_t delay = swapchain.ImageCount;
+    if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable){
+        ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
+        ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+        for (int i = 0; i < platformIo.Viewports.Size; i++){
+            ImGuiViewport* viewport = platformIo.Viewports[i];
+            if (viewport == mainViewport) continue;
+            ImGui_ImplVulkanH_Window* window =
+                ImGui_ImplVulkanH_GetWindowDataFromViewport(viewport);
+            if (window && window->ImageCount > delay)
+                delay = window->ImageCount;
+        }
+    }
+    if (delay < 2) delay = 2;
+    retiredImGuiTextures.push_back({descriptor, completedFrameCount + delay});
+}
+
+void Renderer::State::waitSecondaryViewportFences(){
+    if (device == VK_NULL_HANDLE) return;
+    if (!(ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)) return;
+
+    ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
+    ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+    for (int i = 0; i < platformIo.Viewports.Size; i++){
+        ImGuiViewport* viewport = platformIo.Viewports[i];
+        if (viewport == mainViewport) continue;
+        ImGui_ImplVulkanH_Window* window =
+            ImGui_ImplVulkanH_GetWindowDataFromViewport(viewport);
+        if (!window) continue;
+        for (int frame = 0; frame < window->Frames.Size; frame++){
+            VkFence fence = window->Frames[frame].Fence;
+            if (fence == VK_NULL_HANDLE) continue;
+            const VkResult result =
+                vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+            if (result != VK_SUCCESS) checkVkResult(result);
+        }
+    }
+}
+
+void Renderer::State::flushRetiredImGuiTextures(bool all){
+    if (retiredImGuiTextures.empty()) return;
+    if (all){
+        for (const RetiredImGuiTexture& texture : retiredImGuiTextures){
+            ImGui_ImplVulkan_RemoveTexture(texture.descriptor);
+        }
+        retiredImGuiTextures.clear();
+        return;
+    }
+
+    bool anyDue = false;
+    for (const RetiredImGuiTexture& texture : retiredImGuiTextures){
+        if (completedFrameCount >= texture.retireAfterFrame){
+            anyDue = true;
+            break;
+        }
+    }
+    if (!anyDue) return;
+
+    // Platform windows submit after the main swapchain. Their fences are not
+    // the ones waited in beginFrame, so drain them before freeing descriptors.
+    waitSecondaryViewportFences();
+
+    retiredImGuiTextures.erase(
+        std::remove_if(
+            retiredImGuiTextures.begin(),
+            retiredImGuiTextures.end(),
+            [this](const RetiredImGuiTexture& texture){
+                if (completedFrameCount < texture.retireAfterFrame){
+                    return false;
+                }
+                ImGui_ImplVulkan_RemoveTexture(texture.descriptor);
+                return true;
+            }),
+        retiredImGuiTextures.end());
 }
 
 Renderer::Renderer() : state(std::make_unique<State>()){}
@@ -379,6 +472,7 @@ bool Renderer::init(const RendererPlatform& platform, int width, int height, boo
 
 void Renderer::shutdownImGui(){
     if (state->device != VK_NULL_HANDLE) vkDeviceWaitIdle(state->device);
+    state->flushRetiredImGuiTextures(true);
     ImGui_ImplVulkan_Shutdown();
     state->imguiTextures.clear();
     ImGui::GetPlatformIO().Platform_CreateVkSurface = nullptr;
@@ -411,6 +505,8 @@ bool Renderer::beginFrame(){
         state->swapchain.Frames[state->swapchain.FrameIndex];
     result = vkWaitForFences(state->device, 1, &frame.Fence, VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS) return state->failMainFrame(result);
+    state->completedFrameCount++;
+    state->flushRetiredImGuiTextures(false);
     return true;
 }
 
@@ -542,34 +638,34 @@ void Renderer::renderViewports(bool render){
 
 ImTextureID Renderer::getTexture(TextureRender* texture){
     const uint32_t viewId = texture->getViewId();
-    const auto existing = state->imguiTextures.find(viewId);
-    if (existing != state->imguiTextures.end())
-        return reinterpret_cast<ImTextureID>(existing->second);
-
     VkImageView imageView = reinterpret_cast<VkImageView>(
         const_cast<void*>(texture->getVulkanHandler()));
     if (imageView == VK_NULL_HANDLE) return ImTextureID{};
+
+    auto existing = state->imguiTextures.find(viewId);
+    if (existing != state->imguiTextures.end()){
+        if (existing->second.imageView == imageView)
+            return reinterpret_cast<ImTextureID>(existing->second.descriptor);
+        state->retireImGuiTexture(existing->second.descriptor);
+        state->imguiTextures.erase(existing);
+    }
+
     VkDescriptorSet descriptor = ImGui_ImplVulkan_AddTexture(
         imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    state->imguiTextures.emplace(viewId, descriptor);
+    state->imguiTextures.emplace(viewId, State::ImGuiTexture{descriptor, imageView});
     return reinterpret_cast<ImTextureID>(descriptor);
 }
 
 void Renderer::purgeTextures(){
     if (state->device == VK_NULL_HANDLE) return;
 
-    bool deviceIdle = false;
     for (auto entry = state->imguiTextures.begin();
          entry != state->imguiTextures.end();){
         if (TextureRender::isViewValid(entry->first)){
             ++entry;
             continue;
         }
-        if (!deviceIdle){
-            vkDeviceWaitIdle(state->device);
-            deviceIdle = true;
-        }
-        ImGui_ImplVulkan_RemoveTexture(entry->second);
+        state->retireImGuiTexture(entry->second.descriptor);
         entry = state->imguiTextures.erase(entry);
     }
 }

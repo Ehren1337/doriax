@@ -110,7 +110,6 @@ namespace doriax::editor {
         std::unordered_set<std::string> pendingThumbnailRequests;
 
         int iconSize;
-        float iconPadding;
 
         std::string lastSelectedFile;
         std::unordered_set<std::string> selectedFiles;

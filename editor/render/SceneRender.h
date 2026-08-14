@@ -154,6 +154,8 @@ namespace doriax::editor{
         void setupSoundIcon(SoundObjects& so);
         void setupLight2DIcon(Light2DObjects& lo);
 
+        float overlayPx(float logicalPixels) const { return logicalPixels * overlayScale; }
+
         Scene* scene;
         Camera* camera;
         Framebuffer framebuffer;
@@ -173,6 +175,7 @@ namespace doriax::editor{
         SceneDisplaySettings displaySettings;
 
         float zoom;       // current zoom level (units per pixel) for 2D
+        float overlayScale = 1.0f;
 
     public:
 
@@ -188,6 +191,8 @@ namespace doriax::editor{
 
         virtual void activate();
         virtual void updateSize(int width, int height);
+        virtual void setOverlayScale(float scale);
+        float billboardScreenScale(const Vector3& worldPos, float logicalScale) const;
         virtual void updateSelLines(std::vector<OBB> obbs) = 0;
 
         void updateRenderSystem();
