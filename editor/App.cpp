@@ -1964,7 +1964,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      the depth, G-buffer and fullscreen passes: same shaders, so still v19.
     // v20: dynamically sized skinning uses storage buffers, or an unfilterable bone
     //      texture with a nonfiltering sampler on GL/GLES.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v20";
+    // v21: backend-specific storage-buffer bindings are preserved in reflection data.
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v21";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -723,7 +723,7 @@ bool shadercompiler::compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, c
         
         spirvcrossvec[i].source = compiler->compile();
 
-        if (!parse_reflection(spirvvec[i].bytecode, inputs[i].stage_type, spirvcrossvec[i]))
+        if (!parse_reflection(spirvvec[i].bytecode, inputs[i].stage_type, spirvcrossvec[i], &args.lang))
             return false;
     }
 
