@@ -2030,6 +2030,9 @@ namespace {
             for (auto& [nodeIdx, nodeEntity] : comp->meshNodesMapping) {
                 ps["meshNodesMapping[" + std::to_string(nodeIdx) + "]"] = {PropertyType::Entity, UpdateFlags_None, (void*)&defEntity, (void*)&nodeEntity};
             }
+            for (auto& [nodeIdx, nodeEntity] : comp->nodesIdMapping) {
+                ps["nodesIdMapping[" + std::to_string(nodeIdx) + "]"] = {PropertyType::Entity, UpdateFlags_None, (void*)&defEntity, (void*)&nodeEntity};
+            }
         }
     }
 

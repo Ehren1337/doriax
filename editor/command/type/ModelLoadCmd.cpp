@@ -52,15 +52,24 @@ editor::ModelLoadCmd::~ModelLoadCmd(){
     }
 }
 
-std::vector<Entity> editor::ModelLoadCmd::collectModelDeleteRoots(const ModelComponent& model) {
+std::vector<Entity> editor::ModelLoadCmd::collectModelDeleteRoots(Scene* scene, Entity modelEntity,
+                                                                  const ModelComponent& model) {
     std::vector<Entity> roots;
+    roots.insert(roots.end(), model.animations.begin(), model.animations.end());
+
+    if (!model.nodesIdMapping.empty()) {
+        for (const auto& node : model.nodesIdMapping) {
+            Transform* transform = scene->findComponent<Transform>(node.second);
+            if (transform && transform->parent == modelEntity) {
+                roots.push_back(node.second);
+            }
+        }
+        return roots;
+    }
+
     if (model.skeleton != NULL_ENTITY) {
         roots.push_back(model.skeleton);
     }
-
-    roots.insert(roots.end(), model.animations.begin(), model.animations.end());
-
-    // Mesh-node children are parented directly under the model root, so each is its own delete root.
     for (const auto& node : model.meshNodesMapping) {
         roots.push_back(node.second);
     }
@@ -171,7 +180,7 @@ bool editor::ModelLoadCmd::execute(){
         : false;
     mergeStaticMeshesChanged = model.mergeStaticMeshes != requestedMergeStaticMeshes;
 
-    std::vector<Entity> oldSubEntityRoots = collectModelDeleteRoots(model);
+    std::vector<Entity> oldSubEntityRoots = collectModelDeleteRoots(scene, entity, model);
     if (!oldSubEntityRoots.empty()) {
         oldSubEntitiesDeleteCmd = new DeleteEntityCmd(project, sceneId, oldSubEntityRoots, true);
         if (!oldSubEntitiesDeleteCmd->execute()) {
@@ -193,6 +202,8 @@ bool editor::ModelLoadCmd::execute(){
     model.bonesNameMapping.clear();
     model.animations.clear();
     model.meshNodesMapping.clear();
+    model.nodesIdMapping.clear();
+    model.skinBindings.clear();
     model.mergeStaticMeshes = requestedMergeStaticMeshes;
 
     if (tryLoad()){
@@ -234,7 +245,7 @@ void editor::ModelLoadCmd::undo(){
         asyncPending = false;
     } else {
         ModelComponent& model = scene->getComponent<ModelComponent>(entity);
-        std::vector<Entity> newSubEntityRoots = collectModelDeleteRoots(model);
+        std::vector<Entity> newSubEntityRoots = collectModelDeleteRoots(scene, entity, model);
         if (!newSubEntityRoots.empty()) {
             DeleteEntityCmd newSubEntitiesDeleteCmd(project, sceneId, newSubEntityRoots, true);
             newSubEntitiesDeleteCmd.execute();

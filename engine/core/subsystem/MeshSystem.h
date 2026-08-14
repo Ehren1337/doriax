@@ -88,6 +88,9 @@ namespace doriax{
         std::string getBufferName(int bufferViewIndex, ModelComponent& model);
         Matrix4 getGLTFNodeMatrix(int nodeIndex, ModelComponent& model);
         Matrix4 getGLTFMeshGlobalMatrix(int nodeIndex, ModelComponent& model, std::map<int, int>& nodesParent);
+        Matrix4 getGLTFInverseBindMatrix(const ModelComponent& model, int skinIndex, size_t jointIndex);
+        bool buildGLTFNodeHierarchy(Entity entity, ModelComponent& model, const std::map<int, int>& nodesParent);
+        void buildGLTFSkinBindings(Entity entity, ModelComponent& model);
         Entity generateSketetalStructure(Entity entity, ModelComponent& model, int nodeIndex, int skinIndex);
         TextureFilter convertFilter(int filter);
         TextureWrap convertWrap(int wrap);

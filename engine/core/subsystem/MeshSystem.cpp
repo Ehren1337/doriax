@@ -1929,13 +1929,163 @@ Matrix4 MeshSystem::getGLTFMeshGlobalMatrix(int nodeIndex, ModelComponent& model
     return matrix;
 }
 
+Matrix4 MeshSystem::getGLTFInverseBindMatrix(const ModelComponent& model, int skinIndex, size_t jointIndex){
+    Matrix4 matrix;
+    if (!model.gltfModel || !isValidGLTFIndex(skinIndex, model.gltfModel->skins))
+        return matrix;
+
+    const tinygltf::Skin& skin = model.gltfModel->skins[skinIndex];
+    if (skin.inverseBindMatrices < 0 ||
+            !isValidGLTFIndex(skin.inverseBindMatrices, model.gltfModel->accessors))
+        return matrix;
+
+    const tinygltf::Accessor& accessor = model.gltfModel->accessors[skin.inverseBindMatrices];
+    if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != TINYGLTF_TYPE_MAT4 ||
+            jointIndex >= accessor.count || !isValidGLTFIndex(accessor.bufferView, model.gltfModel->bufferViews))
+        return matrix;
+
+    const tinygltf::BufferView& view = model.gltfModel->bufferViews[accessor.bufferView];
+    if (!isValidGLTFIndex(view.buffer, model.gltfModel->buffers))
+        return matrix;
+
+    const std::vector<unsigned char>& data = model.gltfModel->buffers[view.buffer].data;
+    const int byteStride = accessor.ByteStride(view);
+    if (byteStride < static_cast<int>(sizeof(float) * 16))
+        return matrix;
+
+    const size_t offset = view.byteOffset + accessor.byteOffset + jointIndex * byteStride;
+    if (offset > data.size() || sizeof(float) * 16 > data.size() - offset)
+        return matrix;
+
+    float values[16];
+    std::memcpy(values, data.data() + offset, sizeof(values));
+    return Matrix4(
+        values[0], values[4], values[8], values[12],
+        values[1], values[5], values[9], values[13],
+        values[2], values[6], values[10], values[14],
+        values[3], values[7], values[11], values[15]);
+}
+
+bool MeshSystem::buildGLTFNodeHierarchy(Entity entity, ModelComponent& model,
+                                        const std::map<int, int>& nodesParent){
+    if (!model.gltfModel)
+        return false;
+
+    std::map<int, std::pair<int, size_t>> jointSlots;
+    for (size_t skinIndex = 0; skinIndex < model.gltfModel->skins.size(); skinIndex++) {
+        const tinygltf::Skin& skin = model.gltfModel->skins[skinIndex];
+        for (size_t jointIndex = 0; jointIndex < skin.joints.size(); jointIndex++)
+            jointSlots.emplace(skin.joints[jointIndex], std::make_pair(static_cast<int>(skinIndex), jointIndex));
+    }
+
+    model.nodesIdMapping.clear();
+    model.bonesIdMapping.clear();
+    model.bonesNameMapping.clear();
+    model.meshNodesMapping.clear();
+    model.skeleton = NULL_ENTITY;
+
+    for (size_t i = 0; i < model.gltfModel->nodes.size(); i++) {
+        const tinygltf::Node& node = model.gltfModel->nodes[i];
+        Entity nodeEntity = scene->createEntity();
+        if (nodeEntity == NULL_ENTITY) {
+            clearMeshNodeMapping(model);
+            return false;
+        }
+
+        scene->addComponent<Transform>(nodeEntity);
+        Transform& transform = scene->getComponent<Transform>(nodeEntity);
+        getGLTFNodeMatrix(static_cast<int>(i), model).decompose(
+            transform.position, transform.scale, transform.rotation);
+        transform.needUpdate = true;
+
+        scene->setEntityName(nodeEntity,
+            node.name.empty() ? "Node " + std::to_string(i) : node.name);
+        model.nodesIdMapping[static_cast<int>(i)] = nodeEntity;
+
+        if (node.mesh >= 0) {
+            scene->addComponent<MeshComponent>(nodeEntity);
+            model.meshNodesMapping[static_cast<int>(i)] = nodeEntity;
+        }
+
+        auto joint = jointSlots.find(static_cast<int>(i));
+        if (joint != jointSlots.end()) {
+            scene->addComponent<BoneComponent>(nodeEntity);
+            BoneComponent& bone = scene->getComponent<BoneComponent>(nodeEntity);
+            bone.index = static_cast<int>(joint->second.second);
+            bone.model = entity;
+            bone.bindPosition = transform.position;
+            bone.bindRotation = transform.rotation;
+            bone.bindScale = transform.scale;
+            bone.offsetMatrix = getGLTFInverseBindMatrix(model, joint->second.first, joint->second.second);
+            model.bonesIdMapping[static_cast<int>(i)] = nodeEntity;
+            model.bonesNameMapping[scene->getEntityName(nodeEntity)] = nodeEntity;
+        }
+    }
+
+    for (const auto& mappedNode : model.nodesIdMapping) {
+        auto parent = nodesParent.find(mappedNode.first);
+        Entity parentEntity = entity;
+        if (parent != nodesParent.end() && parent->second >= 0) {
+            auto mappedParent = model.nodesIdMapping.find(parent->second);
+            if (mappedParent != model.nodesIdMapping.end())
+                parentEntity = mappedParent->second;
+        }
+        scene->addEntityChild(parentEntity, mappedNode.second, false);
+
+        if (model.skeleton == NULL_ENTITY && model.bonesIdMapping.count(mappedNode.first) &&
+                (parent == nodesParent.end() || !model.bonesIdMapping.count(parent->second)))
+            model.skeleton = mappedNode.second;
+    }
+
+    return true;
+}
+
+void MeshSystem::buildGLTFSkinBindings(Entity entity, ModelComponent& model){
+    model.skinBindings.clear();
+    if (!model.gltfModel)
+        return;
+
+    for (size_t nodeIndex = 0; nodeIndex < model.gltfModel->nodes.size(); nodeIndex++) {
+        const tinygltf::Node& node = model.gltfModel->nodes[nodeIndex];
+        if (node.mesh < 0 || !isValidGLTFIndex(node.skin, model.gltfModel->skins))
+            continue;
+
+        Entity meshEntity = entity;
+        auto mappedMesh = model.meshNodesMapping.find(static_cast<int>(nodeIndex));
+        if (mappedMesh != model.meshNodesMapping.end())
+            meshEntity = mappedMesh->second;
+
+        const tinygltf::Skin& skin = model.gltfModel->skins[node.skin];
+        ModelSkinBinding binding;
+        binding.mesh = meshEntity;
+        binding.joints.reserve(skin.joints.size());
+        binding.inverseBindMatrices.reserve(skin.joints.size());
+
+        for (size_t jointIndex = 0; jointIndex < skin.joints.size(); jointIndex++) {
+            Entity jointEntity = NULL_ENTITY;
+            auto mappedNode = model.nodesIdMapping.find(skin.joints[jointIndex]);
+            if (mappedNode != model.nodesIdMapping.end()) {
+                jointEntity = mappedNode->second;
+            } else {
+                auto mappedBone = model.bonesIdMapping.find(skin.joints[jointIndex]);
+                if (mappedBone != model.bonesIdMapping.end())
+                    jointEntity = mappedBone->second;
+            }
+            binding.joints.push_back(jointEntity);
+            binding.inverseBindMatrices.push_back(getGLTFInverseBindMatrix(model, node.skin, jointIndex));
+        }
+
+        model.skinBindings.push_back(std::move(binding));
+    }
+}
+
 Entity MeshSystem::generateSketetalStructure(Entity entity, ModelComponent& model, int nodeIndex, int skinIndex){
     if (!model.gltfModel || !isValidGLTFIndex(nodeIndex, model.gltfModel->nodes) || !isValidGLTFIndex(skinIndex, model.gltfModel->skins)) {
         return NULL_ENTITY;
     }
 
-    tinygltf::Node node = model.gltfModel->nodes[nodeIndex];
-    tinygltf::Skin skin = model.gltfModel->skins[skinIndex];
+    const tinygltf::Node& node = model.gltfModel->nodes[nodeIndex];
+    const tinygltf::Skin& skin = model.gltfModel->skins[skinIndex];
 
     int index = -1;
 
@@ -1948,50 +2098,7 @@ Entity MeshSystem::generateSketetalStructure(Entity entity, ModelComponent& mode
         return NULL_ENTITY;
     }
 
-    Matrix4 offsetMatrix;
-
-    if (skin.inverseBindMatrices >= 0) {
-
-        if (!isValidGLTFIndex(skin.inverseBindMatrices, model.gltfModel->accessors)) {
-            Log::error("Skeleton error: Invalid inverse bind matrix accessor");
-            return NULL_ENTITY;
-        }
-
-        tinygltf::Accessor accessor = model.gltfModel->accessors[skin.inverseBindMatrices];
-        if (!isValidGLTFIndex(accessor.bufferView, model.gltfModel->bufferViews)) {
-            Log::error("Skeleton error: Invalid inverse bind matrix buffer view");
-            return NULL_ENTITY;
-        }
-
-        tinygltf::BufferView bufferView = model.gltfModel->bufferViews[accessor.bufferView];
-
-        if (!isValidGLTFIndex(bufferView.buffer, model.gltfModel->buffers)) {
-            Log::error("Skeleton error: Invalid inverse bind matrix buffer");
-            return NULL_ENTITY;
-        }
-
-        std::vector<unsigned char>& bufferData = model.gltfModel->buffers[bufferView.buffer].data;
-        const size_t matrixOffset = bufferView.byteOffset + accessor.byteOffset + (16 * sizeof(float) * index);
-        if (matrixOffset > bufferData.size() || 16 * sizeof(float) > bufferData.size() - matrixOffset) {
-            Log::error("Skeleton error: Invalid inverse bind matrix range");
-            return NULL_ENTITY;
-        }
-
-        float *matrices = (float *) (bufferData.data() + matrixOffset);
-
-        if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != TINYGLTF_TYPE_MAT4) {
-            Log::error("Skeleton error: Unknown inverse bind matrix data type");
-
-            return NULL_ENTITY;
-        }
-
-        offsetMatrix = Matrix4(
-                matrices[0], matrices[4], matrices[8], matrices[12],
-                matrices[1], matrices[5], matrices[9], matrices[13],
-                matrices[2], matrices[6], matrices[10], matrices[14],
-                matrices[3], matrices[7], matrices[11], matrices[15]);
-
-    }
+    Matrix4 offsetMatrix = getGLTFInverseBindMatrix(model, skinIndex, index);
 
     Entity bone;
 
@@ -3506,15 +3613,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         return false;
     }
 
-    // Multi-node models spread their mesh nodes across child entities (each with its own Transform)
-    // so per-node placement survives save/load. Skinned nodes go down the same path: each becomes a
-    // child entity, but keeps an identity local transform because the skeleton — not the node
-    // transform — drives its vertices (the shared skeleton fans out to every child mesh at render).
+    // Models that need their glTF node hierarchy keep mesh nodes on child entities so animated
+    // transform-only nodes and per-node placement survive save/load.
     bool anyNodeSkinned = false;
     for (int nodeIdx : meshNodes) {
         if (model.gltfModel->nodes[nodeIdx].skin >= 0) { anyNodeSkinned = true; break; }
     }
-    if (model.mergeStaticMeshes && meshNodes.size() > 1) {
+    const bool mergeMeshNodes = model.mergeStaticMeshes && meshNodes.size() > 1;
+    if (mergeMeshNodes) {
         std::string reason;
         if (!canMergeStaticModel(model, &reason)) {
             Log::error("Cannot merge static GLTF model (%s): %s", filename.c_str(), reason.c_str());
@@ -3524,10 +3630,13 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             return false;
         }
     }
-    // Building the child entities mutates the ECS, which is only safe on the main thread. Off-thread
-    // loads (e.g. the ResourcesWindow thumbnail worker) bake/flatten into the root mesh instead —
-    // building the hierarchy there corrupts the registry's component maps.
-    bool useChildEntities = (meshNodes.size() > 1) && !model.mergeStaticMeshes && !Engine::isAsyncThread();
+    // Building child entities mutates the ECS, so off-thread previews keep the flat path.
+    const bool canUseChildEntities = !mergeMeshNodes && !Engine::isAsyncThread();
+    const bool useNodeHierarchy = canUseChildEntities &&
+        (!model.nodesIdMapping.empty() || (!skipEntities &&
+            (!model.gltfModel->animations.empty() || model.gltfModel->skins.size() > 1)));
+    const bool useChildEntities = canUseChildEntities &&
+        (meshNodes.size() > 1 || useNodeHierarchy);
 
     // Off-thread previews cannot safely build child/skeleton entities, so bake glTF node globals into
     // a flat static mesh instead. Skinned nodes are baked too, but a skinned mesh node's own transform
@@ -3536,7 +3645,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // a live skeleton. Non-skinned nodes bake their own global transform. (Async is always the flatten
     // path, so useChildEntities is already false here.)
     bool bakingFlatten = (Engine::isAsyncThread() && (meshNodes.size() > 1 || anyNodeSkinned))
-        || (model.mergeStaticMeshes && meshNodes.size() > 1);
+        || mergeMeshNodes;
 
     if (meshNode < 0) {
         meshNode = meshNodes[0];
@@ -3555,12 +3664,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     Matrix4 matrix = getGLTFMeshGlobalMatrix(transformNode, model, nodesParent);
 
-    // For NON-skinned child entities (and the baked-flatten preview) node transforms live on the
-    // children / baked vertices, so the root keeps its drag/identity transform to avoid applying it
-    // twice. Skinned models are the exception: their children sit at identity and the skinning cancels
-    // the root's world out of the bones, so the scene-root matrix only reaches the vertices through the
-    // child meshes' MVP — i.e. it MUST stay on the root (same as the old flattened skinned path).
-    if (changeRootTransform && (!useChildEntities || anyNodeSkinned) && !bakingFlatten) {
+    // Child hierarchies carry glTF transforms themselves. The legacy multi-node skin path keeps
+    // skinned children at identity, so it still needs the scene-root transform on the model.
+    if (changeRootTransform && (!useChildEntities || (anyNodeSkinned && !useNodeHierarchy)) &&
+            !bakingFlatten) {
         bool hasDefaultPosition = (transform.position == Vector3::ZERO);
         bool hasDefaultRotation = (transform.rotation == Quaternion::IDENTITY);
         bool hasDefaultScale    = (transform.scale    == Vector3::UNIT_SCALE);
@@ -3625,6 +3732,16 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
     }
 
+    // Creating node meshes may reallocate the MeshComponent array. Do it only after the root mesh
+    // setup above; the child path does not dereference that root reference again.
+    if (useNodeHierarchy && !skipEntities &&
+            !buildGLTFNodeHierarchy(entity, model, nodesParent)) {
+        Log::error("Cannot create GLTF node hierarchy: %s", filename.c_str());
+        if (asyncLoad)
+            ResourceProgress::failBuild(buildId);
+        return false;
+    }
+
     unsigned int submeshIndex = 0; // continuous across nodes for the flatten path
     for (int nodeIdx : meshNodes) {
         int gltfMeshIndex = model.gltfModel->nodes[nodeIdx].mesh;
@@ -3648,8 +3765,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             nodeBakeNormalMatrix = nodeBakeMatrix.linear().inverse(1e-6f).transpose();
         }
 
-        // Select the MeshComponent this node's primitives load into: the root entity for the
-        // single-node/skinned path, or a per-node child entity (created or reused) otherwise.
+        // Load into the root on the flat path, or the node's child mesh on the hierarchy path.
         Entity meshEntity = entity;
         if (useChildEntities) {
             meshEntity = NULL_ENTITY;
@@ -3717,11 +3833,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
 
             mesh.cullingMode = CullingMode::BACK;
-            // Skinned nodes render in model space (their own transform is ignored), so their winding
-            // follows the model matrix like the flattened path; non-skinned nodes use their own.
-            double windingDet = (model.gltfModel->nodes[nodeIdx].skin >= 0)
-                                    ? matrix.determinant()
-                                    : getGLTFMeshGlobalMatrix(nodeIdx, model, nodesParent).determinant();
+            // Legacy skinned children stay at identity; hierarchy children use their node transform.
+            double windingDet = nodeSkin && !useNodeHierarchy
+                ? matrix.determinant()
+                : getGLTFMeshGlobalMatrix(nodeIdx, model, nodesParent).determinant();
             mesh.windingOrder = (windingDet < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
 
             // Reserve one synthetic byte-index view, one for a VEC3 COLOR_0, plus up to eight supported
@@ -4184,14 +4299,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
     int skeletonRoot = -1;
 
-    if (skinIndex >= 0){
+    if (skinIndex >= 0 && !useNodeHierarchy){
         if (!isValidGLTFIndex(skinIndex, model.gltfModel->skins)) {
             Log::warn("GLTF mesh node has invalid skin index %i: %s", skinIndex, filename.c_str());
             skinIndex = -1;
         }
     }
 
-    if (skinIndex >= 0){
+    if (skinIndex >= 0 && !useNodeHierarchy){
         tinygltf::Skin skin = model.gltfModel->skins[skinIndex];
 
         if (skin.skeleton >= 0 && isValidGLTFIndex(skin.skeleton, model.gltfModel->nodes)) {
@@ -4247,6 +4362,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
         }
     }
+
+    if (!Engine::isAsyncThread())
+        buildGLTFSkinBindings(entity, model);
 
     // Animation tracks are also model-generated entities, so the off-thread thumbnail worker skips
     // building them for the same reason as the skeleton above (a static preview never plays them).
@@ -4470,11 +4588,15 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     }
 
                     if (foundTrack) {
-                        if (model.bonesIdMapping.count(channel.target_node)) {
+                        auto targetNode = model.nodesIdMapping.find(channel.target_node);
+                        if (targetNode != model.nodesIdMapping.end())
+                            actiontrack.target = targetNode->second;
+                        else if (model.bonesIdMapping.count(channel.target_node))
                             actiontrack.target = model.bonesIdMapping[channel.target_node];
-                        } else {
+                        else if (model.meshNodesMapping.count(channel.target_node))
+                            actiontrack.target = model.meshNodesMapping[channel.target_node];
+                        else
                             actiontrack.target = entity;
-                        }
                         animcomp.actions.push_back({0, duration, track});
                     }else{
                         scene->destroyEntity(track);
@@ -4528,7 +4650,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
     //END DEBUG
 */
-    // Root-mesh finalization (single-node path only). In the child-entity path each child mesh was
+    // Root-mesh finalization (flat path only). In the child-entity path each child mesh was
     // already finalized in the loop, the root mesh is an empty container, and adding child
     // MeshComponents may have reallocated the component array — so the `mesh` reference captured
     // before the loop must not be dereferenced here.
@@ -4862,8 +4984,10 @@ bool MeshSystem::hasInstancedMesh(Entity entity) const{
 }
 
 void MeshSystem::clearBoneMapping(ModelComponent& model){
-    for (auto const& bone : model.bonesIdMapping){
-        scene->destroyEntity(bone.second);
+    if (model.nodesIdMapping.empty()) {
+        for (auto const& bone : model.bonesIdMapping){
+            scene->destroyEntity(bone.second);
+        }
     }
     model.bonesIdMapping.clear();
     model.bonesNameMapping.clear();
@@ -4879,10 +5003,23 @@ void MeshSystem::clearAnimationMapping(ModelComponent& model){
 }
 
 void MeshSystem::clearMeshNodeMapping(ModelComponent& model){
-    for (auto const& node : model.meshNodesMapping){
-        scene->destroyEntity(node.second);
+    if (model.nodesIdMapping.empty()) {
+        for (auto const& node : model.meshNodesMapping){
+            scene->destroyEntity(node.second);
+        }
+    } else {
+        for (const auto& node : model.nodesIdMapping) {
+            Entity nodeEntity = node.second;
+            if (scene->isEntityCreated(nodeEntity))
+                scene->destroyEntity(nodeEntity);
+        }
+        model.nodesIdMapping.clear();
+        model.bonesIdMapping.clear();
+        model.bonesNameMapping.clear();
+        model.skeleton = NULL_ENTITY;
     }
     model.meshNodesMapping.clear();
+    model.skinBindings.clear();
 }
 
 void MeshSystem::destroyModel(ModelComponent& model){
@@ -4900,6 +5037,7 @@ void MeshSystem::destroyModel(ModelComponent& model){
     }
 
     model.morphNameMapping.clear();
+    model.skinBindings.clear();
 
     model.filename = "";
     model.loadedFilename.clear();
@@ -4907,6 +5045,18 @@ void MeshSystem::destroyModel(ModelComponent& model){
 }
 
 void MeshSystem::resetModelToBindPose(ModelComponent& model){
+    if (model.gltfModel && !model.nodesIdMapping.empty()) {
+        for (const auto& node : model.nodesIdMapping) {
+            Transform* transform = scene->findComponent<Transform>(node.second);
+            if (!transform || !isValidGLTFIndex(node.first, model.gltfModel->nodes))
+                continue;
+            getGLTFNodeMatrix(node.first, model).decompose(
+                transform->position, transform->scale, transform->rotation);
+            transform->needUpdate = true;
+        }
+        return;
+    }
+
     for (auto const& bone : model.bonesIdMapping){
         Entity boneEntity = bone.second;
         BoneComponent* boneComp = scene->findComponent<BoneComponent>(boneEntity);

@@ -354,11 +354,17 @@ void editor::ProjectUtils::removeShaderFork(const ShaderForkPlan& plan) {
 }
 
 void editor::ProjectUtils::collectModelEntities(Scene* scene, const ModelComponent& model, std::vector<Entity>& out){
-    for (const auto& bone : model.bonesIdMapping){
-        out.push_back(bone.second);
-    }
-    for (const auto& node : model.meshNodesMapping){
-        out.push_back(node.second);
+    if (!model.nodesIdMapping.empty()) {
+        for (const auto& node : model.nodesIdMapping){
+            out.push_back(node.second);
+        }
+    } else {
+        for (const auto& bone : model.bonesIdMapping){
+            out.push_back(bone.second);
+        }
+        for (const auto& node : model.meshNodesMapping){
+            out.push_back(node.second);
+        }
     }
     for (const auto& anim : model.animations){
         out.push_back(anim);
@@ -432,6 +438,15 @@ Entity editor::ProjectUtils::getLockedEntityParent(Scene* scene, Entity entity){
         }
 
         for (const auto& node : model.meshNodesMapping) {
+            if (node.second == entity) {
+                Transform* transform = scene->findComponent<Transform>(entity);
+                if (transform && transform->parent != NULL_ENTITY) {
+                    return transform->parent;
+                }
+                return modelEntity;
+            }
+        }
+        for (const auto& node : model.nodesIdMapping) {
             if (node.second == entity) {
                 Transform* transform = scene->findComponent<Transform>(entity);
                 if (transform && transform->parent != NULL_ENTITY) {

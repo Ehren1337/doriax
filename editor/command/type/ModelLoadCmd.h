@@ -35,7 +35,8 @@ namespace doriax::editor{
         bool asyncPending = false;
         std::shared_ptr<std::atomic<bool>> cancelFlag;
 
-        static std::vector<Entity> collectModelDeleteRoots(const ModelComponent& model);
+        static std::vector<Entity> collectModelDeleteRoots(Scene* scene, Entity modelEntity,
+                                                           const ModelComponent& model);
 
         bool tryLoad();
         void finalizeLoad();

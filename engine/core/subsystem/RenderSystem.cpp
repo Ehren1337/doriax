@@ -5967,6 +5967,39 @@ void RenderSystem::update(double dt){
         }
     }
 
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (int i = 0; i < models->size(); i++) {
+        ModelComponent& model = models->getComponentFromIndex(i);
+        for (const ModelSkinBinding& binding : model.skinBindings) {
+            MeshComponent* mesh = scene->findComponent<MeshComponent>(binding.mesh);
+            Transform* meshTransform = scene->findComponent<Transform>(binding.mesh);
+            if (!mesh || !meshTransform)
+                continue;
+
+            bool dirty = meshTransform->needUpdate;
+            for (Entity joint : binding.joints) {
+                if (dirty)
+                    break;
+                Transform* jointTransform = scene->findComponent<Transform>(joint);
+                dirty = jointTransform && jointTransform->needUpdate;
+            }
+            if (!dirty)
+                continue;
+
+            const Matrix4 inverseMeshTransform = meshTransform->modelMatrix.inverse();
+            const size_t jointCount = std::min(binding.joints.size(), binding.inverseBindMatrices.size());
+            for (size_t jointIndex = 0; jointIndex < jointCount &&
+                    mesh->bonesMatrix.validIndex(static_cast<int>(jointIndex)); jointIndex++) {
+                Transform* jointTransform = scene->findComponent<Transform>(binding.joints[jointIndex]);
+                if (jointTransform)
+                    mesh->bonesMatrix[jointIndex] = inverseMeshTransform * jointTransform->modelMatrix *
+                        binding.inverseBindMatrices[jointIndex];
+            }
+            mesh->needUpdateBones = true;
+            mesh->needUpdateAABB = true;
+        }
+    }
+
     updateReflectionProbes(dt);
 
     Entity mainCameraEntity = scene->getCamera();
@@ -6408,7 +6441,7 @@ void RenderSystem::update(double dt){
                 if (bone.model != NULL_ENTITY && bone.index >= 0){
                     ModelComponent* model = scene->findComponent<ModelComponent>(bone.model);
 
-                    if (model) {
+                    if (model && model->skinBindings.empty()) {
                         Matrix4 skinning = model->inverseDerivedTransform * transform.modelMatrix * bone.offsetMatrix;
 
                         auto updateDrivenMesh = [&](MeshComponent* drivenMesh) {

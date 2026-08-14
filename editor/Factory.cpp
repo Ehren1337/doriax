@@ -1896,6 +1896,9 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     for (const auto& [nodeIdx, entity_val] : model.meshNodesMapping) {
         code << ind << "modelcomp.meshNodesMapping[" << formatInt(nodeIdx) << "] = " << formatEntity(entity_val, entityVarNames) << ";\n";
     }
+    for (const auto& [nodeIdx, entity_val] : model.nodesIdMapping) {
+        code << ind << "modelcomp.nodesIdMapping[" << formatInt(nodeIdx) << "] = " << formatEntity(entity_val, entityVarNames) << ";\n";
+    }
     for (const auto& [name, index] : model.morphNameMapping) {
         code << ind << "modelcomp.morphNameMapping[" << formatString(name) << "] = " << formatInt(index) << ";\n";
     }

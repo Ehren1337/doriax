@@ -4884,6 +4884,17 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
         node["meshNodesMapping"] = meshNodesNode;
     }
 
+    if (!model.nodesIdMapping.empty()) {
+        YAML::Node nodesNode;
+        for (const auto& mappedNode : model.nodesIdMapping) {
+            YAML::Node n;
+            n["node"] = mappedNode.first;
+            n["entity"] = static_cast<uint32_t>(mappedNode.second);
+            nodesNode.push_back(n);
+        }
+        node["nodesIdMapping"] = nodesNode;
+    }
+
     return node;
 }
 
@@ -4936,6 +4947,24 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
             Entity nodeEntity = static_cast<Entity>(meshNode["entity"].as<uint32_t>());
             model.meshNodesMapping[nodeIdx] = nodeEntity;
         }
+    }
+
+    model.nodesIdMapping.clear();
+    if (node["nodesIdMapping"]) {
+        for (const auto& mappedNode : node["nodesIdMapping"]) {
+            int nodeIdx = mappedNode["node"].as<int>();
+            Entity nodeEntity = static_cast<Entity>(mappedNode["entity"].as<uint32_t>());
+            model.nodesIdMapping[nodeIdx] = nodeEntity;
+        }
+    }
+
+    if (!oldModel || model.filename != oldModel->filename ||
+            model.bonesIdMapping != oldModel->bonesIdMapping ||
+            model.meshNodesMapping != oldModel->meshNodesMapping ||
+            model.nodesIdMapping != oldModel->nodesIdMapping) {
+        model.skinBindings.clear();
+        model.loadedFilename.clear();
+        model.needUpdateModel = true;
     }
 
     return model;
