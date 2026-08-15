@@ -995,6 +995,14 @@ void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, 
             updateSceneCppScripts(&sceneProject);
         }
     }
+
+    for (auto& [bundlePath, bundle] : entityBundles) {
+        if (!remapScriptPathsInRegistry(bundle.registry.get(), oldPath, newPath)) {
+            continue;
+        }
+        bundle.isModified = true;
+        saveEntityBundleToDisk(bundlePath);
+    }
 }
 
 void editor::Project::cleanupMaterialFilePath(const std::filesystem::path& deletedPath) {
@@ -1181,6 +1189,14 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
             sceneProject.isModified = true;
             updateSceneCppScripts(&sceneProject);
         }
+    }
+
+    for (auto& [bundlePath, bundle] : entityBundles) {
+        if (!cleanupScriptPathsInRegistry(bundle.registry.get(), deletedPath)) {
+            continue;
+        }
+        bundle.isModified = true;
+        saveEntityBundleToDisk(bundlePath);
     }
 }
 
@@ -3389,6 +3405,14 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
                 continue;
             }
 
+            fs::path sourcePath = script.path;
+            if (sourcePath.is_relative()) {
+                sourcePath = getProjectPath() / sourcePath;
+            }
+            if (sourcePath.empty() || !fs::exists(sourcePath)) {
+                continue;
+            }
+
             SceneScriptSource merged = script;
 
             // scene data can predate the last header edit, and only one scene contributes each script
@@ -3396,7 +3420,10 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
             if (headerPath.is_relative()) {
                 headerPath = getProjectPath() / headerPath;
             }
-            if (fs::exists(headerPath)) {
+            if (!merged.headerPath.empty()) {
+                if (!fs::exists(headerPath)) {
+                    continue;
+                }
                 merged.properties = toScriptPropertyInfos(ScriptParser::parseScriptProperties(headerPath));
             }
 
@@ -3417,6 +3444,15 @@ std::vector<editor::BundleSceneInfo> editor::Project::collectAllBundles() const 
             if (!uniquePaths.insert(pathKey).second) {
                 continue;
             }
+
+            fs::path fullPath = bundle.bundlePath;
+            if (fullPath.is_relative()) {
+                fullPath = getProjectPath() / fullPath;
+            }
+            if (!fs::exists(fullPath)) {
+                continue;
+            }
+
             result.push_back(bundle);
         }
     }
@@ -7216,7 +7252,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                     return;
                 }
 
-                std::vector<BundleInstanceInfo> bundleInstances = generator.writeBundleSources(entityBundles, sceneId, getProjectPath(), getProjectInternalPath());
+                std::vector<BundleInstanceInfo> bundleInstances = generator.writeBundleSources(entityBundles, currentSceneProject.id, getProjectPath(), getProjectInternalPath());
                 generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), bundleInstances);
 
                 {

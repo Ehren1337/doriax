@@ -1021,36 +1021,40 @@ std::vector<editor::BundleInstanceInfo> editor::Generator::writeBundleSources(co
 
     for (const auto& [bundlePath, bundle] : entityBundles) {
         auto sceneIt = bundle.instances.find(sceneId);
-        if (sceneIt == bundle.instances.end()) continue;
+        if (sceneIt != bundle.instances.end()) {
+            for (const auto& instance : sceneIt->second) {
+                BundleInstanceInfo info;
+                info.bundlePath = bundlePath;
+                info.rootEntity = instance.rootEntity;
+                for (const auto& member : instance.members) {
+                    info.memberEntities.insert(member.localEntity);
+                }
 
-        for (const auto& instance : sceneIt->second) {
-            BundleInstanceInfo info;
-            info.bundlePath = bundlePath;
-            info.rootEntity = instance.rootEntity;
-            for (const auto& member : instance.members) {
-                info.memberEntities.insert(member.localEntity);
-            }
+                // Build override info from instance overrides
+                if (!instance.overrides.empty()) {
+                    for (const auto& [sceneEntity, bitmask] : instance.overrides) {
+                        BundleOverrideInfo ovr;
+                        ovr.sceneEntity = sceneEntity;
 
-            // Build override info from instance overrides
-            if (!instance.overrides.empty()) {
-                for (const auto& [sceneEntity, bitmask] : instance.overrides) {
-                    BundleOverrideInfo ovr;
-                    ovr.sceneEntity = sceneEntity;
+                        // Decode bitmask to ComponentType list
+                        for (int bit = 0; bit < 64; bit++) {
+                            if (bitmask & (1ULL << bit)) {
+                                ovr.overriddenComponents.push_back(static_cast<ComponentType>(bit));
+                            }
+                        }
 
-                    // Decode bitmask to ComponentType list
-                    for (int bit = 0; bit < 64; bit++) {
-                        if (bitmask & (1ULL << bit)) {
-                            ovr.overriddenComponents.push_back(static_cast<ComponentType>(bit));
+                        if (!ovr.overriddenComponents.empty()) {
+                            info.overrides.push_back(std::move(ovr));
                         }
                     }
-
-                    if (!ovr.overriddenComponents.empty()) {
-                        info.overrides.push_back(std::move(ovr));
-                    }
                 }
-            }
 
-            bundleInstances.push_back(std::move(info));
+                bundleInstances.push_back(std::move(info));
+            }
+        }
+
+        if (!bundle.registry) {
+            continue;
         }
 
         // Write bundle .h and .cpp files
