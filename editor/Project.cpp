@@ -5520,6 +5520,11 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
         return {};
     }
     loadingPaths.insert(pathStr);
+    struct LoadingPathGuard {
+        std::unordered_set<std::string>& paths;
+        const std::string& path;
+        ~LoadingPathGuard() { paths.erase(path); }
+    } loadingGuard{loadingPaths, pathStr};
 
     auto it = entityBundles.find(filepath);
 
@@ -5559,7 +5564,6 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
             Stream::decodeEntitySelection(node, bundle.registry.get(), &bundle.registryEntities);
         } catch (const std::exception& e) {
             Out::error("Failed to load entity bundle file: %s", e.what());
-            loadingPaths.erase(pathStr);
             return {};
         }
     }
@@ -5783,8 +5787,6 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
     bundle.instances[sceneProject->id].push_back(std::move(newInstance));
 
     sceneProject->isModified = needSaveScene;
-
-    loadingPaths.erase(pathStr);
 
     return allResult;
 }
@@ -7512,29 +7514,80 @@ void editor::Project::registerBundleManager() {
 
         BundleManager::registerBundle(bundleId, bundleName,
             // Factory: create bundle instance via importEntityBundle
-            [this, capturableBundlePath, bundleName, hasTopLevelTransform](Scene* scene, Entity root) {
+            [this, capturableBundlePath, hasTopLevelTransform](Scene* scene, Entity root) -> bool {
                 SceneProject* sceneProject = findSceneProjectByScene(scene);
-                if (!sceneProject) return;
+                if (!sceneProject) return false;
 
-                // Set up root entity (matching createEntityBundle pattern)
-                std::string rootName = capturableBundlePath.stem().string();
-                if (rootName.empty()) {
-                    rootName = "Bundle";
+                EntityBundle* existingBundle = getEntityBundle(capturableBundlePath);
+                if (existingBundle) {
+                    const EntityBundle::Instance* existing = existingBundle->getInstance(sceneProject->id, root);
+                    if (existing && existing->rootEntity == root) {
+                        Out::error("BundleManager: root entity %u already hosts bundle '%s'",
+                            root, capturableBundlePath.string().c_str());
+                        return false;
+                    }
                 }
-                scene->setEntityName(root, ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, rootName));
 
-                BundleComponent bundleComp;
-                bundleComp.name = capturableBundlePath.stem().string();
-                bundleComp.path = capturableBundlePath.string();
-                scene->addComponent<BundleComponent>(root, bundleComp);
+                const std::string oldName = scene->getEntityName(root);
+                const bool addedBundle = !scene->findComponent<BundleComponent>(root);
+                const bool addedTransform = hasTopLevelTransform && !scene->findComponent<Transform>(root);
+                const std::vector<Entity> entitiesSnapshot = sceneProject->entities;
 
-                if (hasTopLevelTransform) {
+                // BundleManager destroys the entities created by the import, this only has to
+                // undo what the factory itself changed on the root plus the instance metadata
+                auto restoreRoot = [&]() {
+                    removeBundleInstanceTracking(sceneProject->id, root);
+                    if (scene->isEntityCreated(root)) {
+                        scene->setEntityName(root, oldName);
+                        if (addedBundle)
+                            scene->removeComponent<BundleComponent>(root);
+                        if (addedTransform)
+                            scene->removeComponent<Transform>(root);
+                    }
+                    sceneProject->entities = entitiesSnapshot;
+                };
+
+                if (oldName.empty()) {
+                    std::string rootName = capturableBundlePath.stem().string();
+                    if (rootName.empty())
+                        rootName = "Bundle";
+                    scene->setEntityName(root, ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, rootName));
+                }
+
+                if (addedBundle) {
+                    BundleComponent bundleComp;
+                    bundleComp.name = capturableBundlePath.stem().string();
+                    bundleComp.path = capturableBundlePath.string();
+                    scene->addComponent<BundleComponent>(root, bundleComp);
+                }
+
+                if (addedTransform)
                     scene->addComponent<Transform>(root, {});
+
+                if (std::find(sceneProject->entities.begin(), sceneProject->entities.end(), root) == sceneProject->entities.end())
+                    sceneProject->entities.push_back(root);
+
+                try {
+                    importEntityBundle(sceneProject, &sceneProject->entities, capturableBundlePath, root, false);
+                } catch (const std::exception& e) {
+                    Out::error("BundleManager: import of '%s' failed: %s",
+                        capturableBundlePath.string().c_str(), e.what());
+                    restoreRoot();
+                    return false;
+                } catch (...) {
+                    Out::error("BundleManager: import of '%s' failed",
+                        capturableBundlePath.string().c_str());
+                    restoreRoot();
+                    return false;
                 }
 
-                sceneProject->entities.push_back(root);
+                EntityBundle* bundle = getEntityBundle(capturableBundlePath);
+                const EntityBundle::Instance* instance = bundle ? bundle->getInstance(sceneProject->id, root) : nullptr;
+                if (instance && instance->rootEntity == root)
+                    return true;
 
-                importEntityBundle(sceneProject, &sceneProject->entities, capturableBundlePath, root, false);
+                restoreRoot();
+                return false;
             },
             // Destroyer: remove bundle instance via unimportEntityBundle
             [this, capturableBundlePath](Scene* scene, Entity root) -> bool {
@@ -7544,22 +7597,16 @@ void editor::Project::registerBundleManager() {
                 EntityBundle* bundle = getEntityBundle(capturableBundlePath);
                 if (!bundle) return false;
 
-                auto sceneIt = bundle->instances.find(sceneProject->id);
-                if (sceneIt == bundle->instances.end()) return false;
+                const EntityBundle::Instance* instance = bundle->getInstance(sceneProject->id, root);
+                if (!instance || instance->rootEntity != root) return false;
 
-                for (const auto& instance : sceneIt->second) {
-                    if (instance.rootEntity == root) {
-                        std::vector<Entity> members;
-                        for (const auto& m : instance.members) {
-                            members.push_back(m.localEntity);
-                        }
-                        bool wasModified = sceneProject->isModified;
-                        bool result = unimportEntityBundle(sceneProject->id, capturableBundlePath, root, members);
-                        sceneProject->isModified = wasModified;
-                        return result;
-                    }
-                }
-                return false;
+                std::vector<Entity> members;
+                for (const auto& m : instance->members)
+                    members.push_back(m.localEntity);
+                bool wasModified = sceneProject->isModified;
+                bool result = unimportEntityBundle(sceneProject->id, capturableBundlePath, root, members);
+                sceneProject->isModified = wasModified;
+                return result;
             }
         );
     }

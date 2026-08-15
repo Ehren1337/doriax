@@ -6,6 +6,7 @@
 #define UISYSTEM_H
 
 #include "SubSystem.h"
+#include "System.h"
 
 #include <vector>
 
@@ -69,7 +70,7 @@ namespace doriax{
         void updatePanel(Entity entity, PanelComponent& panel, ImageComponent& img, UIComponent& ui, UILayoutComponent& layout);
 
         //Scrollbar
-        void updateScrollbar(Entity entity, ScrollbarComponent& scrollbar, ImageComponent& img, UIComponent& ui, UILayoutComponent& layout);
+        void updateScrollbar(ScrollbarComponent& scrollbar, UILayoutComponent& layout);
 
         //Progressbar
         void updateProgressbar(Entity entity, ProgressbarComponent& progressbar, ImageComponent& img, UIComponent& ui, UILayoutComponent& layout);
@@ -96,6 +97,13 @@ namespace doriax{
 
         //UI Polygon
         void createUIPolygon(PolygonComponent& polygon, UIComponent& ui, UILayoutComponent& layout);
+
+        // True when the entity is alive and still usable as a UI event target
+        bool isLiveUIEntity(Entity entity) const;
+        bool isLiveUIEntity(Entity entity, Signature signature) const;
+
+        void pointerDownOnUI(Entity entity, float x, float y);
+        void pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerDiff, CursorType& cursor);
 
         bool isCoordInside(float x, float y, Transform& transform, UILayoutComponent& layout);
         bool isCoordInside(float x, float y, Transform& transform, UILayoutComponent& layout, Vector2 center);

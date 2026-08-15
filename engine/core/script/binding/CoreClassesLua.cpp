@@ -14,7 +14,6 @@
 #include "Scene.h"
 #include "SceneManager.h"
 #include "BundleManager.h"
-#include "Log.h"
 #include "Input.h"
 #include "System.h"
 #include "Body2D.h"
@@ -313,8 +312,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("createBundle",
             luabridge::overload<const std::string&, Scene*>(&BundleManager::createBundle),
             luabridge::overload<uint32_t, Scene*>(&BundleManager::createBundle),
+            luabridge::overload<const std::string&, Scene*, const std::string&>(&BundleManager::createBundle),
+            luabridge::overload<uint32_t, Scene*, const std::string&>(&BundleManager::createBundle),
             luabridge::overload<const std::string&, Scene*, Entity>(&BundleManager::createBundle),
-            luabridge::overload<uint32_t, Scene*, Entity>(&BundleManager::createBundle))
+            luabridge::overload<uint32_t, Scene*, Entity>(&BundleManager::createBundle),
+            luabridge::overload<const std::string&, const EntityHandle&>(&BundleManager::createBundle),
+            luabridge::overload<uint32_t, const EntityHandle&>(&BundleManager::createBundle))
         .addStaticFunction("destroyBundle", &BundleManager::destroyBundle)
         .addStaticFunction("getBundleId", &BundleManager::getBundleId)
         .addStaticFunction("getBundleName", &BundleManager::getBundleName)

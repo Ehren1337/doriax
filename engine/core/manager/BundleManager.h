@@ -7,28 +7,31 @@
 
 #include "Export.h"
 #include "Entity.h"
+#include "EntityHandle.h"
 #include <string>
 #include <functional>
 #include <vector>
 #include <cstdint>
+#include <type_traits>
+#include <utility>
 
 namespace doriax {
 
     class Scene;
 
-    // BundleManager allows registering named entity bundles and instantiating/destroying
-    // them at runtime. A "bundle" is a reusable prefab-like group of entities that can
-    // be spawned into any Scene under a given root entity.
+    // BundleManager registers named entity bundles and instantiates/destroys them at runtime.
+    // A factory receives (Scene*, Entity root) and must return true on success. Failed
+    // factories are not recorded; entities created during the call are rolled back.
     //
-    // The factory function receives (Scene*, Entity root) and is responsible for creating
-    // child entities, components, and hierarchy under the provided root.
+    // Entity IDs are scene-local. Resolve an existing root by name in the destination scene:
+    //   BundleManager::createBundle("enemies/EnemyShip", mainScene, "spawn");
     //
     // Usage from C++ (standalone generated code):
     //   BundleManager::registerBundle(1, "enemies/EnemyShip", create_bundle_enemies_EnemyShip);
     //   Entity root = BundleManager::createBundle("enemies/EnemyShip", scene);
     //   BundleManager::destroyBundle(scene, root);
     //
-    // Usage from Lua script:
+    // Usage from Lua:
     //   local root = BundleManager.createBundle("enemies/EnemyShip", scene)
     //   BundleManager.destroyBundle(scene, root)
 
@@ -37,7 +40,7 @@ namespace doriax {
         struct BundleEntry {
             uint32_t id;
             std::string name;
-            std::function<void(Scene*, Entity)> factory;
+            std::function<bool(Scene*, Entity)> factory;
             std::function<bool(Scene*, Entity)> destroyer;
         };
 
@@ -51,55 +54,57 @@ namespace doriax {
         static std::vector<BundleEntry> entries;
         static std::vector<BundleInstance> instances;
 
+        static BundleEntry* findEntry(uint32_t id);
+        static BundleEntry* findEntry(const std::string& name);
+        static bool hasInstance(Scene* scene, Entity root);
+        static Entity instantiate(uint32_t id, Scene* scene, Entity root, bool ownedRoot);
+
     public:
-        // Register a named bundle factory.
-        // The factory receives (Scene*, Entity root) and must create entities/components
-        // as children of root.
-        // The optional destroyer is called by destroyBundle() instead of the default
-        // entity destruction. It receives (Scene*, Entity root) and should return true
-        // on success.
-        static void registerBundle(uint32_t id, const std::string& name, std::function<void(Scene*, Entity)> factory, std::function<bool(Scene*, Entity)> destroyer = nullptr);
+        // The factory must return true on success. Void-returning callables are accepted
+        // and treated as always-successful.
+        static void registerBundle(uint32_t id, const std::string& name, std::function<bool(Scene*, Entity)> factory, std::function<bool(Scene*, Entity)> destroyer = nullptr);
 
-        // Create a bundle instance by name. Creates a new root entity in the scene,
-        // invokes the factory, and tracks the instance. Returns the root entity,
-        // or NULL_ENTITY if the bundle name is not found.
+        template<typename Factory>
+        static auto registerBundle(uint32_t id, const std::string& name, Factory&& factory, std::function<bool(Scene*, Entity)> destroyer = nullptr)
+            -> std::enable_if_t<std::is_invocable_v<Factory&, Scene*, Entity>, void>
+        {
+            using Result = std::invoke_result_t<Factory&, Scene*, Entity>;
+            if constexpr (std::is_void_v<Result>) {
+                registerBundle(id, name, std::function<bool(Scene*, Entity)>(
+                    [factory = std::forward<Factory>(factory)](Scene* scene, Entity root) mutable -> bool {
+                        factory(scene, root);
+                        return true;
+                    }), std::move(destroyer));
+            } else {
+                registerBundle(id, name, std::function<bool(Scene*, Entity)>(
+                    [factory = std::forward<Factory>(factory)](Scene* scene, Entity root) mutable -> bool {
+                        return static_cast<bool>(factory(scene, root));
+                    }), std::move(destroyer));
+            }
+        }
+
         static Entity createBundle(const std::string& name, Scene* scene);
-
-        // Create a bundle instance by id.
-        // Returns the root entity, or NULL_ENTITY if the id is not found.
         static Entity createBundle(uint32_t id, Scene* scene);
 
-        // Create a bundle instance under an existing root entity (by name).
-        // The root must already exist in the scene. Returns the root entity,
-        // or NULL_ENTITY if the bundle name is not found.
-        static Entity createBundle(const std::string& name, Scene* scene, Entity root);
+        // Looks up rootName in `scene` before spawning.
+        static Entity createBundle(const std::string& name, Scene* scene, const std::string& rootName);
+        static Entity createBundle(uint32_t id, Scene* scene, const std::string& rootName);
 
-        // Create a bundle instance under an existing root entity (by id).
-        // Returns the root entity, or NULL_ENTITY if the id is not found.
+        // For objects that already carry their own scene (Object, Button, ...)
+        static Entity createBundle(const std::string& name, const EntityHandle& root);
+        static Entity createBundle(uint32_t id, const EntityHandle& root);
+
+        static Entity createBundle(const std::string& name, Scene* scene, Entity root);
         static Entity createBundle(uint32_t id, Scene* scene, Entity root);
 
-        // Destroy a bundle instance by its root entity. Destroys all tracked
-        // entities (children first, then root). Returns false if the root
-        // entity was not found among tracked instances.
         static bool destroyBundle(Scene* scene, Entity rootEntity);
 
-        // Return the bundle id by name, or 0 if not found.
         static uint32_t getBundleId(const std::string& name);
-
-        // Return the bundle name by id, or "" if not found.
         static std::string getBundleName(uint32_t id);
-
-        // Return all registered bundle names in registration order.
         static std::vector<std::string> getBundleNames();
-
-        // Return the total number of registered bundles.
         static int getBundleCount();
 
-        // Destroy all tracked instances for a given scene.
-        // Calls the appropriate destroyer for each instance.
         static void destroyAllInstances(Scene* scene);
-
-        // Remove all registered bundles and tracked instances.
         static void clearAll();
     };
 

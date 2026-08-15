@@ -2462,7 +2462,7 @@ std::string editor::Factory::createBundleHeader(const fs::path& bundlePath) {
     out << "#pragma once\n\n";
     out << "#include \"Doriax.h\"\n\n";
     out << "using namespace doriax;\n\n";
-    out << "void " << funcName << "(Scene* scene, Entity root);\n";
+    out << "bool " << funcName << "(Scene* scene, Entity root);\n";
     return out.str();
 }
 
@@ -2550,10 +2550,9 @@ std::string editor::Factory::createBundle(const fs::path& bundlePath, EntityRegi
     writeSkyIncludes(out, usesDefaultSky, generatedPath);
 
     const std::string ind1 = indentation(4);
-    const std::string ind2 = indentation(8);
 
     // Function definition
-    out << "void " << funcName << "(Scene* scene, Entity root) {\n";
+    out << "bool " << funcName << "(Scene* scene, Entity root) {\n";
 
     // Phase 1: Create all member entities
     out << ind1 << "// Create member entities\n";
@@ -2626,10 +2625,11 @@ std::string editor::Factory::createBundle(const fs::path& bundlePath, EntityRegi
             }
             std::string nestedFuncName = bundleToFunctionName(bc->path);
             std::string varName = entityVarNames[entity];
-            out << ind1 << nestedFuncName << "(scene, " << varName << ");\n";
+            out << ind1 << "if (!" << nestedFuncName << "(scene, " << varName << ")) return false;\n";
         }
     }
 
+    out << ind1 << "return true;\n";
     out << "}\n";
 
     return out.str();
