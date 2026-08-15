@@ -663,6 +663,8 @@ void UISystem::updateScrollbar(ScrollbarComponent& scrollbar, UILayoutComponent&
         float trackStartNorm = 0;
         float trackEndNorm = 1;
         float halfBarParent = 0;
+        unsigned int oldBarWidth = barlayout.width;
+        unsigned int oldBarHeight = barlayout.height;
 
         if (scrollbar.type == ScrollbarType::VERTICAL){
             barSizePixel = innerHeight * scrollbar.barSize;
@@ -678,6 +680,10 @@ void UISystem::updateScrollbar(ScrollbarComponent& scrollbar, UILayoutComponent&
             trackStartNorm = layout.width > 0 ? scrollbar.barMarginLeft / (float)layout.width : 0;
             trackEndNorm = layout.width > 0 ? 1.0f - scrollbar.barMarginRight / (float)layout.width : 1;
             halfBarParent = layout.width > 0 ? (barSizePixel / 2.0f) / layout.width : 0;
+        }
+
+        if (barlayout.width != oldBarWidth || barlayout.height != oldBarHeight){
+            barlayout.needUpdateSizes = true;
         }
 
         float movableStart = trackStartNorm + halfBarParent;
@@ -2607,9 +2613,31 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
                 }else if (scrollbar.type == ScrollbarType::HORIZONTAL){
                     scrollbar.barPointerPos = x - transform->worldPosition.x - (bartransform.position.x * bartransform.worldScale.x);
                 }
+            }else if (scrollbar.barSize < 1.0){
+                scrollbar.barPointerDown = true;
+                pointerInternalGesture = true;
+                if (scrollbar.type == ScrollbarType::VERTICAL){
+                    float innerHeight = std::max(0.0f, (float)layout->height - scrollbar.barMarginTop - scrollbar.barMarginBottom);
+                    scrollbar.barPointerPos = innerHeight * scrollbar.barSize / 2.0f;
+                }else if (scrollbar.type == ScrollbarType::HORIZONTAL){
+                    float innerWidth = std::max(0.0f, (float)layout->width - scrollbar.barMarginLeft - scrollbar.barMarginRight);
+                    scrollbar.barPointerPos = innerWidth * scrollbar.barSize / 2.0f;
+                }
+                applyScrollbarPointerPosition(entity, x, y);
             }
         }
     }
+
+    if (!scene->isEntityCreated(entity))
+        return;
+    signature = scene->getSignature(entity);
+    if (!signature.test(scene->getComponentId<Transform>()) ||
+        !signature.test(scene->getComponentId<UILayoutComponent>()) ||
+        !signature.test(scene->getComponentId<UIComponent>()))
+        return;
+    transform = &scene->getComponent<Transform>(entity);
+    layout = &scene->getComponent<UILayoutComponent>(entity);
+    ui = &scene->getComponent<UIComponent>(entity);
 
     if (signature.test(scene->getComponentId<PanelComponent>())){
         PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
@@ -2814,17 +2842,7 @@ bool UISystem::eventOnPointerUp(float x, float y){
         }
 
         if (signature.test(scene->getComponentId<ScrollbarComponent>())){
-            ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
-            if (scrollbar.bar != NULL_ENTITY &&
-                scene->findComponent<Transform>(scrollbar.bar) &&
-                scene->findComponent<UILayoutComponent>(scrollbar.bar)){
-                Transform& bartransform = scene->getComponent<Transform>(scrollbar.bar);
-                UILayoutComponent& barlayout = scene->getComponent<UILayoutComponent>(scrollbar.bar);
-
-                if (isCoordInside(x, y, bartransform, barlayout)){
-                    scrollbar.barPointerDown = false;
-                }
-            }
+            scene->getComponent<ScrollbarComponent>(entity).barPointerDown = false;
         }
 
         if (signature.test(scene->getComponentId<PanelComponent>())){
@@ -2889,6 +2907,71 @@ bool UISystem::eventOnPointerUp(float x, float y){
     return false;
 }
 
+void UISystem::applyScrollbarPointerPosition(Entity entity, float x, float y){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
+    ScrollbarComponent* scrollbar = scene->findComponent<ScrollbarComponent>(entity);
+    if (!transform || !layout || !scrollbar || !scrollbar->barPointerDown || scrollbar->barSize >= 1.0)
+        return;
+    if (!scene->findComponent<Transform>(scrollbar->bar) || !scene->findComponent<UILayoutComponent>(scrollbar->bar))
+        return;
+
+    Entity bar = scrollbar->bar;
+
+    float innerHeight = std::max(0.0f, (float)layout->height - scrollbar->barMarginTop - scrollbar->barMarginBottom);
+    float innerWidth = std::max(0.0f, (float)layout->width - scrollbar->barMarginLeft - scrollbar->barMarginRight);
+
+    float trackStartNorm = 0;
+    float trackEndNorm = 1;
+    float halfBarParent = 0;
+    float pos = 0;
+
+    if (scrollbar->type == ScrollbarType::VERTICAL){
+        float barSizePixel = innerHeight * scrollbar->barSize;
+        float barLocalY = (y - transform->worldPosition.y) / transform->worldScale.y;
+        float posAlongInner = innerHeight > 0 ? (barLocalY - scrollbar->barMarginTop + (barSizePixel / 2.0) - scrollbar->barPointerPos) / innerHeight : 0;
+        trackStartNorm = layout->height > 0 ? scrollbar->barMarginTop / (float)layout->height : 0;
+        trackEndNorm = layout->height > 0 ? 1.0f - scrollbar->barMarginBottom / (float)layout->height : 1;
+        halfBarParent = layout->height > 0 ? (barSizePixel / 2.0f) / layout->height : 0;
+        pos = trackStartNorm + posAlongInner * (trackEndNorm - trackStartNorm);
+    }else if (scrollbar->type == ScrollbarType::HORIZONTAL){
+        float barSizePixel = innerWidth * scrollbar->barSize;
+        float barLocalX = (x - transform->worldPosition.x) / transform->worldScale.x;
+        float posAlongInner = innerWidth > 0 ? (barLocalX - scrollbar->barMarginLeft + (barSizePixel / 2.0) - scrollbar->barPointerPos) / innerWidth : 0;
+        trackStartNorm = layout->width > 0 ? scrollbar->barMarginLeft / (float)layout->width : 0;
+        trackEndNorm = layout->width > 0 ? 1.0f - scrollbar->barMarginRight / (float)layout->width : 1;
+        halfBarParent = layout->width > 0 ? (barSizePixel / 2.0f) / layout->width : 0;
+        pos = trackStartNorm + posAlongInner * (trackEndNorm - trackStartNorm);
+    }
+
+    float movableStart = trackStartNorm + halfBarParent;
+    float movableEnd = trackEndNorm - halfBarParent;
+    if (pos < movableStart){
+        pos = movableStart;
+    }else if (pos > movableEnd){
+        pos = movableEnd;
+    }
+
+    float newStep = movableEnd > movableStart ? (pos - movableStart) / (movableEnd - movableStart) : 0;
+
+    if (newStep != scrollbar->step){
+        scrollbar->step = newStep;
+        scrollbar->onChange.call(newStep);
+        scrollbar = scene->findComponent<ScrollbarComponent>(entity);
+    }
+
+    UILayoutComponent* barlayout = scene->findComponent<UILayoutComponent>(bar);
+    if (scrollbar && barlayout){
+        if (scrollbar->type == ScrollbarType::VERTICAL){
+            barlayout->anchorPointTop = pos;
+            barlayout->anchorPointBottom = pos;
+        }else if (scrollbar->type == ScrollbarType::HORIZONTAL){
+            barlayout->anchorPointLeft = pos;
+            barlayout->anchorPointRight = pos;
+        }
+    }
+}
+
 // Every user callback here can create or destroy entities, which invalidates the
 // component references, so they are fetched again after each call
 void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerDiff, CursorType& cursor){
@@ -2934,72 +3017,10 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
         }
     }
 
+    applyScrollbarPointerPosition(entity, x, y);
+
     transform = scene->findComponent<Transform>(entity);
     UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
-    if (!transform || !layout)
-        return;
-
-    ScrollbarComponent* scrollbar = scene->findComponent<ScrollbarComponent>(entity);
-    if (scrollbar && scrollbar->barPointerDown && scrollbar->barSize < 1.0 &&
-        scene->findComponent<Transform>(scrollbar->bar) && scene->findComponent<UILayoutComponent>(scrollbar->bar)){
-        Entity bar = scrollbar->bar;
-
-        float innerHeight = std::max(0.0f, (float)layout->height - scrollbar->barMarginTop - scrollbar->barMarginBottom);
-        float innerWidth = std::max(0.0f, (float)layout->width - scrollbar->barMarginLeft - scrollbar->barMarginRight);
-
-        float trackStartNorm = 0;
-        float trackEndNorm = 1;
-        float halfBarParent = 0;
-        float pos = 0;
-
-        if (scrollbar->type == ScrollbarType::VERTICAL){
-            float barSizePixel = innerHeight * scrollbar->barSize;
-            float barLocalY = (y - transform->worldPosition.y) / transform->worldScale.y;
-            float posAlongInner = innerHeight > 0 ? (barLocalY - scrollbar->barMarginTop + (barSizePixel / 2.0) - scrollbar->barPointerPos) / innerHeight : 0;
-            trackStartNorm = layout->height > 0 ? scrollbar->barMarginTop / (float)layout->height : 0;
-            trackEndNorm = layout->height > 0 ? 1.0f - scrollbar->barMarginBottom / (float)layout->height : 1;
-            halfBarParent = layout->height > 0 ? (barSizePixel / 2.0f) / layout->height : 0;
-            pos = trackStartNorm + posAlongInner * (trackEndNorm - trackStartNorm);
-        }else if (scrollbar->type == ScrollbarType::HORIZONTAL){
-            float barSizePixel = innerWidth * scrollbar->barSize;
-            float barLocalX = (x - transform->worldPosition.x) / transform->worldScale.x;
-            float posAlongInner = innerWidth > 0 ? (barLocalX - scrollbar->barMarginLeft + (barSizePixel / 2.0) - scrollbar->barPointerPos) / innerWidth : 0;
-            trackStartNorm = layout->width > 0 ? scrollbar->barMarginLeft / (float)layout->width : 0;
-            trackEndNorm = layout->width > 0 ? 1.0f - scrollbar->barMarginRight / (float)layout->width : 1;
-            halfBarParent = layout->width > 0 ? (barSizePixel / 2.0f) / layout->width : 0;
-            pos = trackStartNorm + posAlongInner * (trackEndNorm - trackStartNorm);
-        }
-
-        float movableStart = trackStartNorm + halfBarParent;
-        float movableEnd = trackEndNorm - halfBarParent;
-        if (pos < movableStart){
-            pos = movableStart;
-        }else if (pos > movableEnd){
-            pos = movableEnd;
-        }
-
-        float newStep = movableEnd > movableStart ? (pos - movableStart) / (movableEnd - movableStart) : 0;
-
-        if (newStep != scrollbar->step){
-            scrollbar->step = newStep;
-            scrollbar->onChange.call(newStep);
-            scrollbar = scene->findComponent<ScrollbarComponent>(entity);
-        }
-
-        UILayoutComponent* barlayout = scene->findComponent<UILayoutComponent>(bar);
-        if (scrollbar && barlayout){
-            if (scrollbar->type == ScrollbarType::VERTICAL){
-                barlayout->anchorPointTop = pos;
-                barlayout->anchorPointBottom = pos;
-            }else if (scrollbar->type == ScrollbarType::HORIZONTAL){
-                barlayout->anchorPointLeft = pos;
-                barlayout->anchorPointRight = pos;
-            }
-        }
-    }
-
-    transform = scene->findComponent<Transform>(entity);
-    layout = scene->findComponent<UILayoutComponent>(entity);
     PanelComponent* panel = scene->findComponent<PanelComponent>(entity);
     if (!transform || !layout || !panel)
         return;

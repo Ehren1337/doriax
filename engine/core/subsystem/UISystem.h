@@ -104,6 +104,7 @@ namespace doriax{
 
         void pointerDownOnUI(Entity entity, float x, float y);
         void pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerDiff, CursorType& cursor);
+        void applyScrollbarPointerPosition(Entity entity, float x, float y);
 
         bool isCoordInside(float x, float y, Transform& transform, UILayoutComponent& layout);
         bool isCoordInside(float x, float y, Transform& transform, UILayoutComponent& layout, Vector2 center);
