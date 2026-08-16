@@ -211,6 +211,7 @@ void editor::ResourcesWindow::notifyProjectPathChange(){
 
     // Clear thumbnail textures when changing projects
     clearThumbnailTextures();
+    dirTreeCache.clear();
 
     resumeThumbnailWork();
     scanDirectory(project->getProjectPath());
@@ -1393,6 +1394,56 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
     }
 }
 
+// Subdirectories the tree can render under path, hidden ones already filtered out.
+const std::vector<fs::path>& editor::ResourcesWindow::treeSubdirectories(const fs::path& path) {
+    const double now = ImGui::GetTime();
+    DirTreeEntry& cached = dirTreeCache[path.string()];
+
+    // An invalidation has to take effect at once, so it skips the interval
+    const bool invalidated = cached.generation != dirTreeGeneration;
+    if (!invalidated && (now - cached.lastCheckTime) < 1.0) {
+        return cached.subDirs;
+    }
+    cached.lastCheckTime = now;
+
+    // Unreadable this tick: keep what we have, the next one picks up the truth
+    std::error_code ec;
+    const auto writeTime = fs::last_write_time(path, ec);
+    if (!invalidated && (ec || writeTime == cached.writeTime)) {
+        return cached.subDirs;
+    }
+    // Marked read even if the listing below fails, so a folder that cannot be opened
+    // is retried on the next check instead of on every frame
+    cached.generation = dirTreeGeneration;
+
+    std::vector<fs::path> subDirs;
+    ec.clear();
+    fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
+    fs::directory_iterator end;
+    while (!ec && it != end) {
+        const auto entry = *it;
+        it.increment(ec);
+
+        // Skip hidden directories (starting with '.')
+        if (entry.path().filename().string()[0] == '.') {
+            continue;
+        }
+
+        std::error_code entryEc;
+        if (entry.is_directory(entryEc) && !entryEc) {
+            subDirs.push_back(entry.path());
+        }
+    }
+
+    // A failed or truncated listing keeps the previous children, and leaves writeTime
+    // stale so the next check retries instead of the node staying empty for good
+    if (!ec) {
+        cached.writeTime = writeTime;
+        cached.subDirs = std::move(subDirs);
+    }
+
+    return cached.subDirs;
+}
 
 void editor::ResourcesWindow::renderDirectoryTree(const fs::path& rootPath) {
     std::string rootFullPath = rootPath.string();
@@ -1432,17 +1483,12 @@ void editor::ResourcesWindow::renderDirectoryTree(const fs::path& rootPath) {
     // Select the appropriate icon: open folder if node is open OR selected, closed folder otherwise
     const char* icon = (is_open || isRootSelected) ? ICON_FA_FOLDER_OPEN : ICON_FA_FOLDER;
 
-    // Check if there are subdirectories to determine if the node is expandable
-    bool hasSubdirectories = false;
-    for (const auto& entry : fs::directory_iterator(rootPath)) {
-        if (entry.is_directory()) {
-            hasSubdirectories = true;
-            break;
-        }
-    }
+    // Same list drives the leaf test and the recursion, so a folder holding only
+    // dot-directories no longer gets an expander that opens onto nothing
+    const std::vector<fs::path>& subDirs = treeSubdirectories(rootPath);
 
     // If no subdirectories, mark as leaf node (no arrow)
-    if (!hasSubdirectories) {
+    if (subDirs.empty()) {
         rootFlags |= ImGuiTreeNodeFlags_Leaf;
     }
 
@@ -1466,16 +1512,10 @@ void editor::ResourcesWindow::renderDirectoryTree(const fs::path& rootPath) {
     }
 
     if (nodeOpen) {
-        // Render subdirectories
-        for (const auto& entry : fs::directory_iterator(rootPath)) {
-            if (entry.is_directory()) {
-                // Skip hidden directories (starting with ".")
-                std::string fileName = entry.path().filename().string();
-                if (fileName[0] == '.') continue;
-
-                // Recursively render the subdirectory
-                renderDirectoryTree(entry.path());
-            }
+        // Recursing inserts into dirTreeCache, which leaves subDirs valid: rehashing
+        // an unordered_map does not invalidate references to elements already in it
+        for (const fs::path& subDir : subDirs) {
+            renderDirectoryTree(subDir);
         }
         ImGui::TreePop();
     }
@@ -1493,6 +1533,10 @@ void editor::ResourcesWindow::scanDirectory(const fs::path& path) {
 
     // Keep the directory tree highlight in sync with any navigation
     treeSelectedPath = currentPath;
+
+    // Every create, rename, move and delete ends here, so the tree cache only has to
+    // be invalidated in this one place
+    dirTreeGeneration++;
 
     requestSort = true;
 

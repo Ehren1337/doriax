@@ -142,6 +142,21 @@ namespace doriax::editor {
         std::filesystem::file_time_type lastWriteTime;
         float timeSinceLastCheck;
 
+        // Children of each folder-tree node: renderDirectoryTree() runs every frame,
+        // and enumerating there was the tree's whole cost. Re-read only when the
+        // folder's own write time changes, on the same 1 Hz check as the listing.
+        struct DirTreeEntry {
+            std::vector<fs::path> subDirs;
+            std::filesystem::file_time_type writeTime{};
+            double lastCheckTime = 0.0;
+            uint64_t generation = 0;
+        };
+        std::unordered_map<std::string, DirTreeEntry> dirTreeCache;
+        // Invalidated by bumping this rather than clearing the map: scanDirectory()
+        // is reachable from inside the tree walk, which holds a reference into it.
+        // Starts at 1 so a default-constructed entry is already stale.
+        uint64_t dirTreeGeneration = 1;
+
         bool windowOpen;
         bool focusRequested;
         bool windowFocused;
@@ -183,6 +198,7 @@ namespace doriax::editor {
         void renderPathBreadcrumb(const ImVec2& size);
         void renderFileListing(bool showDirectories);
         void renderDirectoryTree(const fs::path& path);
+        const std::vector<fs::path>& treeSubdirectories(const fs::path& path);
 
         void scanDirectory(const fs::path& path);
         void sortWithSortSpecs(ImGuiTableSortSpecs* sortSpecs, std::vector<FileEntry>& files);
