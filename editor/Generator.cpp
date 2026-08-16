@@ -1009,7 +1009,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "Lua scripts (`.lua`) are separate — they are loaded at runtime and are not compiled into the binary.\n\n";
     agentsContent += "## BundleManager API\n\n";
     agentsContent += "`registerBundle` factories return `bool`. Void-returning factories still register and are treated as success. "
-                     "Entity IDs are scene-local; spawn under an existing root with `createBundle(name, scene, rootName)` so the id is resolved in that scene.\n\n";
+                     "Entity IDs are scene-local; spawn under an existing root with `createBundle(name, scene, rootName)` so the id is resolved in that scene.\n";
+    agentsContent += "Only bundles a scene instantiates and the ones listed under `standaloneBundles` in `project.yaml` are built and registered. "
+                     "A bundle spawned by script alone must be in that list (Doriax Editor: Project > Bundles), otherwise `createBundle` reports it as not found.\n\n";
     agentsContent += "## Build modes\n\n";
     agentsContent += "- **Editor mode** (`DORIAX_EDITOR_PLUGIN=ON`): builds as a shared library; `main.cpp` and Factory-generated scene sources are excluded. Used by the editor to hot-reload the project.\n";
     agentsContent += "- **Standalone mode** (`DORIAX_EDITOR_PLUGIN=OFF`, default): builds as an executable; includes `main.cpp` and all Factory sources. This standalone build is for local testing only — production distribution uses the editor's separate export pipeline.\n";

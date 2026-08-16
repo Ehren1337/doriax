@@ -1631,6 +1631,14 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["startSceneId"] = project->getStartSceneId();
     }
 
+    if (!project->getStandaloneBundles().empty()) {
+        YAML::Node bundlesNode;
+        for (const fs::path& bundlePath : project->getStandaloneBundles()) {
+            bundlesNode.push_back(bundlePath.generic_string());
+        }
+        root["standaloneBundles"] = bundlesNode;
+    }
+
     {
         const TerrainEditorSettings& ts = project->getTerrainEditorSettings();
         YAML::Node terrainNode;
@@ -1800,6 +1808,14 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node) {
 
     if (node["startSceneId"]) {
         project->setStartSceneId(node["startSceneId"].as<uint32_t>());
+    }
+
+    if (node["standaloneBundles"]) {
+        std::vector<fs::path> bundlePaths;
+        for (const auto& pathNode : node["standaloneBundles"]) {
+            bundlePaths.push_back(pathNode.as<std::string>());
+        }
+        project->setStandaloneBundles(std::move(bundlePaths));
     }
 
     if (node["terrainEditor"] && node["terrainEditor"].IsMap()) {

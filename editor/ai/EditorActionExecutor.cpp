@@ -2018,6 +2018,7 @@ ActionResult EditorActionExecutor::dispatch(const std::string& name,
     if (name == "remove_entity_from_bundle") return removeEntityFromBundle(arguments);
     if (name == "make_bundle_component_unique") return makeBundleComponentUnique(arguments);
     if (name == "revert_bundle_component") return revertBundleComponent(arguments);
+    if (name == "set_standalone_bundle") return setStandaloneBundle(arguments);
     if (name == "export_project") return exportProject(arguments, cancel);
     if (name == "generate_shaders") return generateShaders(arguments, cancel);
     if (name == "fork_shader") return forkShader(arguments);
@@ -2058,6 +2059,10 @@ ActionResult EditorActionExecutor::getProjectSummary() {
     data["start_scene_id"] = project->getStartSceneId();
     data["assets_dir"] = project->getAssetsDir().generic_string();
     data["lua_dir"] = project->getLuaDir().generic_string();
+    data["standalone_bundles"] = Json::array();
+    for (const fs::path& bundlePath : project->getStandaloneBundles()) {
+        data["standalone_bundles"].push_back(bundlePath.generic_string());
+    }
     data["scenes"] = Json::array();
     for (const auto& scene : project->getScenes()) {
         data["scenes"].push_back({
@@ -3753,6 +3758,42 @@ ActionResult EditorActionExecutor::revertBundleComponent(const Json& arguments) 
 
     CommandHandle::get(sceneId)->addCommandNoMerge(new ComponentToBundleSharedCmd(project, sceneId, entity, component));
     return okResult("Reverted bundle component through the command history.");
+}
+
+ActionResult EditorActionExecutor::setStandaloneBundle(const Json& arguments) {
+    std::string error;
+    fs::path bundleRel;
+    if (!safeRelativePath(project, arguments, "bundle_path", bundleRel, error, true)) return failResult(error);
+    if (!Util::isBundleFile(bundleRel.string())) return failResult("bundle_path must point to a .bundle file.");
+
+    if (arguments.contains("standalone") && !arguments["standalone"].is_boolean()) {
+        return failResult("standalone must be a boolean.");
+    }
+    const bool standalone = arguments.value("standalone", true);
+
+    const EntityBundle* bundle = project->getEntityBundle(bundleRel);
+    if (standalone && bundle && !bundle->instances.empty()) {
+        return failResult("Bundle is instantiated in a scene and is already built, it does not need to be standalone.");
+    }
+
+    std::vector<fs::path> bundlePaths = project->getStandaloneBundles();
+    auto it = std::find(bundlePaths.begin(), bundlePaths.end(), bundleRel);
+    const bool listed = it != bundlePaths.end();
+
+    if (standalone == listed) {
+        return okResult(listed ? "Bundle is already standalone." : "Bundle is not standalone.");
+    }
+
+    if (standalone) {
+        bundlePaths.push_back(bundleRel);
+    } else {
+        bundlePaths.erase(it);
+    }
+
+    project->setStandaloneBundles(std::move(bundlePaths));
+    project->saveProjectFile();
+    return okResult(standalone ? "Added the bundle to the standalone bundles." : "Removed the bundle from the standalone bundles.",
+        Json{{"bundle_path", bundleRel.generic_string()}, {"standalone", standalone}});
 }
 
 ActionResult EditorActionExecutor::exportProject(const Json& arguments, const std::atomic<bool>* cancel) {

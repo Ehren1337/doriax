@@ -234,6 +234,7 @@ namespace doriax::editor{
         static constexpr double materialRefreshIntervalSec = 0.2;
 
         std::map<std::filesystem::path, EntityBundle> entityBundles;
+        std::vector<std::filesystem::path> standaloneBundles;  // built without a scene instance
 
         std::string libName;
 
@@ -548,6 +549,11 @@ namespace doriax::editor{
 
         bool createEntityBundle(uint32_t sceneId, fs::path filepath, YAML::Node entityNode);
         bool removeEntityBundle(const std::filesystem::path& filepath);
+
+        const std::vector<std::filesystem::path>& getStandaloneBundles() const;
+        void setStandaloneBundles(std::vector<std::filesystem::path> bundlePaths);
+        bool isStandaloneBundle(const std::filesystem::path& filepath) const;
+        std::vector<std::filesystem::path> findBundleFiles() const;
 
         void saveEntityBundleToDisk(const std::filesystem::path& filepath);
 

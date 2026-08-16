@@ -772,6 +772,15 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
+            "set_standalone_bundle",
+            "Add or remove a .bundle in the project standalone list. A bundle no scene instantiates is only built and registered while it is listed, so scripts can spawn it by name with BundleManager. Bundles a scene instantiates are always built and are not listed.",
+            objectSchema({
+                {"bundle_path", stringSchema("Safe project-relative .bundle path")},
+                {"standalone", boolSchema("true to list the bundle, false to remove it. Default true")}
+            }, {"bundle_path"}),
+            false
+        },
+        {
             "export_project",
             "Run the editor export pipeline for the selected graphic backends.",
             objectSchema({
@@ -1393,6 +1402,9 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         if (!hasEntitySelector(arguments)) return fail("add_entity_to_bundle requires entity_id or entity_name.");
         return arguments.contains("bundle_root_id") ? ok() : fail("add_entity_to_bundle requires bundle_root_id.");
     }
+    if (name == "set_standalone_bundle") {
+        return hasString(arguments, "bundle_path") ? ok() : fail("set_standalone_bundle requires bundle_path.");
+    }
     if (name == "export_project" || name == "generate_shaders") {
         return hasString(arguments, "target_dir") ? ok() : fail(name + " requires target_dir.");
     }
@@ -1733,6 +1745,9 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
     }
     if (name == "revert_bundle_component") {
         return "Revert bundle component";
+    }
+    if (name == "set_standalone_bundle") {
+        return "Set standalone bundle " + arguments.value("bundle_path", "");
     }
     if (name == "export_project") {
         return "Export project to " + arguments.value("target_dir", "");

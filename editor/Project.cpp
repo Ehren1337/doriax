@@ -950,6 +950,19 @@ void editor::Project::remapEntityBundleFilePath(const std::filesystem::path& old
 
     bool changed = !remappedBundles.empty();
 
+    bool standaloneChanged = false;
+    for (fs::path& bundlePath : standaloneBundles) {
+        fs::path updatedPath;
+        if (remapRelativePath(oldRelative, newRelative, bundlePath, updatedPath)) {
+            bundlePath = updatedPath;
+            standaloneChanged = true;
+        }
+    }
+
+    if (standaloneChanged) {
+        saveProject();
+    }
+
     for (auto& sceneProject : scenes) {
         if (!sceneProject.scene) {
             continue;
@@ -1137,6 +1150,15 @@ void editor::Project::cleanupEntityBundleFilePath(const std::filesystem::path& d
 
     bool changed = !bundlesToRemove.empty();
     std::unordered_set<uint32_t> affectedSceneIds;
+
+    const size_t listedBefore = standaloneBundles.size();
+    standaloneBundles.erase(
+        std::remove_if(standaloneBundles.begin(), standaloneBundles.end(),
+            [&](const fs::path& bundlePath) { return matchesRelativePath(deletedRelative, bundlePath); }),
+        standaloneBundles.end());
+    if (standaloneBundles.size() != listedBefore) {
+        saveProject();
+    }
 
     for (const auto& bundlePath : bundlesToRemove) {
         EntityBundle* bundle = getEntityBundle(bundlePath);
@@ -3349,6 +3371,7 @@ void editor::Project::resetConfigs() {
     }
     scenes.clear();
     entityBundles.clear();
+    standaloneBundles.clear();
     editor::getEditorHost().resetLastActivatedScene();
 
     // A project may be closed, edited externally, then reopened in the same editor
@@ -3458,6 +3481,19 @@ std::vector<editor::BundleSceneInfo> editor::Project::collectAllBundles() const 
 
             result.push_back(bundle);
         }
+    }
+
+    // Standalone bundles have no scene recording them, and only the loaded ones get a source
+    for (const fs::path& bundlePath : standaloneBundles) {
+        const EntityBundle* bundle = getEntityBundle(bundlePath);
+        if (!bundle || !bundle->registry || !uniquePaths.insert(bundlePath.generic_string()).second) {
+            continue;
+        }
+
+        BundleSceneInfo info;
+        info.bundlePath = bundlePath;
+        info.functionName = Factory::bundleToFunctionName(bundlePath);
+        result.push_back(std::move(info));
     }
 
     return result;
@@ -5407,6 +5443,87 @@ editor::ComponentRecovery editor::Project::removeComponentFromBundle(uint32_t sc
     return recovery;
 }
 
+const std::vector<std::filesystem::path>& editor::Project::getStandaloneBundles() const {
+    return standaloneBundles;
+}
+
+bool editor::Project::isStandaloneBundle(const std::filesystem::path& filepath) const {
+    return std::find(standaloneBundles.begin(), standaloneBundles.end(), filepath) != standaloneBundles.end();
+}
+
+// Loads the listed bundles, dropping the ones whose file is gone or cannot be read
+void editor::Project::setStandaloneBundles(std::vector<std::filesystem::path> bundlePaths) {
+    standaloneBundles = std::move(bundlePaths);
+
+    for (auto it = entityBundles.begin(); it != entityBundles.end();) {
+        if (it->second.instances.empty() && !isStandaloneBundle(it->first)) {
+            it = entityBundles.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = standaloneBundles.begin(); it != standaloneBundles.end();) {
+        const fs::path fullPath = getProjectPath() / *it;
+        std::error_code ec;
+
+        if (!entityBundles.count(*it) && fs::exists(fullPath, ec)) {
+            EntityBundle bundle;
+            bundle.registry = std::make_unique<EntityRegistry>();
+
+            try {
+                YAML::Node node = YAML::LoadFile(fullPath.string());
+                Stream::decodeEntitySelection(node, bundle.registry.get(), &bundle.registryEntities);
+                entityBundles.emplace(*it, std::move(bundle));
+            } catch (const std::exception& e) {
+                Out::error("Failed to load entity bundle: %s", e.what());
+            }
+        }
+
+        if (!entityBundles.count(*it)) {
+            Out::warning("Entity bundle \"%s\" is not available, removed from the standalone bundles", it->string().c_str());
+            it = standaloneBundles.erase(it);
+            continue;
+        }
+
+        ++it;
+    }
+}
+
+std::vector<std::filesystem::path> editor::Project::findBundleFiles() const {
+    std::vector<fs::path> bundleFiles;
+    if (projectPath.empty()) {
+        return bundleFiles;
+    }
+
+    std::error_code ec;
+
+    for (fs::recursive_directory_iterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
+         it != end && !ec; it.increment(ec)) {
+        const fs::directory_entry& entry = *it;
+
+        // '.doriax' holds the engine copy and the generated resources, 'build' the artifacts
+        const std::string filename = entry.path().filename().string();
+        if (filename.rfind('.', 0) == 0 || filename == "build") {
+            if (entry.is_directory(ec)) it.disable_recursion_pending();
+            continue;
+        }
+
+        if (!entry.is_regular_file(ec) || !Util::isBundleFile(entry.path().string())) {
+            continue;
+        }
+
+        fs::path relativePath = normalizeToProjectRelative(entry.path());
+        if (!relativePath.empty() && !relativePath.is_absolute()) {
+            bundleFiles.push_back(std::move(relativePath));
+        }
+    }
+
+    std::sort(bundleFiles.begin(), bundleFiles.end());
+
+    return bundleFiles;
+}
+
 void editor::Project::saveEntityBundleToDisk(const std::filesystem::path& filepath) {
     EntityBundle* bundle = getEntityBundle(filepath);
     YAML::Node encodedNode = encodeEntityBundleNode(filepath);
@@ -6732,7 +6849,7 @@ bool editor::Project::isEntityInBundle(uint32_t sceneId, Entity entity) const{
 void editor::Project::cleanupEntityBundlesForScene(uint32_t sceneId){
     for (auto it = entityBundles.begin(); it != entityBundles.end(); ) {
         it->second.instances.erase(sceneId);
-        if (it->second.instances.empty()) {
+        if (it->second.instances.empty() && !isStandaloneBundle(it->first)) {
             it = entityBundles.erase(it);
         } else {
             ++it;
@@ -7533,6 +7650,11 @@ void editor::Project::registerBundleManager() {
     BundleManager::clearAll();
     uint32_t bundleId = 0;
     for (const auto& [bundlePath, bundle] : entityBundles) {
+        // Same set the standalone build compiles, see collectAllBundles
+        if (bundle.instances.empty() && !isStandaloneBundle(bundlePath)) {
+            continue;
+        }
+
         bundleId++;
         fs::path capturableBundlePath = bundlePath;
         fs::path noExt = bundlePath;

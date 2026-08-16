@@ -145,6 +145,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleDetachableWindows,
     ResetLayout,
     ProjectSettings,
+    ProjectBundles,
     ClearTrash,
     ClearShaderCache,
     RunScene,
@@ -322,6 +323,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
 
     menu.menus.push_back(menuSubmenu("Project", {
         menuCommand(AppMenuCommand::ProjectSettings, "Project Settings..."),
+        menuCommand(AppMenuCommand::ProjectBundles, "Bundles..."),
         menuSeparator(),
         menuCommand(AppMenuCommand::ClearTrash, "Clear Trash"),
         menuCommand(AppMenuCommand::ClearShaderCache, "Clear Shader Cache")
@@ -491,6 +493,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ProjectSettings:
             projectSettingsWindow.open(&project);
+            break;
+        case AppMenuCommand::ProjectBundles:
+            bundlesWindow.open(&project);
             break;
         case AppMenuCommand::ClearTrash:
             project.clearTrash();
@@ -1441,6 +1446,7 @@ void editor::App::show(){
     projectSaveDialog.show();
     exportWindow.show();
     projectSettingsWindow.show();
+    bundlesWindow.show();
 
     if (!saveDialogInProgress && !sceneSaveDialog.isOpen() && !projectSaveDialog.isOpen() && !saveDialogQueue.empty()) {
         processNextSaveDialog();

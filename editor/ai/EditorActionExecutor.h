@@ -90,6 +90,7 @@ private:
     ActionResult removeEntityFromBundle(const Json& arguments);
     ActionResult makeBundleComponentUnique(const Json& arguments);
     ActionResult revertBundleComponent(const Json& arguments);
+    ActionResult setStandaloneBundle(const Json& arguments);
     ActionResult exportProject(const Json& arguments, const std::atomic<bool>* cancel);
     ActionResult generateShaders(const Json& arguments, const std::atomic<bool>* cancel);
     ActionResult forkShader(const Json& arguments);

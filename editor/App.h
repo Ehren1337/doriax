@@ -26,6 +26,7 @@
 #include "window/dialog/SceneSaveDialog.h"
 #include "window/dialog/ExportWindow.h"
 #include "window/dialog/ProjectSettingsWindow.h"
+#include "window/dialog/BundlesWindow.h"
 
 #include "render/SceneRender.h"
 
@@ -120,6 +121,7 @@ namespace doriax::editor{
         SceneSaveDialog sceneSaveDialog;
         ExportWindow exportWindow;
         ProjectSettingsWindow projectSettingsWindow;
+        BundlesWindow bundlesWindow;
 
         std::queue<SaveDialogQueueItem> saveDialogQueue;
         bool saveDialogInProgress = false;
