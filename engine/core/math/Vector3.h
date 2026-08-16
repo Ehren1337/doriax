@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #ifndef vector3_h
 #define vector3_h
 

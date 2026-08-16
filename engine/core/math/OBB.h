@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #ifndef OBB_h
 #define OBB_h
 

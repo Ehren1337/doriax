@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 // SceneSaveDialog.cpp
 #include "SceneSaveDialog.h"
 #include "external/IconsFontAwesome6.h"

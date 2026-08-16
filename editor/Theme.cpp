@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "Theme.h"
 
 #include "imgui_internal.h"

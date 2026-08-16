@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "ProjectSettingsWindow.h"
 #include "util/FileDialogs.h"
 #include "AppSettings.h"

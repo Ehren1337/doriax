@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #ifndef SKY_COMPONENT_H
 #define SKY_COMPONENT_H

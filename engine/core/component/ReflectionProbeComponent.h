@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #ifndef REFLECTION_PROBE_COMPONENT_H
 #define REFLECTION_PROBE_COMPONENT_H

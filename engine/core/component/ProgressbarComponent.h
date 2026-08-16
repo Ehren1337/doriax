@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #ifndef PROGRESSBAR_COMPONENT_H
 #define PROGRESSBAR_COMPONENT_H

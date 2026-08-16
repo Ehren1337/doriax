@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 
 #include "NativeEngine.h"

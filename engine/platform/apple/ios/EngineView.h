@@ -1,3 +1,5 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #import <MetalKit/MetalKit.h>
 

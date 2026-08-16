@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "CreateEntityCmd.h"
 
 #include "editor/Out.h"

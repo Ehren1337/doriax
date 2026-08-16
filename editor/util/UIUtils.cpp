@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "UIUtils.h"
 #include "App.h"
 #include "external/IconsFontAwesome6.h"

@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #ifndef DoriaxAndroid_H_
 #define DoriaxAndroid_H_
 

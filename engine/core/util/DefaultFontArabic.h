@@ -1,5 +1,7 @@
 //
-// (c) 2026 Eduardo Doria.
+// Noto Sans Arabic — https://github.com/notofonts/notofonts.github.io
+// Copyright The Noto Project Authors.
+// Licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org).
 //
 
 #ifndef DefaultFontArabic_h

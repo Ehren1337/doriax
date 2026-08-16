@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 // The X11 window, shared by the editor and by exported games: the display
 // connection, the window, the _NET_WM_STATE round trips behind fullscreen and
 // maximize, sizing, the title and the cursor -- including the XGrabPointer

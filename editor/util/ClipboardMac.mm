@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "util/Clipboard.h"
 
 #import <AppKit/AppKit.h>

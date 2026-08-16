@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "AiTypes.h"
 
 namespace doriax::editor::ai {

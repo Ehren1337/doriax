@@ -1,5 +1,6 @@
 //
-// (c) 2026 Eduardo Doria.
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 // Guard execution of untrusted/user code to prevent process termination on crashes.
 // POSIX: catches SIGSEGV/SIGBUS/SIGFPE/SIGILL/SIGABRT via sigaction + sigsetjmp/siglongjmp
 // Windows: uses SEH (__try/__except) to catch access violations.

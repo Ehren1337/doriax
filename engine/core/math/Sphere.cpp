@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "Sphere.h"
 
 #define _USE_MATH_DEFINES

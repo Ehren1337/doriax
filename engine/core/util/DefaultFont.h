@@ -1,5 +1,7 @@
 //
-// (c) 2026 Eduardo Doria.
+// Roboto — https://fonts.google.com/specimen/Roboto
+// Copyright 2011 Google Inc. All Rights Reserved.
+// Licensed under the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
 //
 
 #ifndef DefaultFont_h

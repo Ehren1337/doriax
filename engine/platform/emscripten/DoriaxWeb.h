@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #ifndef DoriaxWeb_h
 #define DoriaxWeb_h
 

@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "ViewportGizmo.h"
 #include "math/Ray.h"
 #include "math/Sphere.h"

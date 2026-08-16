@@ -1,9 +1,5 @@
-//
-//  AdMob.h
-//  Doriax iOS
-//
-//  Created by Eduardo Doria Lima on 11/05/23.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #import <Foundation/Foundation.h>
 

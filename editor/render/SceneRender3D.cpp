@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "SceneRender3D.h"
 
 #include "resources/icons/sun-icon_png.h"

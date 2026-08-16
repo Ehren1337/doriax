@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "ScriptProperty.h"
 #include "LuaBinding.h"
 #include "lua.hpp"

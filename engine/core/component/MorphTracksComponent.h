@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #ifndef MORPHTRACKS_COMPONENT_H
 #define MORPHTRACKS_COMPONENT_H

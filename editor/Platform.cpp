@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "Platform.h"
 #include "Out.h"
 #include "Backend.h"

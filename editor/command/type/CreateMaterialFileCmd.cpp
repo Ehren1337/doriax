@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "CreateMaterialFileCmd.h"
 
 #include "command/type/LinkMaterialCmd.h"

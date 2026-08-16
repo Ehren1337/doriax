@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "DoriaxWeb.h"
 
 #include <stdio.h>

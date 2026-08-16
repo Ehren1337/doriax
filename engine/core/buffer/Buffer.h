@@ -1,9 +1,8 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #include <string>
 #include <map>

@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "Exporter.h"
 #include "EditorHost.h"
 #include "Factory.h"

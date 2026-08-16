@@ -1,5 +1,6 @@
 // ---------------------------------------
-// (c) 2026 Eduardo Doria.
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 // Based on: https://github.com/oviano/sokol-multithread
 // ---------------------------------------
 

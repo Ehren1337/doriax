@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 // doriax::System over WindowLinux. It keeps no state of its own, so the editor
 // driving WindowLinux directly and a game going through here stay in agreement.
 

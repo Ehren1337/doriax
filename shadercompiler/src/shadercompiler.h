@@ -1,6 +1,5 @@
-//
-// (c) 2024 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #ifndef shadercompiler_h
 #define shadercompiler_h

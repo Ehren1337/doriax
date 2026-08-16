@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 // CommandRunner.cpp
 #include "CommandRunner.h"
 #include "editor/Out.h"

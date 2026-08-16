@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #define NULL_PROJECT_SCENE 0

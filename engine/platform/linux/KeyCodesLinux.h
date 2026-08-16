@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 // X11 -> engine key translation. The engine's key constants are GLFW's (see
 // core/Input.h), so this maps the keysym of the unshifted level-0 layout,
 // which is how GLFW's X11 backend derives its key codes: it keeps letters on

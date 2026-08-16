@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "AiSettingsWindow.h"
 
 #include "AppSettings.h"

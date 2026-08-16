@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "TextureSlicerToolDialog.h"
 #include "Backend.h"
 #include "Theme.h"

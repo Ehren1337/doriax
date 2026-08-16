@@ -1,8 +1,5 @@
-//
-//  Renderer.m
-//
-//  Created by Eduardo Dória on 24/12/20.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #import <simd/simd.h>
 #import <ModelIO/ModelIO.h>

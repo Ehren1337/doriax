@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "OutputWindow.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"

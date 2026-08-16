@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "CustomTextEditor.h"
 #include "InputTextContextMenu.h"
 #include "SemanticSuggestions.h"

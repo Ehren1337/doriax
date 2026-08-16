@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #ifndef LUA_FUNCTIONBASE_H
 #define LUA_FUNCTIONBASE_H

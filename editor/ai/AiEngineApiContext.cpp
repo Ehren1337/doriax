@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "AiEngineApiContext.h"
 
 #include "engine_api_suggestions.h"

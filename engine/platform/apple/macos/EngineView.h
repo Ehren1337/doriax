@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #import "MacViewMetal.h"
 
 // The macOS Metal drawable. Input handling is MacViewMetal's; this subclass

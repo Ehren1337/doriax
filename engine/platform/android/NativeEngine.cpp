@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 // ---------------------------------------
 // Based on samples: https://github.com/android/games-samples
 // ---------------------------------------

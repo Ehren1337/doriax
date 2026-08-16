@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #ifndef DORIAX_EXPORT_H
 #define DORIAX_EXPORT_H
 

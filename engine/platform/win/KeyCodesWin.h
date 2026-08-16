@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 // Win32 -> engine key translation. The engine's key constants are GLFW's
 // (see core/Input.h), so this reproduces GLFW's Win32 scancode table rather
 // than mapping virtual-key codes: scancodes are layout independent, which is

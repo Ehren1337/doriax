@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 // ProjectSaveDialog.cpp
 #include "ProjectSaveDialog.h"
 #include "util/FileDialogs.h"

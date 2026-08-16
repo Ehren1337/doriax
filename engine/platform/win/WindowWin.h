@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 // The Win32 window, shared by the editor and by exported games: the window
 // class, the window, cursor and MouseMode, the cursor clip, fullscreen, sizing
 // and the title. The caller supplies its own WNDPROC, which is the one thing

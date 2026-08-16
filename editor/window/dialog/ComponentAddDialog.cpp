@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "ComponentAddDialog.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"

@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "RenameFileCmd.h"
 
 #include "util/Util.h"

@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #ifndef LIGHT2D_COMPONENT_H
 #define LIGHT2D_COMPONENT_H

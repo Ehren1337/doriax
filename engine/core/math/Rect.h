@@ -2,9 +2,8 @@
 #ifndef Rect_h
 #define Rect_h
 
-//
-// (c) 2018 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #include "Vector2.h"
 #include "Vector4.h"

@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "LoadingWindow.h"
 #include "imgui.h"
 #include "imgui_internal.h"

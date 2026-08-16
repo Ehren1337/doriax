@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 // The macOS window, shared by the editor and by exported games: NSApplication
 // setup, the NSWindow, cursor and MouseMode, fullscreen, sizing and the title.
 // The drawable is the one thing that cannot be shared (MTKView for the editor

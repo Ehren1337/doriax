@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "AddEntityToBundleCmd.h"
 #include "util/ProjectUtils.h"
 

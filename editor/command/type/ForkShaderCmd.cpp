@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "ForkShaderCmd.h"
 
 #include "command/type/PropertyCmd.h"

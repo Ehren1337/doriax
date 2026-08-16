@@ -1,6 +1,5 @@
-//
-// (c) 2026 Eduardo Doria.
-//
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
 
 #ifndef MESHPOLYGON_COMPONENT_H
 #define MESHPOLYGON_COMPONENT_H

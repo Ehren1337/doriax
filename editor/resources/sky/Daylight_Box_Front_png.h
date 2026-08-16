@@ -1,3 +1,8 @@
+//
+// Modified from the Cloudy Skyboxes Pack by Screaming Brain Studios
+// (https://screamingbrainstudios.itch.io/cloudy-skyboxes-pack), CC0 license.
+//
+
 #pragma once
 
 inline unsigned char Daylight_Box_Front_png[] = {

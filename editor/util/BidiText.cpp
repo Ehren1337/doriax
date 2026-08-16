@@ -1,3 +1,6 @@
+// (c) Eduardo Doria Lima
+// SPDX-License-Identifier: MIT
+
 #include "BidiText.h"
 
 #include "util/StringUtils.h"
