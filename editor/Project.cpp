@@ -5448,7 +5448,13 @@ const std::vector<std::filesystem::path>& editor::Project::getStandaloneBundles(
 }
 
 bool editor::Project::isStandaloneBundle(const std::filesystem::path& filepath) const {
-    return std::find(standaloneBundles.begin(), standaloneBundles.end(), filepath) != standaloneBundles.end();
+    const std::string key = filepath.generic_string();
+    for (const fs::path& bundlePath : standaloneBundles) {
+        if (bundlePath.generic_string() == key) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Loads the listed bundles, dropping the ones whose file is gone or cannot be read

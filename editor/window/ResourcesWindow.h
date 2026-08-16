@@ -116,6 +116,7 @@ namespace doriax::editor {
 
         std::string lastSelectedFile;
         std::unordered_set<std::string> selectedFiles;
+        std::unordered_set<std::string> projectFiles;  // project-relative scene and built bundle paths
         bool ctrlPressed;
         bool shiftPressed;
 
@@ -193,6 +194,9 @@ namespace doriax::editor {
         std::mutex modelRenderMutex;
 
         ImU32 fileSeparatorColor(const FileEntry& fe) const;
+        void refreshProjectFiles();
+        // Null when the file is part of the project, otherwise why it is not
+        const char* fileNotInProject(const FileEntry& fe) const;
 
         void renderHeader();
         void renderPathBreadcrumb(const ImVec2& size);

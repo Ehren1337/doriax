@@ -501,6 +501,34 @@ void editor::ResourcesWindow::processModelThumbnails() {
     }
 }
 
+void editor::ResourcesWindow::refreshProjectFiles(){
+    projectFiles.clear();
+
+    for (const SceneProject& sceneProject : project->getScenes()){
+        projectFiles.insert(sceneProject.filepath.generic_string());
+        for (const BundleSceneInfo& info : sceneProject.bundles){
+            projectFiles.insert(info.bundlePath.generic_string());
+        }
+    }
+
+    for (const fs::path& bundlePath : project->getStandaloneBundles()){
+        projectFiles.insert(bundlePath.generic_string());
+    }
+}
+
+const char* editor::ResourcesWindow::fileNotInProject(const FileEntry& fe) const{
+    if (fe.type != FileType::SCENE && fe.type != FileType::BUNDLE)
+        return nullptr;
+
+    const std::string relativePath = (currentPath / fe.name).lexically_relative(project->getProjectPath()).generic_string();
+    if (projectFiles.count(relativePath))
+        return nullptr;
+
+    return fe.type == FileType::SCENE
+        ? "Not in the project scenes"
+        : "Not built: no scene uses it and it is not in Project > Bundles";
+}
+
 ImU32 editor::ResourcesWindow::fileSeparatorColor(const FileEntry& fe) const{
     if (fe.isDirectory)
         return ImGui::GetColorU32(ImVec4(0.60f, 0.60f, 0.60f, 1.0f));
@@ -1037,6 +1065,8 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
             // =================================================================
             // Draw content per style
             // =================================================================
+            const char* notInProject = fileNotInProject(file);
+
             if (useCardView){
                 ImDrawList* drawList = ImGui::GetWindowDrawList();
                 const ImGuiStyle& style = ImGui::GetStyle();
@@ -1089,6 +1119,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 float imageX = contentMin.x + (contentWidth - dispW) * 0.5f;
                 float imageY = contentMin.y + contentYOffset + (thumbHeight - dispH) * 0.5f;
                 ImGui::SetCursorScreenPos(ImVec2(imageX, imageY));
+                if (notInProject) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, style.Alpha * 0.4f);
                 Widgets::image(fileIconImage, ImVec2(dispW, dispH));
 
                 // --- Extension badge over thumbnail -------------------------
@@ -1161,9 +1192,13 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 ImGui::SetWindowFontScale(1.0f);
                 ImGui::PopTextWrapPos();
                 ImGui::PopClipRect();
+                if (notInProject) ImGui::PopStyleVar();
 
                 if (hovered){
-                    ImGui::SetTooltip("%s", file.displayName.c_str());
+                    if (notInProject)
+                        ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), notInProject);
+                    else
+                        ImGui::SetTooltip("%s", file.displayName.c_str());
                 }
 
             }else{
@@ -1182,14 +1217,20 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 float offsetY = (uiIconSize - dispH) * 0.5f;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
                 ImGui::SetCursorPosY(ImGui::GetCursorPosY() + offsetY);
+                if (notInProject) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
                 Widgets::image(fileIconImage, ImVec2(dispW, dispH));
 
                 float textOffsetX = (cellWidth * 0.5f) - (textSizeClassic.x * 0.5f);
                 if (textOffsetX < 0) textOffsetX = 0;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textOffsetX);
                 ImGui::TextWrapped("%s", file.displayName.c_str());
+                if (notInProject) ImGui::PopStyleVar();
 
                 ImGui::EndGroup(); // classic group
+
+                if (hovered && notInProject){
+                    ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), notInProject);
+                }
             }
 
             // --- Selection behavior (unified) ------------------------------
@@ -1538,6 +1579,8 @@ void editor::ResourcesWindow::scanDirectory(const fs::path& path) {
     // Every create, rename, move and delete ends here, so the tree cache only has to
     // be invalidated in this one place
     dirTreeGeneration++;
+
+    refreshProjectFiles();
 
     requestSort = true;
 
@@ -2494,6 +2537,9 @@ void editor::ResourcesWindow::show() {
             auto currentWriteTime = fs::last_write_time(currentPath);
             if (currentWriteTime != lastWriteTime) {
                 scanDirectory(currentPath);
+            } else {
+                // The project can change without touching this directory
+                refreshProjectFiles();
             }
         } catch (const fs::filesystem_error& e) {
             // Handle potential filesystem errors silently
