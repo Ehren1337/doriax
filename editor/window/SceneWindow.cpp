@@ -24,6 +24,7 @@
 #include "Out.h"
 #include "App.h"
 #include "Theme.h"
+#include "Widgets.h"
 
 #include "math/Vector2.h"
 #include "util/Angle.h"
@@ -2150,14 +2151,15 @@ void editor::SceneWindow::show() {
                     drawList->AddRectFilled(canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), IM_COL32(0, 0, 0, 255));
 
                     ImGui::SetCursorScreenPos(imageMin);
-                    ImGui::Image(previewTex, imageSize);
+                    Widgets::image(previewTex, imageSize);
 
                     // Yellow frame as a "viewing through camera" cue (inset 1px so it's not clipped at the edge).
                     // Matches the previewed camera's highlight color in the Structure tree.
                     const float frameInset = Theme::dpi(1.0f);
                     drawList->AddRect(ImVec2(imageMin.x + frameInset, imageMin.y + frameInset), ImVec2(imageMax.x - frameInset, imageMax.y - frameInset), IM_COL32(255, 219, 51, 235), 0.0f, 0, Theme::dpi(2.0f));
                 } else {
-                    ImGui::Image(previewTex, canvasAvail);
+                    // Black until the first render creates the framebuffer.
+                    Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
                 }
 
                 if (sceneProject.playState == ScenePlayState::STOPPED && !isCameraPreview){

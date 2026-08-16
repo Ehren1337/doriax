@@ -598,7 +598,7 @@ void ProjectSettingsWindow::drawWindowSettings() {
                     ImVec2 imageSize(std::max(1.0f, thumbWidth * scale), std::max(1.0f, thumbHeight * scale));
 
                     ImVec2 imagePos = ImGui::GetCursorScreenPos();
-                    ImGui::Image(Backend::getImGuiTexture(thumb->getRender()), imageSize);
+                    Widgets::image(Backend::getImGuiTexture(thumb->getRender()), imageSize);
                     ImGui::GetWindowDrawList()->AddRect(
                         imagePos, ImVec2(imagePos.x + imageSize.x, imagePos.y + imageSize.y),
                         ImGui::GetColorU32(ImGuiCol_Border));

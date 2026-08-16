@@ -65,6 +65,32 @@ namespace doriax::editor{
             return pressed;
         }
 
+        // Image draws for textures that may not be created yet. A null texture id
+        // does not unbind anything, so the quad keeps sampling what the previous
+        // draw command bound (the font atlas) instead of staying empty. The item
+        // is still reserved so layout and drop targets don't move.
+        inline static void image(ImTextureID texture, const ImVec2& size, ImU32 emptyColor = 0){
+            if (texture != ImTextureID{}){
+                ImGui::Image(texture, size);
+                return;
+            }
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(size);
+            if ((emptyColor & IM_COL32_A_MASK) != 0){
+                ImGui::GetWindowDrawList()->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), emptyColor);
+            }
+        }
+
+        inline static void addImage(ImDrawList* drawList, ImTextureID texture, const ImVec2& pMin, const ImVec2& pMax){
+            if (texture == ImTextureID{}) return;
+            drawList->AddImage(texture, pMin, pMax);
+        }
+
+        inline static void addImageRounded(ImDrawList* drawList, ImTextureID texture, const ImVec2& pMin, const ImVec2& pMax, const ImVec2& uvMin, const ImVec2& uvMax, ImU32 col, float rounding, ImDrawFlags flags){
+            if (texture == ImTextureID{}) return;
+            drawList->AddImageRounded(texture, pMin, pMax, uvMin, uvMax, col, rounding, flags);
+        }
+
         inline static void pathDisplay(const char* id, fs::path path, const Vector2& size = Vector2::ZERO, fs::path basePath = fs::path()){
             ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(50, 50, 50, 255));
             ImGui::BeginChild(id, ImVec2(size.x, size.y), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);

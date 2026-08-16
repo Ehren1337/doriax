@@ -28,6 +28,7 @@
 #include "Backend.h"
 #include "App.h"
 #include "Theme.h"
+#include "Widgets.h"
 #include "Stream.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
@@ -1016,7 +1017,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                         float availWidth = ImGui::GetCurrentWindow()->Size.x;
                         float xPos = (availWidth - previewW) * 0.5f;
                         ImGui::SetCursorPosX(xPos);
-                        ImGui::Image(fileIconImage, ImVec2(previewW, previewH));
+                        Widgets::image(fileIconImage, ImVec2(previewW, previewH));
                     }
 
                     ImGui::EndDragDropSource();
@@ -1088,7 +1089,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 float imageX = contentMin.x + (contentWidth - dispW) * 0.5f;
                 float imageY = contentMin.y + contentYOffset + (thumbHeight - dispH) * 0.5f;
                 ImGui::SetCursorScreenPos(ImVec2(imageX, imageY));
-                ImGui::Image(fileIconImage, ImVec2(dispW, dispH));
+                Widgets::image(fileIconImage, ImVec2(dispW, dispH));
 
                 // --- Extension badge over thumbnail -------------------------
                 if (!extLabel.empty()){
@@ -1181,7 +1182,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 float offsetY = (uiIconSize - dispH) * 0.5f;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
                 ImGui::SetCursorPosY(ImGui::GetCursorPosY() + offsetY);
-                ImGui::Image(fileIconImage, ImVec2(dispW, dispH));
+                Widgets::image(fileIconImage, ImVec2(dispW, dispH));
 
                 float textOffsetX = (cellWidth * 0.5f) - (textSizeClassic.x * 0.5f);
                 if (textOffsetX < 0) textOffsetX = 0;
