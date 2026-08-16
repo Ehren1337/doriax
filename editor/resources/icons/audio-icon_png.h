@@ -1,4 +1,4 @@
-// (c) Eduardo Doria Lima
+// (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 
 unsigned char audio_icon_png[] = {

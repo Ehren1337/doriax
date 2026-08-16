@@ -1,4 +1,4 @@
-// (c) Eduardo Doria Lima
+// (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 
 #ifndef matrix4_h

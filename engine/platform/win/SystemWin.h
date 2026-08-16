@@ -1,4 +1,4 @@
-// (c) Eduardo Doria Lima
+// (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 // doriax::System over WindowWin. It keeps no state of its own, so the editor
 // driving WindowWin directly and a game going through here stay in agreement.

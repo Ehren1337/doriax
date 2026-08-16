@@ -2,7 +2,7 @@
  * Inspired by the work of http://nikitablack.github.io/post/std_function_as_delegate/
  */
 
-// (c) Eduardo Doria Lima
+// (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 
 #ifndef FUNCTIONSUBSCRIBE_H

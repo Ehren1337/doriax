@@ -1,5 +1,5 @@
 
-// (c) Eduardo Doria Lima
+// (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 
 #ifndef Box2DAux_h

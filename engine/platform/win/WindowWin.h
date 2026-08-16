@@ -1,4 +1,4 @@
-// (c) Eduardo Doria Lima
+// (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 // The Win32 window, shared by the editor and by exported games: the window
 // class, the window, cursor and MouseMode, the cursor clip, fullscreen, sizing

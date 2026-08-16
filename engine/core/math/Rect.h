@@ -2,7 +2,7 @@
 #ifndef Rect_h
 #define Rect_h
 
-// (c) Eduardo Doria Lima
+// (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 
 #include "Vector2.h"

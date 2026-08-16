@@ -1,4 +1,4 @@
-// (c) Eduardo Doria Lima
+// (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 // macOS virtual keycode -> engine key translation. The engine's key constants
 // are GLFW's (see core/Input.h). Virtual keycodes are positional, so W/A/S/D
