@@ -22,7 +22,6 @@ namespace doriax{
     typedef struct Box2DWorldRayCastContext{
         std::vector<Box2DWorldRayCastOutput>* outputs;
         bool onlyStatic;
-        Entity ignoreEntity;
         const std::vector<Entity>* ignoreEntities;
     } Box2DWorldRayCastContext;
 
@@ -155,9 +154,6 @@ namespace doriax{
             }
 
             Entity entity = static_cast<Entity>(reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyId)));
-            if (ctx->ignoreEntity != NULL_ENTITY && entity == ctx->ignoreEntity){
-                return 1.0f;
-            }
             if (ctx->ignoreEntities){
                 for (Entity ignored : *ctx->ignoreEntities){
                     if (ignored != NULL_ENTITY && entity == ignored){

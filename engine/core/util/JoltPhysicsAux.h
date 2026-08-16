@@ -64,27 +64,23 @@ namespace doriax{
 	class OnlyStaticBodyFilter : public JPH::BodyFilter{
 	private:
 		bool onlyStatic;
-		Entity ignoreEntity = NULL_ENTITY;
 		const std::vector<Entity>* ignoreEntities = nullptr;
 
 		bool isIgnored(Entity entity) const{
-			if (ignoreEntity != NULL_ENTITY && entity == ignoreEntity){
-				return true;
+			if (!ignoreEntities){
+				return false;
 			}
-			if (ignoreEntities){
-				for (Entity ignored : *ignoreEntities){
-					if (ignored != NULL_ENTITY && entity == ignored){
-						return true;
-					}
+			for (Entity ignored : *ignoreEntities){
+				if (ignored != NULL_ENTITY && entity == ignored){
+					return true;
 				}
 			}
 			return false;
 		}
 
 	public:
-		explicit OnlyStaticBodyFilter(const bool onlyStatic, Entity ignoreEntity = NULL_ENTITY, const std::vector<Entity>* ignoreEntities = nullptr){
+		explicit OnlyStaticBodyFilter(const bool onlyStatic, const std::vector<Entity>* ignoreEntities = nullptr){
 			this->onlyStatic = onlyStatic;
-			this->ignoreEntity = ignoreEntity;
 			this->ignoreEntities = ignoreEntities;
 		}
 
