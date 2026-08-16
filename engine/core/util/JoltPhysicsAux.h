@@ -57,19 +57,42 @@
 #include "Jolt/Physics/Constraints/RackAndPinionConstraint.h"
 #include "Jolt/Physics/Constraints/PulleyConstraint.h"
 
+#include <vector>
+
 namespace doriax{
 
 	class OnlyStaticBodyFilter : public JPH::BodyFilter{
 	private:
 		bool onlyStatic;
+		Entity ignoreEntity = NULL_ENTITY;
+		const std::vector<Entity>* ignoreEntities = nullptr;
+
+		bool isIgnored(Entity entity) const{
+			if (ignoreEntity != NULL_ENTITY && entity == ignoreEntity){
+				return true;
+			}
+			if (ignoreEntities){
+				for (Entity ignored : *ignoreEntities){
+					if (ignored != NULL_ENTITY && entity == ignored){
+						return true;
+					}
+				}
+			}
+			return false;
+		}
 
 	public:
-		explicit OnlyStaticBodyFilter(const bool onlyStatic){
+		explicit OnlyStaticBodyFilter(const bool onlyStatic, Entity ignoreEntity = NULL_ENTITY, const std::vector<Entity>* ignoreEntities = nullptr){
 			this->onlyStatic = onlyStatic;
+			this->ignoreEntity = ignoreEntity;
+			this->ignoreEntities = ignoreEntities;
 		}
 
 		virtual bool ShouldCollideLocked(const JPH::Body &inBody) const override{
 			if (onlyStatic && inBody.GetMotionType() != JPH::EMotionType::Static){
+				return false;
+			}
+			if (isIgnored(static_cast<Entity>(inBody.GetUserData()))){
 				return false;
 			}
 			return true;
