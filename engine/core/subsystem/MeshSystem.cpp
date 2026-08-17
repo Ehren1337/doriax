@@ -2544,73 +2544,66 @@ bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain
     return true;
 }
 
-float MeshSystem::getTerrainHeight(TerrainComponent& terrain, float x, float y){
+// Height range of an area of the heightmap, sampling every texel the vertex shader can
+// read in it: a range shorter than the geometry makes node culling drop visible nodes.
+void MeshSystem::getTerrainHeightRangeArea(TerrainComponent& terrain, float x, float z, float w, float h, float& minHeight, float& maxHeight){
+    minHeight = 0.0f;
+    maxHeight = 0.0f;
 
-    if (x < 0 || y < 0 || x >= terrain.terrainSize || y >= terrain.terrainSize)
-        return 0;
+    if (w <= 0 || h <= 0 || terrain.terrainSize <= std::numeric_limits<float>::epsilon()){
+        return;
+    }
 
     // The heightmap may be empty, a framebuffer, or present-but-unloaded (a missing
     // or corrupt file leaves a null data pointer with needLoad already cleared).
     // Sample any of these as flat rather than dereferencing null data and crashing.
     if (terrain.heightMap.empty() || terrain.heightMap.isFramebuffer() || !terrain.heightMap.hasData()){
-        return 0;
+        return;
     }
 
     TextureData& textureData = terrain.heightMap.getData();
-
-    int posX = floor(textureData.getWidth() * x / terrain.terrainSize);
-    int posY = floor(textureData.getHeight() * y / terrain.terrainSize);
-
     const unsigned char* pixels = static_cast<const unsigned char*>(textureData.getData());
-    if (!pixels){
-        return 0;
-    }
+    const int width = textureData.getWidth();
+    const int height = textureData.getHeight();
     const int channels = textureData.getChannels();
     const int bytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
-    const size_t index = (static_cast<size_t>(posY) * textureData.getWidth() + posX) * channels * bytesPerChannel;
 
-    float normalized;
-    if (bytesPerChannel >= 2){
-        // 16-bit little-endian (native unsigned short) heightmap sample
-        const unsigned int raw = static_cast<unsigned int>(pixels[index]) |
-                                 (static_cast<unsigned int>(pixels[index + 1]) << 8);
-        normalized = static_cast<float>(raw) / 65535.0f;
-    }else{
-        normalized = pixels[index] / 255.0f;
+    if (!pixels || width <= 0 || height <= 0 || channels <= 0){
+        return;
     }
-    return terrain.maxHeight * normalized;
-}
 
-float MeshSystem::maxTerrainHeightArea(TerrainComponent& terrain, float x, float z, float w, float h) {
-    // An empty area (e.g. a degenerate terrain with size 0) samples nothing; return 0 so the
-    // result stays consistent with minTerrainHeightArea and never inverts the node AABB.
-    if (w <= 0 || h <= 0) {
-        return 0.0f;
-    }
-    float maxVal = std::numeric_limits<float>::lowest();
-    for(float i = x; i < x+w; i++)
-        for(float j = z; j < z+h; j++){
-            float newVal = getTerrainHeight(terrain, i,j);
-            if(newVal > maxVal) {
-                maxVal = newVal;
-            }
+    auto sampleHeight = [&](int sampleX, int sampleZ){
+        const size_t texelIndex = static_cast<size_t>(sampleZ) * static_cast<size_t>(width) + static_cast<size_t>(sampleX);
+        const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
+        if (bytesPerChannel >= 2){
+            // 16-bit little-endian (native unsigned short) heightmap sample
+            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
+                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
+            return terrain.maxHeight * static_cast<float>(value) / 65535.0f;
         }
-    return maxVal;
-}
+        return terrain.maxHeight * pixels[index] / 255.0f;
+    };
 
-float MeshSystem::minTerrainHeightArea(TerrainComponent& terrain, float x, float z, float w, float h) {
-    if (w <= 0 || h <= 0) {
-        return 0.0f;
-    }
-    float minVal = std::numeric_limits<float>::max();
-    for(float i = x; i < x+w; i++)
-        for(float j = z; j < z+h; j++){
-            float newVal = getTerrainHeight(terrain, i,j);
-            if(newVal < minVal) {
-                minVal = newVal;
-            }
+    // one texel of margin covers the bilinear filter of the vertices on the area border
+    auto texelIndex = [&](float pos, int margin, int size){
+        return std::clamp(static_cast<int>(std::floor(size * pos / terrain.terrainSize)) + margin, 0, size - 1);
+    };
+
+    const int firstX = texelIndex(x, -1, width);
+    const int lastX = texelIndex(x + w, 1, width);
+    const int firstZ = texelIndex(z, -1, height);
+    const int lastZ = texelIndex(z + h, 1, height);
+
+    minHeight = std::numeric_limits<float>::max();
+    maxHeight = std::numeric_limits<float>::lowest();
+
+    for (int j = firstZ; j <= lastZ; j++){
+        for (int i = firstX; i <= lastX; i++){
+            const float sampledHeight = sampleHeight(i, j);
+            minHeight = std::min(minHeight, sampledHeight);
+            maxHeight = std::max(maxHeight, sampledHeight);
         }
-    return minVal;
+    }
 }
 
 void MeshSystem::createTerrainNode(TerrainComponent& terrain, float x, float y, float size, int lodDepth){
@@ -2631,8 +2624,7 @@ void MeshSystem::createTerrainNode(TerrainComponent& terrain, float x, float y, 
 
         node.hasChilds = false;
 
-        node.maxHeight = maxTerrainHeightArea(terrain, relativeX, relativeY, size, size);
-        node.minHeight = minTerrainHeightArea(terrain, relativeX, relativeY, size, size);
+        getTerrainHeightRangeArea(terrain, relativeX, relativeY, size, size, node.minHeight, node.maxHeight);
     }else{
         float quarterSize = halfSize/2;
 

@@ -96,9 +96,7 @@ namespace doriax{
 
         // Terrain
         size_t getTerrainGridArraySize(int rootGridSize, int levels);
-        float getTerrainHeight(TerrainComponent& terrain, float x, float y);
-        float maxTerrainHeightArea(TerrainComponent& terrain, float x, float z, float w, float h);
-        float minTerrainHeightArea(TerrainComponent& terrain, float x, float z, float w, float h);
+        void getTerrainHeightRangeArea(TerrainComponent& terrain, float x, float z, float w, float h, float& minHeight, float& maxHeight);
         void createPlaneNodeSubmesh(unsigned int submeshIndex, TerrainComponent& terrain, MeshComponent& mesh, int width, int height, int widthSegments, int heightSegments);
         void resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent& mesh);
         bool createTerrain(TerrainComponent& terrain, MeshComponent& mesh);
