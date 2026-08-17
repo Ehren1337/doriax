@@ -2780,24 +2780,26 @@ void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
 
     CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
 
-    bool rangesInitialized = terrain.ranges.size() == static_cast<size_t>(terrain.levels);
-    if (!camera.needUpdate && rangesInitialized){
-        return;
-    }
+    // Each level doubles the node size, so its range doubles too and every level keeps
+    // the same detail on screen. Halving the far clip down instead leaves every range
+    // wider than a terrain smaller than that far clip, drawing all of it at leaf level.
+    float leafNodeSize = terrain.terrainSize / (terrain.rootGridSize * (1 << (terrain.levels - 1)));
+    float firstLevel = leafNodeSize * 2;
+    // the coarsest level still has to reach as far as the camera sees, or the terrain
+    // disappears once it is farther away than the ranges its own size gives
+    float lastLevel = std::max(camera.farClip, firstLevel * (1 << (terrain.levels - 1)));
 
-    float rootNodeSize = terrain.terrainSize / terrain.rootGridSize;
-    float lastLevel = std::max(camera.farClip, rootNodeSize * 2);
-
-    if (rangesInitialized && terrain.ranges[terrain.levels - 1] == lastLevel){
+    if (terrain.ranges.size() == static_cast<size_t>(terrain.levels) && terrain.ranges.front() == firstLevel && terrain.ranges.back() == lastLevel){
         return;
     }
 
     terrain.ranges.clear();
     terrain.ranges.resize(terrain.levels);
-    terrain.ranges[terrain.levels - 1] = lastLevel;
-    for (int i = terrain.levels - 2; i >= 0; i--) {
-        terrain.ranges[i] = terrain.ranges[i + 1] / 2;
+    terrain.ranges[0] = firstLevel;
+    for (int i = 1; i < terrain.levels - 1; i++) {
+        terrain.ranges[i] = terrain.ranges[i - 1] * 2;
     }
+    terrain.ranges[terrain.levels - 1] = lastLevel;
 }
 
 void MeshSystem::createPlane(MeshComponent& mesh, float width, float depth, unsigned int tiles){
