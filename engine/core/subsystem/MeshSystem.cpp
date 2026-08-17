@@ -5089,6 +5089,14 @@ bool MeshSystem::createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent&
             return false;
         }
 
+        // Only the odd vertices of a grid morph, so the halfRes grid (resolution/2) needs
+        // an even number of segments as well to keep its border vertices in place.
+        float gridResolution = std::max(4.0f, std::round(terrain.resolution / 4) * 4);
+        if (terrain.resolution != gridResolution){
+            Log::warn("Terrain resolution %d is not a multiple of 4, using %d", (int)terrain.resolution, (int)gridResolution);
+            terrain.resolution = gridResolution;
+        }
+
         if (MAX_TERRAINGRID < (terrain.rootGridSize*terrain.rootGridSize)){
             // Tear down rather than only skip: rootGridSize has already moved past the
             // grid[] cap, so a previously built tree left live would make updateTerrain

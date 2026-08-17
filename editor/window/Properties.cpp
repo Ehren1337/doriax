@@ -7533,6 +7533,11 @@ void editor::Properties::drawTerrainComponent(ComponentType cpType, SceneProject
     settingsResolution.stepSize = 1.0f;
     settingsResolution.format = "%.0f";
 
+    // The engine rounds the resolution to a multiple of 4 and writes it back (see
+    // createOrUpdateTerrain), so drag by 4 to not fight the value the row is rebound to.
+    RowSettings settingsGridResolution = settingsResolution;
+    settingsGridResolution.stepSize = 4.0f;
+
     RowSettings settingsInt;
     settingsInt.stepSize = 1.0f;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
@@ -7554,7 +7559,7 @@ void editor::Properties::drawTerrainComponent(ComponentType cpType, SceneProject
     beginTable(cpType, getLabelSize("Root Grid Size"), "terrain_shape");
     propertyRow(RowPropertyType::FloatPositive, cpType, "terrainSize", "Size", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::FloatPositive, cpType, "maxHeight", "Max Height", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "resolution", "Resolution", sceneProject, entities, settingsResolution);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "resolution", "Resolution", sceneProject, entities, settingsGridResolution);
     propertyRow(RowPropertyType::Int, cpType, "rootGridSize", "Root Grid Size", sceneProject, entities, settingsRootGrid);
     propertyRow(RowPropertyType::Int, cpType, "levels", "Levels", sceneProject, entities, settingsLevels);
     propertyRow(RowPropertyType::Vector2, cpType, "offset", "Offset", sceneProject, entities);

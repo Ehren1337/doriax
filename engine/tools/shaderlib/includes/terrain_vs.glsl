@@ -27,7 +27,10 @@ float morphFactor;
 vec2 morphVertex(vec2 gridPos, vec2 worldPos, float morph) {
     vec2 gridDim = vec2(i_terrainnode_resolution, i_terrainnode_resolution);
 
-    vec2 fracPart = fract(gridPos * gridDim.xy * 0.5) * 2.0 / gridDim.xy;
+    // only the odd vertices morph, so gridPos (in the patch range [-0.5, 0.5]) is moved to
+    // [0, 1] and rounded to the vertex index: scaling it loses the parity in float32
+    vec2 index = floor((gridPos + 0.5) * gridDim.xy + 0.5);
+    vec2 fracPart = fract(index * 0.5) * 2.0 / gridDim.xy;
     return worldPos - fracPart * i_terrainnode_size * morph;
 }
 
