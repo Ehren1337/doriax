@@ -5246,6 +5246,8 @@ bool editor::Project::createEntityBundle(uint32_t sceneId, fs::path filepath, YA
     // Set up event subscriptions for this shared group
     saveEntityBundleToDisk(filepath);
 
+    updateSceneBundles(sceneProject);
+
     sceneProject->isModified = true;
 
     return true;
@@ -5302,6 +5304,10 @@ bool editor::Project::removeEntityBundle(const std::filesystem::path& filepath) 
     }
 
     entityBundles.erase(it);
+
+    for (SceneProject& sceneProject : scenes) {
+        updateSceneBundles(&sceneProject);
+    }
 
     editor::Out::info("Removed entity bundle: %s", filepath.string().c_str());
     return true;
@@ -5963,6 +5969,8 @@ std::vector<Entity> editor::Project::importEntityBundle(SceneProject* sceneProje
 
     bundle.instances[sceneProject->id].push_back(std::move(newInstance));
 
+    updateSceneBundles(sceneProject);
+
     sceneProject->isModified = needSaveScene;
 
     return allResult;
@@ -6021,6 +6029,8 @@ void editor::Project::removeBundleInstanceTracking(uint32_t sceneId, Entity root
     };
 
     removeBundleInstance(removeBundleInstance, rootEntity);
+
+    updateSceneBundles(sceneProject);
 }
 
 bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities, bool destroyRoot) {
@@ -6097,6 +6107,8 @@ bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesyst
             scene->removeComponent<BundleComponent>(rootEntity);
         }
     }
+
+    updateSceneBundles(sceneProject);
 
     sceneProject->isModified = true;
 
