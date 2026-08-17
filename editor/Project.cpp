@@ -3656,8 +3656,23 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
             // entities are still live, so the decode also removes components added during play
             auto entitiesNode = sceneProject->playStateSnapshot["entities"];
+            size_t insertAt = 0;
             for (const auto& entityNode : entitiesNode) {
-                Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
+                std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
+
+                // A script can destroy entities while playing and the decode recreates them, but
+                // only the tracked list makes them visible to the editor again
+                for (Entity entity : restored) {
+                    auto it = std::find(sceneProject->entities.begin(), sceneProject->entities.end(), entity);
+                    if (it != sceneProject->entities.end()) {
+                        insertAt = std::distance(sceneProject->entities.begin(), it) + 1;
+                        continue;
+                    }
+
+                    insertAt = std::min(insertAt, sceneProject->entities.size());
+                    sceneProject->entities.insert(sceneProject->entities.begin() + insertAt, entity);
+                    insertAt++;
+                }
             }
 
             // snapshot decode leaves camera-linked textures unresolved (no framebuffer)
@@ -6008,7 +6023,7 @@ void editor::Project::removeBundleInstanceTracking(uint32_t sceneId, Entity root
     removeBundleInstance(removeBundleInstance, rootEntity);
 }
 
-bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities) {
+bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities, bool destroyRoot) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return false;
@@ -6016,9 +6031,12 @@ bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesyst
 
     Scene* scene = sceneProject->scene;
 
-    // Collect all entities to destroy (members + local entities that are children of root/members)
+    // Collect all entities to destroy (members + local entities that are children of root/members).
+    // A root the scene owns keeps the children it already had, only the instance goes away
     std::unordered_set<Entity> memberSet(memberEntities.begin(), memberEntities.end());
-    memberSet.insert(rootEntity);
+    if (destroyRoot) {
+        memberSet.insert(rootEntity);
+    }
     std::vector<Entity> allEntitiesToDestroy;
 
     // Gather non-member children (local entities) from Transform hierarchy
@@ -6071,9 +6089,13 @@ bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesyst
     DeleteEntityCmd::destroyEntities(scene, memberEntities,
         sceneProject->entities, this, sceneId);
 
-    // Destroy root entity
+    // Destroy root entity, unless the scene owns it and only hosted the instance
     if (rootEntity != NULL_ENTITY && scene->isEntityCreated(rootEntity)) {
-        DeleteEntityCmd::destroyEntity(scene, rootEntity, sceneProject->entities, this, sceneId);
+        if (destroyRoot) {
+            DeleteEntityCmd::destroyEntity(scene, rootEntity, sceneProject->entities, this, sceneId);
+        } else {
+            scene->removeComponent<BundleComponent>(rootEntity);
+        }
     }
 
     sceneProject->isModified = true;
@@ -7771,7 +7793,8 @@ void editor::Project::registerBundleManager() {
                 for (const auto& m : instance->members)
                     members.push_back(m.localEntity);
                 bool wasModified = sceneProject->isModified;
-                bool result = unimportEntityBundle(sceneProject->id, capturableBundlePath, root, members);
+                bool result = unimportEntityBundle(sceneProject->id, capturableBundlePath, root, members,
+                    BundleManager::isRootOwned(scene, root));
                 sceneProject->isModified = wasModified;
                 return result;
             }

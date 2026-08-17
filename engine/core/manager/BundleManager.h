@@ -48,6 +48,7 @@ namespace doriax {
             Scene* scene;
             uint32_t bundleId;
             std::vector<Entity> entities; // all entities including root
+            bool ownedRoot = true;        // root created by createBundle, so destroyed with the instance
         };
 
         static std::vector<BundleEntry> entries;
@@ -97,6 +98,11 @@ namespace doriax {
         static Entity createBundle(uint32_t id, Scene* scene, Entity root);
 
         static bool destroyBundle(Scene* scene, Entity rootEntity);
+
+        // True when createBundle created the instance root, so destroying the instance destroys
+        // it too. A root the caller supplied belongs to the scene and is kept. Meant for custom
+        // destroyers, which run while the instance is still tracked.
+        static bool isRootOwned(Scene* scene, Entity rootEntity);
 
         static uint32_t getBundleId(const std::string& name);
         static std::string getBundleName(uint32_t id);

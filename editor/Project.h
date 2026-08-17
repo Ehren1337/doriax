@@ -565,7 +565,7 @@ namespace doriax::editor{
         YAML::Node encodeEntityBundleNode(const std::filesystem::path& filepath) const;
 
         std::vector<Entity> importEntityBundle(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const YAML::Node& bundleOverrides = YAML::Node(), const YAML::Node& bundleLocalEntities = YAML::Node(), std::unordered_map<Entity, Entity>* entityRemap = nullptr);
-        bool unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities);
+        bool unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities, bool destroyRoot = true);
 
         bool addEntityToBundle(uint32_t sceneId, Entity entity, Entity parent, bool createItself = true);
         bool addEntityToBundle(uint32_t sceneId, const NodeRecovery& recoveryData, Entity parent,

@@ -182,6 +182,7 @@ Entity BundleManager::instantiate(uint32_t id, Scene* scene, Entity root, bool o
     instance.rootEntity = root;
     instance.scene = scene;
     instance.bundleId = id;
+    instance.ownedRoot = ownedRoot;
     instance.entities.push_back(root);
     for (Entity e : scene->getEntityList()) {
         if (e != root && beforeSet.find(e) == beforeSet.end())
@@ -206,6 +207,9 @@ bool BundleManager::destroyBundle(Scene* scene, Entity rootEntity) {
             }
 
             for (auto eit = it->entities.rbegin(); eit != it->entities.rend(); ++eit) {
+                // A root the caller gave us is not ours to destroy
+                if (*eit == rootEntity && !it->ownedRoot)
+                    continue;
                 if (scene->isEntityCreated(*eit))
                     scene->destroyEntity(*eit);
             }
@@ -214,6 +218,14 @@ bool BundleManager::destroyBundle(Scene* scene, Entity rootEntity) {
         }
     }
     Log::error("BundleManager: bundle instance with root %u not found in scene", rootEntity);
+    return false;
+}
+
+bool BundleManager::isRootOwned(Scene* scene, Entity rootEntity) {
+    for (const auto& inst : instances) {
+        if (inst.scene == scene && inst.rootEntity == rootEntity)
+            return inst.ownedRoot;
+    }
     return false;
 }
 
