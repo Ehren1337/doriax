@@ -10,6 +10,13 @@
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "component/ButtonComponent.h"
+#include "component/UIComponent.h"
+#include "component/PanelComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/TextEditComponent.h"
+#include "component/SoundComponent.h"
+#include "component/ActionComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -799,6 +806,73 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onPause.clear();
         onResume.clear();
         onShutdown.clear();
+    }
+}
+
+// A script can leave callbacks on components (button.onPress.add(...)) that outlive it, and the
+// code behind them goes away with the project library or the Lua state
+void Engine::clearComponentSubscriptions(Scene* scene) {
+    if (!scene)
+        return;
+
+    auto buttons = scene->getComponentArray<ButtonComponent>();
+    for (size_t i = 0; i < buttons->size(); i++) {
+        ButtonComponent& button = buttons->getComponentFromIndex(i);
+        button.onPress.clear();
+        button.onRelease.clear();
+    }
+
+    auto uis = scene->getComponentArray<UIComponent>();
+    for (size_t i = 0; i < uis->size(); i++) {
+        UIComponent& ui = uis->getComponentFromIndex(i);
+        ui.onGetFocus.clear();
+        ui.onLostFocus.clear();
+        ui.onPointerEnter.clear();
+        ui.onPointerLeave.clear();
+        ui.onPointerMove.clear();
+        ui.onPointerDown.clear();
+        ui.onPointerUp.clear();
+        ui.onClick.clear();
+        ui.onDoubleClick.clear();
+        ui.onDragStart.clear();
+        ui.onDrag.clear();
+        ui.onDragEnd.clear();
+    }
+
+    auto panels = scene->getComponentArray<PanelComponent>();
+    for (size_t i = 0; i < panels->size(); i++) {
+        PanelComponent& panel = panels->getComponentFromIndex(i);
+        panel.onMove.clear();
+        panel.onResize.clear();
+    }
+
+    auto scrollbars = scene->getComponentArray<ScrollbarComponent>();
+    for (size_t i = 0; i < scrollbars->size(); i++) {
+        scrollbars->getComponentFromIndex(i).onChange.clear();
+    }
+
+    auto textEdits = scene->getComponentArray<TextEditComponent>();
+    for (size_t i = 0; i < textEdits->size(); i++) {
+        TextEditComponent& textEdit = textEdits->getComponentFromIndex(i);
+        textEdit.onChange.clear();
+        textEdit.onSubmit.clear();
+    }
+
+    auto sounds = scene->getComponentArray<SoundComponent>();
+    for (size_t i = 0; i < sounds->size(); i++) {
+        SoundComponent& sound = sounds->getComponentFromIndex(i);
+        sound.onStart.clear();
+        sound.onPause.clear();
+        sound.onStop.clear();
+    }
+
+    auto actions = scene->getComponentArray<ActionComponent>();
+    for (size_t i = 0; i < actions->size(); i++) {
+        ActionComponent& action = actions->getComponentFromIndex(i);
+        action.onStart.clear();
+        action.onPause.clear();
+        action.onStop.clear();
+        action.onStep.clear();
     }
 }
 

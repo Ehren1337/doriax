@@ -8033,15 +8033,25 @@ void editor::Project::stop(uint32_t sceneId) {
                 runtimeScenes = session->runtimeScenes;
             }
 
-            if (conector.isLibraryConnected()) {
+            const bool libraryConnected = conector.isLibraryConnected();
+            if (libraryConnected) {
                 for (const auto& entry : runtimeScenes) {
                     if (entry.runtime) conector.cleanup(entry.runtime->scene);
                 }
-                conector.disconnect();
             } else if (startupSucceeded) {
                 for (const auto& entry : runtimeScenes) {
                     if (entry.runtime) LuaBinding::cleanupLuaScripts(entry.runtime->scene);
                 }
+            }
+
+            // What the scripts registered and did not remove is dropped here, while the code
+            // behind those callbacks is still loaded
+            for (const auto& entry : runtimeScenes) {
+                if (entry.runtime && entry.runtime->scene) Engine::clearComponentSubscriptions(entry.runtime->scene);
+            }
+
+            if (libraryConnected) {
+                conector.disconnect();
             }
 
             if (startupSucceeded) {
