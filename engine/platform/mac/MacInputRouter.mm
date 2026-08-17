@@ -68,10 +68,11 @@ using namespace doriax;
     NSView* view = _view;
     if (!view) return _mousePoint;
 
-    // Captured: the pointer is pinned, so only the deltas are meaningful
+    // Captured: the pointer is pinned, so only the deltas are meaningful. A move
+    // event's deltaY points down, like the engine coordinates.
     const NSSize delta = [view convertSizeToBacking:NSMakeSize([event deltaX], [event deltaY])];
     _mousePoint.x += delta.width;
-    _mousePoint.y -= delta.height;
+    _mousePoint.y += delta.height;
     return _mousePoint;
 }
 

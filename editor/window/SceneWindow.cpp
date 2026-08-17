@@ -840,7 +840,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     // When scene is playing, forward mouse and keyboard events to Engine
     if (sceneProject->playState == ScenePlayState::PLAYING) {
-        if (isMouseInWindow) {
+        // A captured cursor reports a virtual position that leaves the viewport,
+        // so the mouse follows window focus like the keyboard below.
+        bool forwardMouse = Engine::getMouseMode() == MouseMode::CAPTURED
+            ? ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)
+            : isMouseInWindow;
+
+        if (forwardMouse) {
             float x = mousePos.x - windowPos.x;
             float y = mousePos.y - windowPos.y;
             toEngineCanvas(sceneProject->id, x, y);
@@ -871,7 +877,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             releasePlayKeys(mods);
         }
 
-        if (isMouseInWindow) {
+        // Keeps the editor camera off while the game owns the mouse
+        if (forwardMouse || isMouseInWindow) {
             return;
         }
     } else if (playKeysSceneId == sceneProject->id) {

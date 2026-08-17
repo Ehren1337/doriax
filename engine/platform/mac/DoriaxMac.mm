@@ -193,6 +193,19 @@ namespace {
     return YES;
 }
 
+// The pointer is disassociated globally, so a capture left on while another app
+// is in front would freeze the cursor system wide.
+- (void)applicationDidResignActive:(NSNotification*)notification {
+    (void)notification;
+    WindowMac::setCursorCaptured(false, false);
+}
+
+- (void)applicationDidBecomeActive:(NSNotification*)notification {
+    (void)notification;
+    if (Engine::getMouseMode() == MouseMode::CAPTURED)
+        WindowMac::setMouseMode(MouseMode::CAPTURED);
+}
+
 - (void)applicationWillTerminate:(NSNotification*)notification {
     (void)notification;
     [self.frameTimer invalidate];
