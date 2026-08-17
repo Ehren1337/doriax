@@ -44,6 +44,9 @@ namespace doriax {
         HICON icon = nullptr;
         // The editor hosts child windows; a game's client area is one drawable
         bool clipChildren = false;
+        // Trims the size to the primary monitor's work area, for callers
+        // restoring one saved on another monitor or at another display scaling
+        bool clampToWorkArea = false;
     };
 
     class WindowWin {
@@ -62,6 +65,10 @@ namespace doriax {
         // Process wide, not window specific: the editor's detached viewports are
         // separate top-level windows.
         static bool hasFocus();
+
+        // Desktop scaling of the monitor a window is on, or of the primary one
+        // when there is no window yet. 1.0 at 96 DPI.
+        static float monitorScale(HWND window);
 
         // Client area in pixels, which is what the engine works in
         static void getClientSize(int& width, int& height);

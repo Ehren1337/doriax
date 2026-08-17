@@ -20,6 +20,8 @@ std::string AppSettings::emsdkPath;
 int AppSettings::windowWidth = 1280;
 int AppSettings::windowHeight = 720;
 bool AppSettings::isMaximized = false;
+float AppSettings::windowUiScale = 0.0f;
+float AppSettings::layoutUiScale = 0.0f;
 int AppSettings::resourcesIconSize = 32;
 int AppSettings::resourcesLayout = 0;
 int AppSettings::resourcesItemViewStyle = 1;
@@ -107,6 +109,12 @@ bool AppSettings::loadSettings() {
             }
             if (windowNode["maximized"]) {
                 isMaximized = windowNode["maximized"].as<bool>();
+            }
+            if (windowNode["ui_scale"]) {
+                windowUiScale = windowNode["ui_scale"].as<float>();
+            }
+            if (windowNode["layout_ui_scale"]) {
+                layoutUiScale = windowNode["layout_ui_scale"].as<float>();
             }
         }
         
@@ -217,6 +225,13 @@ bool AppSettings::saveSettings() {
         windowNode["width"] = windowWidth;
         windowNode["height"] = windowHeight;
         windowNode["maximized"] = isMaximized;
+        // Omitted at 0 so "never recorded" stays distinguishable from a scale.
+        if (windowUiScale > 0.0f) {
+            windowNode["ui_scale"] = windowUiScale;
+        }
+        if (layoutUiScale > 0.0f) {
+            windowNode["layout_ui_scale"] = layoutUiScale;
+        }
         settingsData["window"] = windowNode;
         
         // Resources window settings
@@ -369,6 +384,22 @@ void AppSettings::setWindowHeight(int height) {
 
 void AppSettings::setIsMaximized(bool maximized) {
     isMaximized = maximized;
+}
+
+float AppSettings::getWindowUiScale() {
+    return windowUiScale;
+}
+
+void AppSettings::setWindowUiScale(float scale) {
+    windowUiScale = scale;
+}
+
+float AppSettings::getLayoutUiScale() {
+    return layoutUiScale;
+}
+
+void AppSettings::setLayoutUiScale(float scale) {
+    layoutUiScale = scale;
 }
 
 int AppSettings::getResourcesIconSize() {

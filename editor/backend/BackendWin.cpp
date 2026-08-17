@@ -465,10 +465,6 @@ void updateFramePeriod() {
 }
 
 bool initializeWindow(int width, int height, bool maximized) {
-    // Has to run before the window exists, so the frame is laid out for the
-    // right DPI from the start.
-    ImGui_ImplWin32_EnableDpiAwareness();
-
     WindowWinConfig config;
     config.title = "Doriax Engine";
     config.width = width;
@@ -482,6 +478,9 @@ bool initializeWindow(int width, int height, bool maximized) {
         LR_DEFAULTSIZE | LR_SHARED));
     // ImGui's detached viewports are child windows of this one
     config.clipChildren = true;
+    // The restored size is converted from the scale it was saved at, so it can
+    // come out larger than this monitor.
+    config.clampToWorkArea = true;
     if (!WindowWin::create(config)) return false;
 
     backend->instance = WindowWin::instance();
@@ -741,8 +740,14 @@ int editor::Backend::init(int argc, char* argv[]) {
     app.initializeSettings();
 
     backend = new WinBackendData();
-    const int initialWidth = app.getInitialWindowWidth();
-    const int initialHeight = app.getInitialWindowHeight();
+
+    // Before the window exists and before any monitor DPI is read, or the query
+    // below returns the 96 DPI Windows reports to unaware processes.
+    ImGui_ImplWin32_EnableDpiAwareness();
+
+    const float uiScale = WindowWin::monitorScale(nullptr);
+    const int initialWidth = app.getInitialWindowWidth(uiScale);
+    const int initialHeight = app.getInitialWindowHeight(uiScale);
     if (!initializeWindow(initialWidth, initialHeight,
                           app.getInitialWindowMaximized())) {
         shutdownWindow();
@@ -831,7 +836,8 @@ int editor::Backend::init(int argc, char* argv[]) {
     int width = 0;
     int height = 0;
     WindowWin::getClientSize(width, height);
-    app.saveWindowSettings(width, height, IsZoomed(backend->window) != FALSE);
+    app.saveWindowSettings(width, height, IsZoomed(backend->window) != FALSE,
+                           WindowWin::monitorScale(backend->window));
 
     backend->renderer->shutdownImGui();
     ImGui_ImplWin32_Shutdown();

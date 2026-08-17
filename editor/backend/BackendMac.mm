@@ -766,8 +766,9 @@ int editor::Backend::init(int argc, char* argv[]) {
 
         WindowMacConfig windowConfig;
         windowConfig.title = "Doriax Engine";
-        windowConfig.width = app.getInitialWindowWidth();
-        windowConfig.height = app.getInitialWindowHeight();
+        // Cocoa sizes windows in points, which are already scale independent.
+        windowConfig.width = app.getInitialWindowWidth(1.0f);
+        windowConfig.height = app.getInitialWindowHeight(1.0f);
         WindowMac::create(windowConfig);
         WindowMac::setWindowDelegate((__bridge void*)backend->windowDelegate);
         backend->window = (__bridge NSWindow*)WindowMac::nativeWindow();
@@ -982,7 +983,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         app.saveWindowSettings(
             static_cast<int>(std::lround(finalSize.width)),
             static_cast<int>(std::lround(finalSize.height)),
-            backend->window.zoomed);
+            backend->window.zoomed, 1.0f);
 
         waitForGpu();
         if (backend->eventMonitor) {

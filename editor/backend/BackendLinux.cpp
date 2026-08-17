@@ -1152,6 +1152,54 @@ float desktopUiScale() {
     return scale;
 }
 
+// Room for a window on the primary monitor. _NET_WORKAREA spans every monitor,
+// so it only contributes the panel trim and the CRTC mode supplies the bound.
+void screenWorkArea(int& width, int& height) {
+    width = DisplayWidth(backend->display, backend->screen);
+    height = DisplayHeight(backend->display, backend->screen);
+
+    XRRScreenResources* resources =
+        XRRGetScreenResourcesCurrent(backend->display, backend->root);
+    if (resources) {
+        const RROutput primary = XRRGetOutputPrimary(backend->display, backend->root);
+        XRROutputInfo* output = primary != None
+            ? XRRGetOutputInfo(backend->display, resources, primary) : nullptr;
+        if (output && output->crtc != None) {
+            XRRCrtcInfo* crtc = XRRGetCrtcInfo(backend->display, resources, output->crtc);
+            if (crtc && crtc->width > 0 && crtc->height > 0) {
+                width = static_cast<int>(crtc->width);
+                height = static_cast<int>(crtc->height);
+            }
+            if (crtc) XRRFreeCrtcInfo(crtc);
+        }
+        if (output) XRRFreeOutputInfo(output);
+        XRRFreeScreenResources(resources);
+    }
+
+    const Atom workAreaAtom = XInternAtom(backend->display, "_NET_WORKAREA", True);
+    if (workAreaAtom == None) return;
+
+    Atom actualType = None;
+    int actualFormat = 0;
+    unsigned long nitems = 0;
+    unsigned long bytesAfter = 0;
+    unsigned char* prop = nullptr;
+    if (XGetWindowProperty(backend->display, backend->root, workAreaAtom, 0, 4,
+                           False, XA_CARDINAL, &actualType, &actualFormat,
+                           &nitems, &bytesAfter, &prop) != Success || !prop) {
+        return;
+    }
+    // x, y, width, height of the first desktop.
+    if (actualFormat == 32 && nitems >= 4) {
+        const long* values = reinterpret_cast<const long*>(prop);
+        if (values[2] > 0 && values[3] > 0) {
+            width = std::min(width, static_cast<int>(values[2]));
+            height = std::min(height, static_cast<int>(values[3]));
+        }
+    }
+    XFree(prop);
+}
+
 void applyDesktopUiScaleToMonitors() {
     ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
     const float uiScale = desktopUiScale();
@@ -2478,7 +2526,9 @@ editor::RendererPlatform rendererPlatform() {
 
 #endif
 
-bool initializeX11(int width, int height) {
+// Takes the App rather than a size: the saved size converts to this desktop's
+// scale only once the display is open, which is the first thing this does.
+bool initializeX11(editor::App& app) {
     XInitThreads();
     backend->display = XOpenDisplay(nullptr);
     if (!backend->display) {
@@ -2535,6 +2585,13 @@ bool initializeX11(int width, int height) {
     Bool detectable = False;
     XkbSetDetectableAutoRepeat(backend->display, True, &detectable);
 
+    const float uiScale = desktopUiScale();
+    int workWidth = 0;
+    int workHeight = 0;
+    screenWorkArea(workWidth, workHeight);
+    // The converted size can come out larger than this screen.
+    const int width = std::min(app.getInitialWindowWidth(uiScale), workWidth);
+    const int height = std::min(app.getInitialWindowHeight(uiScale), workHeight);
     const int x = std::max(0, (DisplayWidth(backend->display, backend->screen) - width) / 2);
     const int y = std::max(0, (DisplayHeight(backend->display, backend->screen) - height) / 2);
     backend->mainWindow = createNativeWindow(x, y, width, height, true, false, false);
@@ -2604,9 +2661,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     app.initializeSettings();
 
     backend = new LinuxBackendData();
-    const int initialWidth = app.getInitialWindowWidth();
-    const int initialHeight = app.getInitialWindowHeight();
-    if (!initializeX11(initialWidth, initialHeight)) {
+    if (!initializeX11(app)) {
         shutdownX11();
         return -1;
     }
@@ -2628,7 +2683,8 @@ int editor::Backend::init(int argc, char* argv[]) {
     app.setup();
     backend->renderer = std::make_unique<editor::Renderer>();
     if (!backend->renderer->init(
-            rendererPlatform(), initialWidth, initialHeight, true)) {
+            rendererPlatform(), backend->mainWindow->width,
+            backend->mainWindow->height, true)) {
         shutdownImGuiPlatform();
         ImGui::DestroyContext();
         NFD_Quit();
@@ -2692,7 +2748,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         maximized = vertical && horizontal;
         XFree(states);
     }
-    app.saveWindowSettings(width, height, maximized);
+    app.saveWindowSettings(width, height, maximized, desktopUiScale());
 
     backend->renderer->shutdownImGui();
     shutdownImGuiPlatform();

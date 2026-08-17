@@ -54,10 +54,16 @@ private:
     // Machine-specific, so stored editor-wide rather than per-project.
     static std::string emsdkPath;
     
-    // Window settings
+    // Window settings. The size is physical pixels, only meaningful again at the
+    // scale it was captured at; 0 marks a file from before that was tracked.
     static int windowWidth;
     static int windowHeight;
     static bool isMaximized;
+    static float windowUiScale;
+
+    // The dock layout is pixels too, but keeps the scale it was built at even if
+    // the window later moves to a monitor that changes windowUiScale.
+    static float layoutUiScale;
 
     // Resources window settings
     static int resourcesIconSize;
@@ -108,9 +114,14 @@ public:
     static int getWindowHeight();
     static bool getIsMaximized();
     
+    static float getWindowUiScale();
+    static float getLayoutUiScale();
+
     static void setWindowWidth(int width);
     static void setWindowHeight(int height);
     static void setIsMaximized(bool maximized);
+    static void setWindowUiScale(float scale);
+    static void setLayoutUiScale(float scale);
     
     // Resources window settings
     static int getResourcesIconSize();

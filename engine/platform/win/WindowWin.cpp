@@ -135,11 +135,16 @@ bool WindowWin::create(const WindowWinConfig& config) {
     RECT rect{0, 0, std::max(config.width, 1), std::max(config.height, 1)};
     const HMONITOR monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
     adjustWindowRectForDpi(rect, style, FALSE, exStyle, monitorDpi(monitor));
-    const int totalWidth = rect.right - rect.left;
-    const int totalHeight = rect.bottom - rect.top;
+    int totalWidth = rect.right - rect.left;
+    int totalHeight = rect.bottom - rect.top;
 
     RECT workArea{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0);
+    // The frame is already included here, so this is where the trim lands right.
+    if (config.clampToWorkArea) {
+        totalWidth = std::min<int>(totalWidth, workArea.right - workArea.left);
+        totalHeight = std::min<int>(totalHeight, workArea.bottom - workArea.top);
+    }
     const int x = workArea.left + static_cast<int>(std::max<LONG>(
         0, (workArea.right - workArea.left - totalWidth) / 2));
     const int y = workArea.top + static_cast<int>(std::max<LONG>(
@@ -203,6 +208,13 @@ bool WindowWin::hasFocus() {
     DWORD processId = 0;
     GetWindowThreadProcessId(focused, &processId);
     return processId == GetCurrentProcessId();
+}
+
+float WindowWin::monitorScale(HWND window) {
+    const HMONITOR monitor = window
+        ? MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST)
+        : MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    return static_cast<float>(monitorDpi(monitor)) / 96.0f;
 }
 
 void WindowWin::getClientSize(int& width, int& height) {

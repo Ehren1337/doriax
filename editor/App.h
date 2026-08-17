@@ -116,6 +116,11 @@ namespace doriax::editor{
         // Backing buffer for ImGui's io.IniFilename (must outlive ImGui).
         std::string layoutIniPath;
 
+        // Scale the persisted dock layout was written at, and whether the
+        // restored layout has been matched to the current one.
+        float layoutUiScale = 0.0f;
+        bool layoutScaleApplied = false;
+
         AlertData alert;
         ProjectSaveDialog projectSaveDialog;
         SceneSaveDialog sceneSaveDialog;
@@ -156,6 +161,8 @@ namespace doriax::editor{
         void showStyleEditor();
         void buildDockspace(bool resetLayout = false);
         void buildDefaultLayout();
+        // Matches a layout restored from the ini to the current UI scale.
+        void rescaleRestoredLayout();
         void dockProjectTabs();
         void dockTabWindow(const std::string& windowName, bool force = false);
         void captureTabOrder();
@@ -250,11 +257,12 @@ namespace doriax::editor{
         AnimationWindow* getAnimationWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
 
-        // Window settings methods
-        int getInitialWindowWidth() const;
-        int getInitialWindowHeight() const;
+        // Window settings methods. Sizes are physical pixels, converted between
+        // the saved scale and the uiScale the backend is opening the window on.
+        int getInitialWindowWidth(float uiScale) const;
+        int getInitialWindowHeight(float uiScale) const;
         bool getInitialWindowMaximized() const;
-        void saveWindowSettings(int width, int height, bool maximized);
+        void saveWindowSettings(int width, int height, bool maximized, float uiScale);
         void initializeSettings();
         void exit();
     };

@@ -31,6 +31,7 @@
 
 #include <filesystem>
 #include <cstdlib>
+#include <cmath>
 #include <algorithm>
 #include <limits>
 #include <utility>
@@ -41,6 +42,40 @@
 #endif
 
 using namespace doriax;
+
+namespace {
+
+// A scale no monitor reports means the value is missing or corrupt.
+float sanitizeUiScale(float scale) {
+    return (scale >= 0.5f && scale <= 8.0f) ? scale : 1.0f;
+}
+
+// Saved sizes are physical pixels, so they only mean the same window again at
+// the scale they were captured at. Settings from before the editor tracked DPI
+// carry no scale and read as 1.0, which is what a DPI-unaware process reported.
+int scaleSavedWindowSize(int saved, float uiScale) {
+    const float savedScale = sanitizeUiScale(editor::AppSettings::getWindowUiScale());
+    const float ratio = sanitizeUiScale(uiScale) / savedScale;
+    return std::max(1, static_cast<int>(std::lround(saved * ratio)));
+}
+
+// The dockspace lives on the main viewport, so that is the scale it has to match.
+float mainViewportScale() {
+    return sanitizeUiScale(ImGui::GetMainViewport()->DpiScale);
+}
+
+// SizeRef against a central node is read as an absolute size, so it has to grow
+// with the text; siblings split by ratio stay proportional under the same factor.
+void scaleDockChildren(ImGuiDockNode* node, float ratio) {
+    for (ImGuiDockNode* child : node->ChildNodes) {
+        if (!child) continue;
+        child->Size = ImVec2(child->Size.x * ratio, child->Size.y * ratio);
+        child->SizeRef = ImVec2(child->SizeRef.x * ratio, child->SizeRef.y * ratio);
+        scaleDockChildren(child, ratio);
+    }
+}
+
+}
 
 ImFont* editor::App::codeFont = nullptr;
 
@@ -854,6 +889,9 @@ void editor::App::buildDockspace(bool resetLayout){
         dock_id_middle_top = getCentralDockId();
     } else {
         buildDefaultLayout();
+        // Built from the current font size, so it needs no DPI correction.
+        layoutUiScale = mainViewportScale();
+        layoutScaleApplied = true;
     }
 
     dockProjectTabs();
@@ -863,8 +901,31 @@ void editor::App::buildDockspace(bool resetLayout){
     forceDockTabs = false;
 }
 
+// The ini stores dock sizes in absolute pixels and ImGui never converts them, so
+// a layout saved at 100% stays narrow at 150% on every launch.
+void editor::App::rescaleRestoredLayout(){
+    if (layoutScaleApplied) return;
+
+    // Nothing persisted: buildDefaultLayout() builds at the current scale below.
+    ImGuiDockNode* root = ImGui::DockBuilderGetNode(dockspace_id);
+    if (!root) return;
+
+    const float currentScale = mainViewportScale();
+    const float savedScale = sanitizeUiScale(layoutUiScale);
+    layoutUiScale = currentScale;
+    layoutScaleApplied = true;
+
+    const float ratio = currentScale / savedScale;
+    if (ratio > 0.99f && ratio < 1.01f) return;
+
+    // The root node is pinned to the viewport, so only its descendants move.
+    scaleDockChildren(root, ratio);
+}
+
 void editor::App::buildDefaultLayout(){
-    const ImVec2 viewport = ImGui::GetMainViewport()->Size;
+    // WorkSize is what DockSpaceOverViewport() sizes the root node to, so the
+    // caps below measure against the room the panels actually get.
+    const ImVec2 viewport = ImGui::GetMainViewport()->WorkSize;
     ImGuiID dock_id_left, dock_id_left_top, dock_id_left_bottom, dock_id_right, dock_id_middle, dock_id_middle_bottom;
     // dock_id_middle_top is a member: dockTabWindow() reads it after this runs.
 
@@ -872,18 +933,24 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(dockspace_id, viewport);
 
+    // Sizes in font sizes hold the same text at any DPI, but can add up to more
+    // than the window has, leaving a sibling with no room at all.
+    auto preferredSize = [](float fontSizes, float available, float maxShare){
+        return std::min(fontSizes * ImGui::GetFontSize(), available * maxShare);
+    };
+
     // Structure on the left, Resources split off its bottom.
     ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.0f, &dock_id_left, &dock_id_middle);
-    ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(14*ImGui::GetFontSize(), viewport.y));
+    ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(preferredSize(14, viewport.x, 0.3f), viewport.y));
     ImGui::DockBuilderDockWindow(Structure::WINDOW_NAME, dock_id_left);
 
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Down, 0.0f, &dock_id_left_bottom, &dock_id_left_top);
-    ImGui::DockBuilderSetNodeSize(dock_id_left_bottom, ImVec2(viewport.x, 50*ImGui::GetFontSize()));
+    ImGui::DockBuilderSetNodeSize(dock_id_left_bottom, ImVec2(viewport.x, preferredSize(50, viewport.y, 0.65f)));
     ImGui::DockBuilderDockWindow(ResourcesWindow::WINDOW_NAME, dock_id_left_bottom);
 
     // Properties on the right.
     ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Right, 0.0f, &dock_id_right, &dock_id_middle);
-    ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(19*ImGui::GetFontSize(), viewport.y));
+    ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(preferredSize(19, viewport.x, 0.3f), viewport.y));
     ImGui::DockBuilderDockWindow(Properties::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(AiChatWindow::WINDOW_NAME, dock_id_right);
 
@@ -901,7 +968,7 @@ void editor::App::buildDefaultLayout(){
 
     // Output/Animation across the bottom; scenes fill the remaining centre.
     ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Down, 0.0f, &dock_id_middle_bottom, &dock_id_middle_top);
-    ImGui::DockBuilderSetNodeSize(dock_id_middle_bottom, ImVec2(viewport.x, 10*ImGui::GetFontSize()));
+    ImGui::DockBuilderSetNodeSize(dock_id_middle_bottom, ImVec2(viewport.x, preferredSize(10, viewport.y, 0.4f)));
     ImGui::DockBuilderDockWindow(OutputWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
@@ -1160,6 +1227,10 @@ void editor::App::setup() {
     // build type. (initializeSettings() above has already set the config dir.)
     layoutIniPath = (AppSettings::getConfigDirectory() / "editor_layout.ini").string();
     io.IniFilename = layoutIniPath.c_str();
+
+    // Separate from the window scale: the layout keeps the scale it was built at,
+    // while the window is measured on whichever monitor it closes on.
+    layoutUiScale = AppSettings::getLayoutUiScale();
 
     io.Fonts->AddFontDefault();
 
@@ -1428,6 +1499,9 @@ void editor::App::show(){
     showFooter();
 
     isInitialized = true;
+
+    // Before DockSpaceOverViewport() below lays the restored sizes out.
+    rescaleRestoredLayout();
 
     if (dockspaceNeedsRebuild || ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
         buildDockspace();
@@ -2234,22 +2308,28 @@ void editor::App::persistPanelVisibilitySettings() {
     }
 }
 
-int editor::App::getInitialWindowWidth() const {
-    return AppSettings::getWindowWidth();
+int editor::App::getInitialWindowWidth(float uiScale) const {
+    return scaleSavedWindowSize(AppSettings::getWindowWidth(), uiScale);
 }
 
-int editor::App::getInitialWindowHeight() const {
-    return AppSettings::getWindowHeight();
+int editor::App::getInitialWindowHeight(float uiScale) const {
+    return scaleSavedWindowSize(AppSettings::getWindowHeight(), uiScale);
 }
 
 bool editor::App::getInitialWindowMaximized() const {
     return AppSettings::getIsMaximized();
 }
 
-void editor::App::saveWindowSettings(int width, int height, bool maximized) {
+void editor::App::saveWindowSettings(int width, int height, bool maximized, float uiScale) {
     AppSettings::setWindowWidth(width);
     AppSettings::setWindowHeight(height);
     AppSettings::setIsMaximized(maximized);
+    AppSettings::setWindowUiScale(sanitizeUiScale(uiScale));
+    // The ini is written at the scale the layout has held all session, not the
+    // monitor scale above, which is read fresh and may have changed since.
+    if (layoutScaleApplied) {
+        AppSettings::setLayoutUiScale(sanitizeUiScale(layoutUiScale));
+    }
     AppSettings::saveSettings();
 }
 
