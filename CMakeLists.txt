@@ -59,13 +59,9 @@ message(STATUS "API backend is set to ${API_BACKEND}")
 # The native Linux and Windows backends render through Vulkan or OpenGL; macOS
 # is tied to Metal.
 if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
-    if(NOT GRAPHIC_BACKEND)
-        if(API_BACKEND STREQUAL "win")
-            set(GRAPHIC_BACKEND "glcore")
-        else()
-            set(GRAPHIC_BACKEND "vulkan")
-        endif()
-    elseif(NOT GRAPHIC_BACKEND STREQUAL "vulkan" AND NOT GRAPHIC_BACKEND STREQUAL "glcore")
+    # Cached so a reconfigure keeps the backend the build directory was made with
+    set(GRAPHIC_BACKEND "glcore" CACHE STRING "Editor graphic backend: vulkan or glcore")
+    if(NOT GRAPHIC_BACKEND STREQUAL "vulkan" AND NOT GRAPHIC_BACKEND STREQUAL "glcore")
         message(FATAL_ERROR "API_BACKEND=${API_BACKEND} supports GRAPHIC_BACKEND vulkan or glcore")
     endif()
 else()
