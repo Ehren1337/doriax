@@ -2553,8 +2553,24 @@ std::string editor::Factory::createBundle(const fs::path& bundlePath, EntityRegi
 
     const std::string ind1 = indentation(4);
 
+    // A member parented to root needs root to carry a Transform, and so does parenting the
+    // whole instance when it is spawned
+    bool rootNeedsTransform = false;
+    for (Entity entity : memberEntities) {
+        Transform* tf = registry->findComponent<Transform>(entity);
+        if (tf && (tf->parent == NULL_ENTITY || !memberSet.count(tf->parent))) {
+            rootNeedsTransform = true;
+            break;
+        }
+    }
+
     // Function definition
     out << "bool " << funcName << "(Scene* scene, Entity root) {\n";
+
+    if (rootNeedsTransform) {
+        out << ind1 << "if (!scene->findComponent<Transform>(root))\n";
+        out << ind1 << "    scene->addComponent<Transform>(root, {});\n\n";
+    }
 
     // Phase 1: Create all member entities
     out << ind1 << "// Create member entities\n";

@@ -6033,7 +6033,7 @@ void editor::Project::removeBundleInstanceTracking(uint32_t sceneId, Entity root
     updateSceneBundles(sceneProject);
 }
 
-bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities, bool destroyRoot) {
+bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesystem::path& filepath, Entity rootEntity, const std::vector<Entity>& memberEntities) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return false;
@@ -6041,12 +6041,9 @@ bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesyst
 
     Scene* scene = sceneProject->scene;
 
-    // Collect all entities to destroy (members + local entities that are children of root/members).
-    // A root the scene owns keeps the children it already had, only the instance goes away
+    // Collect all entities to destroy (members + local entities that are children of root/members)
     std::unordered_set<Entity> memberSet(memberEntities.begin(), memberEntities.end());
-    if (destroyRoot) {
-        memberSet.insert(rootEntity);
-    }
+    memberSet.insert(rootEntity);
     std::vector<Entity> allEntitiesToDestroy;
 
     // Gather non-member children (local entities) from Transform hierarchy
@@ -6099,13 +6096,9 @@ bool editor::Project::unimportEntityBundle(uint32_t sceneId, const std::filesyst
     DeleteEntityCmd::destroyEntities(scene, memberEntities,
         sceneProject->entities, this, sceneId);
 
-    // Destroy root entity, unless the scene owns it and only hosted the instance
+    // Destroy root entity
     if (rootEntity != NULL_ENTITY && scene->isEntityCreated(rootEntity)) {
-        if (destroyRoot) {
-            DeleteEntityCmd::destroyEntity(scene, rootEntity, sceneProject->entities, this, sceneId);
-        } else {
-            scene->removeComponent<BundleComponent>(rootEntity);
-        }
+        DeleteEntityCmd::destroyEntity(scene, rootEntity, sceneProject->entities, this, sceneId);
     }
 
     updateSceneBundles(sceneProject);
@@ -7805,8 +7798,7 @@ void editor::Project::registerBundleManager() {
                 for (const auto& m : instance->members)
                     members.push_back(m.localEntity);
                 bool wasModified = sceneProject->isModified;
-                bool result = unimportEntityBundle(sceneProject->id, capturableBundlePath, root, members,
-                    BundleManager::isRootOwned(scene, root));
+                bool result = unimportEntityBundle(sceneProject->id, capturableBundlePath, root, members);
                 sceneProject->isModified = wasModified;
                 return result;
             }

@@ -22,7 +22,8 @@ namespace doriax {
     // A factory receives (Scene*, Entity root) and must return true on success. Failed
     // factories are not recorded; entities created during the call are rolled back.
     //
-    // Entity IDs are scene-local. Resolve an existing root by name in the destination scene:
+    // Each call creates its own root, so a bundle can be spawned any number of times. Entity IDs
+    // are scene-local, so parent by name in the destination scene:
     //   BundleManager::createBundle("enemies/EnemyShip", mainScene, "spawn");
     //
     // Usage from C++ (standalone generated code):
@@ -48,7 +49,6 @@ namespace doriax {
             Scene* scene;
             uint32_t bundleId;
             std::vector<Entity> entities; // all entities including root
-            bool ownedRoot = true;        // root created by createBundle, so destroyed with the instance
         };
 
         static std::vector<BundleEntry> entries;
@@ -56,8 +56,7 @@ namespace doriax {
 
         static BundleEntry* findEntry(uint32_t id);
         static BundleEntry* findEntry(const std::string& name);
-        static bool hasInstance(Scene* scene, Entity root);
-        static Entity instantiate(uint32_t id, Scene* scene, Entity root, bool ownedRoot);
+        static Entity instantiate(uint32_t id, Scene* scene, Entity parent);
 
     public:
         // The factory must return true on success. Void-returning callables are accepted
@@ -86,23 +85,19 @@ namespace doriax {
         static Entity createBundle(const std::string& name, Scene* scene);
         static Entity createBundle(uint32_t id, Scene* scene);
 
-        // Looks up rootName in `scene` before spawning.
-        static Entity createBundle(const std::string& name, Scene* scene, const std::string& rootName);
-        static Entity createBundle(uint32_t id, Scene* scene, const std::string& rootName);
+        // Every overload creates the instance root; the third argument is the entity it is
+        // parented to, looked up by name in `scene` for the string form.
+        static Entity createBundle(const std::string& name, Scene* scene, const std::string& parentName);
+        static Entity createBundle(uint32_t id, Scene* scene, const std::string& parentName);
 
         // For objects that already carry their own scene (Object, Button, ...)
-        static Entity createBundle(const std::string& name, const EntityHandle& root);
-        static Entity createBundle(uint32_t id, const EntityHandle& root);
+        static Entity createBundle(const std::string& name, const EntityHandle& parent);
+        static Entity createBundle(uint32_t id, const EntityHandle& parent);
 
-        static Entity createBundle(const std::string& name, Scene* scene, Entity root);
-        static Entity createBundle(uint32_t id, Scene* scene, Entity root);
+        static Entity createBundle(const std::string& name, Scene* scene, Entity parent);
+        static Entity createBundle(uint32_t id, Scene* scene, Entity parent);
 
         static bool destroyBundle(Scene* scene, Entity rootEntity);
-
-        // True when createBundle created the instance root, so destroying the instance destroys
-        // it too. A root the caller supplied belongs to the scene and is kept. Meant for custom
-        // destroyers, which run while the instance is still tracked.
-        static bool isRootOwned(Scene* scene, Entity rootEntity);
 
         static uint32_t getBundleId(const std::string& name);
         static std::string getBundleName(uint32_t id);

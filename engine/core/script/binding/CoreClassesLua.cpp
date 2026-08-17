@@ -309,15 +309,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<BundleManager>("BundleManager")
+        // Lua reads a number as a string too, so the id and entity overloads have to be
+        // offered before the ones taking a name
         .addStaticFunction("createBundle",
-            luabridge::overload<const std::string&, Scene*>(&BundleManager::createBundle),
             luabridge::overload<uint32_t, Scene*>(&BundleManager::createBundle),
-            luabridge::overload<const std::string&, Scene*, const std::string&>(&BundleManager::createBundle),
-            luabridge::overload<uint32_t, Scene*, const std::string&>(&BundleManager::createBundle),
-            luabridge::overload<const std::string&, Scene*, Entity>(&BundleManager::createBundle),
             luabridge::overload<uint32_t, Scene*, Entity>(&BundleManager::createBundle),
-            luabridge::overload<const std::string&, const EntityHandle&>(&BundleManager::createBundle),
-            luabridge::overload<uint32_t, const EntityHandle&>(&BundleManager::createBundle))
+            luabridge::overload<uint32_t, Scene*, const std::string&>(&BundleManager::createBundle),
+            luabridge::overload<uint32_t, const EntityHandle&>(&BundleManager::createBundle),
+            luabridge::overload<const std::string&, Scene*>(&BundleManager::createBundle),
+            luabridge::overload<const std::string&, Scene*, Entity>(&BundleManager::createBundle),
+            luabridge::overload<const std::string&, Scene*, const std::string&>(&BundleManager::createBundle),
+            luabridge::overload<const std::string&, const EntityHandle&>(&BundleManager::createBundle))
         .addStaticFunction("destroyBundle", &BundleManager::destroyBundle)
         .addStaticFunction("getBundleId", &BundleManager::getBundleId)
         .addStaticFunction("getBundleName", &BundleManager::getBundleName)

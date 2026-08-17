@@ -16,7 +16,7 @@ std::vector<BundleManager::BundleInstance> BundleManager::instances;
 
 namespace {
 
-void rollbackSpawnedEntities(Scene* scene, const std::unordered_set<Entity>& beforeSet, Entity root, bool destroyRoot) {
+void rollbackSpawnedEntities(Scene* scene, const std::unordered_set<Entity>& beforeSet, Entity root) {
     if (!scene)
         return;
 
@@ -27,7 +27,7 @@ void rollbackSpawnedEntities(Scene* scene, const std::unordered_set<Entity>& bef
             scene->destroyEntity(e);
     }
 
-    if (destroyRoot && root != NULL_ENTITY && scene->isEntityCreated(root))
+    if (root != NULL_ENTITY && scene->isEntityCreated(root))
         scene->destroyEntity(root);
 }
 
@@ -59,109 +59,77 @@ void BundleManager::registerBundle(uint32_t id, const std::string& name, std::fu
     entries.push_back({id, name, std::move(factory), std::move(destroyer)});
 }
 
-bool BundleManager::hasInstance(Scene* scene, Entity root) {
-    for (const auto& inst : instances) {
-        if (inst.scene == scene && inst.rootEntity == root)
-            return true;
-    }
-    return false;
-}
-
 Entity BundleManager::createBundle(const std::string& name, Scene* scene) {
-    BundleEntry* entry = findEntry(name);
-    if (!entry) {
-        Log::error("BundleManager: bundle '%s' not found", name.c_str());
-        return NULL_ENTITY;
-    }
-    return createBundle(entry->id, scene);
+    return createBundle(name, scene, NULL_ENTITY);
 }
 
 Entity BundleManager::createBundle(uint32_t id, Scene* scene) {
-    if (!scene) {
-        Log::error("BundleManager: scene is null");
-        return NULL_ENTITY;
-    }
-    if (!findEntry(id)) {
-        Log::error("BundleManager: bundle id %u not found", id);
-        return NULL_ENTITY;
-    }
-    return instantiate(id, scene, scene->createEntity(), true);
+    return instantiate(id, scene, NULL_ENTITY);
 }
 
-Entity BundleManager::createBundle(const std::string& name, Scene* scene, const std::string& rootName) {
+Entity BundleManager::createBundle(const std::string& name, Scene* scene, const std::string& parentName) {
     BundleEntry* entry = findEntry(name);
     if (!entry) {
         Log::error("BundleManager: bundle '%s' not found", name.c_str());
         return NULL_ENTITY;
     }
-    return createBundle(entry->id, scene, rootName);
+    return createBundle(entry->id, scene, parentName);
 }
 
-Entity BundleManager::createBundle(uint32_t id, Scene* scene, const std::string& rootName) {
+Entity BundleManager::createBundle(uint32_t id, Scene* scene, const std::string& parentName) {
     if (!scene) {
         Log::error("BundleManager: scene is null");
         return NULL_ENTITY;
     }
-    Entity root = scene->findEntity(rootName);
-    if (root == NULL_ENTITY) {
-        Log::error("BundleManager: root entity '%s' not found in the given scene", rootName.c_str());
+    Entity parent = scene->findEntity(parentName);
+    if (parent == NULL_ENTITY) {
+        Log::error("BundleManager: parent entity '%s' not found in the given scene", parentName.c_str());
         return NULL_ENTITY;
     }
-    return instantiate(id, scene, root, false);
+    return instantiate(id, scene, parent);
 }
 
-Entity BundleManager::createBundle(const std::string& name, Scene* scene, Entity root) {
+Entity BundleManager::createBundle(const std::string& name, Scene* scene, Entity parent) {
     BundleEntry* entry = findEntry(name);
     if (!entry) {
         Log::error("BundleManager: bundle '%s' not found", name.c_str());
         return NULL_ENTITY;
     }
-    return instantiate(entry->id, scene, root, false);
+    return instantiate(entry->id, scene, parent);
 }
 
-Entity BundleManager::createBundle(uint32_t id, Scene* scene, Entity root) {
-    return instantiate(id, scene, root, false);
+Entity BundleManager::createBundle(uint32_t id, Scene* scene, Entity parent) {
+    return instantiate(id, scene, parent);
 }
 
-Entity BundleManager::createBundle(const std::string& name, const EntityHandle& root) {
-    BundleEntry* entry = findEntry(name);
-    if (!entry) {
-        Log::error("BundleManager: bundle '%s' not found", name.c_str());
-        return NULL_ENTITY;
-    }
-    return instantiate(entry->id, root.getScene(), root.getEntity(), false);
+Entity BundleManager::createBundle(const std::string& name, const EntityHandle& parent) {
+    return createBundle(name, parent.getScene(), parent.getEntity());
 }
 
-Entity BundleManager::createBundle(uint32_t id, const EntityHandle& root) {
-    return instantiate(id, root.getScene(), root.getEntity(), false);
+Entity BundleManager::createBundle(uint32_t id, const EntityHandle& parent) {
+    return instantiate(id, parent.getScene(), parent.getEntity());
 }
 
-Entity BundleManager::instantiate(uint32_t id, Scene* scene, Entity root, bool ownedRoot) {
+Entity BundleManager::instantiate(uint32_t id, Scene* scene, Entity parent) {
     if (!scene) {
         Log::error("BundleManager: scene is null");
         return NULL_ENTITY;
     }
-    if (root == NULL_ENTITY || !scene->isEntityCreated(root)) {
-        Log::error("BundleManager: root entity %u does not exist in the given scene", root);
-        return NULL_ENTITY;
-    }
-    if (hasInstance(scene, root)) {
-        Log::error("BundleManager: root entity %u already has a bundle instance in this scene", root);
-        if (ownedRoot)
-            scene->destroyEntity(root);
+    if (parent != NULL_ENTITY && !scene->isEntityCreated(parent)) {
+        Log::error("BundleManager: parent entity %u does not exist in the given scene", parent);
         return NULL_ENTITY;
     }
 
     BundleEntry* entry = findEntry(id);
     if (!entry) {
         Log::error("BundleManager: bundle id %u not found", id);
-        if (ownedRoot)
-            scene->destroyEntity(root);
         return NULL_ENTITY;
     }
 
     std::vector<Entity> beforeEntities = scene->getEntityList();
     std::unordered_set<Entity> beforeSet(beforeEntities.begin(), beforeEntities.end());
+
+    Entity root = scene->createEntity();
 
     bool ok = false;
     try {
@@ -174,15 +142,18 @@ Entity BundleManager::instantiate(uint32_t id, Scene* scene, Entity root, bool o
 
     if (!ok) {
         Log::error("BundleManager: factory failed for bundle id %u", id);
-        rollbackSpawnedEntities(scene, beforeSet, root, ownedRoot);
+        rollbackSpawnedEntities(scene, beforeSet, root);
         return NULL_ENTITY;
     }
+
+    // after the factory, which is what gives the root its Transform
+    if (parent != NULL_ENTITY)
+        scene->addEntityChild(parent, root, false);
 
     BundleInstance instance;
     instance.rootEntity = root;
     instance.scene = scene;
     instance.bundleId = id;
-    instance.ownedRoot = ownedRoot;
     instance.entities.push_back(root);
     for (Entity e : scene->getEntityList()) {
         if (e != root && beforeSet.find(e) == beforeSet.end())
@@ -207,9 +178,6 @@ bool BundleManager::destroyBundle(Scene* scene, Entity rootEntity) {
             }
 
             for (auto eit = it->entities.rbegin(); eit != it->entities.rend(); ++eit) {
-                // A root the caller gave us is not ours to destroy
-                if (*eit == rootEntity && !it->ownedRoot)
-                    continue;
                 if (scene->isEntityCreated(*eit))
                     scene->destroyEntity(*eit);
             }
@@ -218,14 +186,6 @@ bool BundleManager::destroyBundle(Scene* scene, Entity rootEntity) {
         }
     }
     Log::error("BundleManager: bundle instance with root %u not found in scene", rootEntity);
-    return false;
-}
-
-bool BundleManager::isRootOwned(Scene* scene, Entity rootEntity) {
-    for (const auto& inst : instances) {
-        if (inst.scene == scene && inst.rootEntity == rootEntity)
-            return inst.ownedRoot;
-    }
     return false;
 }
 
