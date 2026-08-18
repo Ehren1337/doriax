@@ -6,7 +6,10 @@
 // group in the executable, and named entries precede numbered ones. Exported
 // games instead use "1 ICON" (see Exporter.cpp), because they set the window
 // icon at runtime from app_icon.h.
-GLFW_ICON ICON "@DORIAX_ICON_FILE@"
+//
+// Expands to nothing for doriax.dll, which has no window and no Explorer icon
+// but still needs the version block below to be signed.
+@DORIAX_ICON_RESOURCE@
 
 // Constants are spelled out because the resource is compiled without an include path
 #ifndef VS_VERSION_INFO
@@ -19,7 +22,7 @@ VS_VERSION_INFO VERSIONINFO
     FILEFLAGSMASK  0x3fL
     FILEFLAGS      0x0L
     FILEOS         0x40004L // VOS_NT_WINDOWS32
-    FILETYPE       0x1L     // VFT_APP
+    FILETYPE       @DORIAX_FILE_TYPE@
     FILESUBTYPE    0x0L
 BEGIN
     BLOCK "StringFileInfo"

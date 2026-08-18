@@ -107,14 +107,28 @@ set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
 set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
-# Icon and version resource for one executable. Each target needs its own so
+# Icon and version resource for one binary. Each target needs its own so
 # OriginalFilename matches the file on disk. Added after Defender quarantined
-# doriax-editor-cmd.exe, the only binary that shipped without any resource.
+# doriax-editor-cmd.exe, the only binary that shipped without any resource;
+# SignPath additionally requires every signed binary to carry product metadata,
+# which is why the DLL gets a resource too. Pass an empty icon_name for it.
 function(doriax_add_windows_resource out_var target_name icon_name original_filename description)
-    set(DORIAX_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/${icon_name}")
     set(DORIAX_ORIGINAL_FILENAME ${original_filename})
     set(DORIAX_FILE_DESCRIPTION ${description})
     set(DORIAX_INTERNAL_NAME ${target_name})
+
+    if(icon_name)
+        set(DORIAX_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/${icon_name}")
+        set(DORIAX_ICON_RESOURCE "GLFW_ICON ICON \"${DORIAX_ICON_FILE}\"")
+    else()
+        set(DORIAX_ICON_RESOURCE "")
+    endif()
+
+    if(original_filename MATCHES "\\.dll$")
+        set(DORIAX_FILE_TYPE "0x2L     // VFT_DLL")
+    else()
+        set(DORIAX_FILE_TYPE "0x1L     // VFT_APP")
+    endif()
 
     set(generated_rc "${CMAKE_CURRENT_BINARY_DIR}/resources/${target_name}.rc")
     configure_file(
@@ -122,7 +136,9 @@ function(doriax_add_windows_resource out_var target_name icon_name original_file
         ${generated_rc}
         @ONLY
     )
-    set_property(SOURCE ${generated_rc} APPEND PROPERTY OBJECT_DEPENDS ${DORIAX_ICON_FILE})
+    if(icon_name)
+        set_property(SOURCE ${generated_rc} APPEND PROPERTY OBJECT_DEPENDS ${DORIAX_ICON_FILE})
+    endif()
 
     add_library(${target_name}-resource OBJECT ${generated_rc})
     # rc.exe chokes on the editor's include list, and the .rc needs no search path
@@ -366,6 +382,20 @@ include_directories (${DORIAX_ROOT}/renders)
 include_directories (${SHADERCOMPILER_ROOT}/src)
 
 add_subdirectory(${DORIAX_ROOT})
+
+# The engine DLL is signed alongside the two executables, so it needs the same
+# product metadata. MinGW prefixes the file name, hence the computed name rather
+# than a literal "doriax.dll".
+if(WIN32 AND DORIAX_SHARED)
+    doriax_add_windows_resource(
+        DORIAX_LIB_ICON_OBJECTS
+        doriax
+        ""
+        "${CMAKE_SHARED_LIBRARY_PREFIX}doriax${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        "Doriax Engine Runtime"
+    )
+    target_sources(doriax PRIVATE ${DORIAX_LIB_ICON_OBJECTS})
+endif()
 
 # The engine compiles sokol's Vulkan backend, so it needs the headers and the
 # loader itself. Only the standalone engine build sets this up on its own.

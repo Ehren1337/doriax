@@ -6,10 +6,20 @@ on:
       - '*'
   release:
     types: [published]
-    
+
+# The SignPath action reads the job details and downloads the unsigned artifact
+# through the GitHub API.
+permissions:
+  contents: read
+  actions: read
+
 env:
   BUILD_TYPE: Release
   TARGET: doriax-editor
+  # Authenticode signing of the Windows binaries. The API token of the "CI builds"
+  # SignPath CI user lives in the SIGNPATH_API_TOKEN repository secret.
+  SIGNPATH_ORGANIZATION_ID: 71ade14e-ea98-448b-b32f-954d41e71ef9
+  SIGNPATH_PROJECT_SLUG: doriax
   # Keep at 3.5.1 or newer: 3.4 segfaults inside glfwTerminate on Wayland when
   # the last frame swapped without a following poll (glfw/glfw#2744).
   GLFW_VERSION: 3.5.1
@@ -19,6 +29,11 @@ jobs:
   build:
     name: Build for ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    env:
+      # Only the Windows binaries are signed, and only when the secret is
+      # readable: forks and pull requests from forks produce an unsigned build
+      # instead of a failing job.
+      SIGN_WINDOWS: ${{ startsWith(matrix.config.os, 'windows') && secrets.SIGNPATH_API_TOKEN != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -146,6 +161,54 @@ jobs:
         shell: bash
         working-directory: instdir
         run: ls -laR
+
+      # Windows Defender flags unsigned Doriax builds as Sabsik!ml at random, so
+      # the binaries are Authenticode-signed before they are published. Only the
+      # PE files make the round trip; the rest of instdir/bin never leaves here.
+      - name: Collect Windows binaries for signing
+        if: env.SIGN_WINDOWS == 'true'
+        shell: bash
+        run: |
+          mkdir to-sign
+          find instdir/bin -maxdepth 1 -type f \( -name '*.exe' -o -name '*.dll' \) -exec cp {} to-sign/ \;
+          ls -la to-sign
+
+      - name: Upload unsigned binaries
+        id: upload-unsigned
+        if: env.SIGN_WINDOWS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.artifact }}_unsigned
+          path: ./to-sign/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign binaries with SignPath
+        if: env.SIGN_WINDOWS == 'true'
+        uses: SignPath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          # main is what doriax.org serves through nightly.link, so it needs a
+          # real signature just like a published release. Other branches get a
+          # test signature, which Windows does not trust and which must not be
+          # published.
+          signing-policy-slug: ${{ (github.event_name == 'release' || github.ref == 'refs/heads/main') && 'release-signing' || 'test-signing' }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+          # The SignPath Foundation release certificate requires a human to
+          # approve each request, so the job has to outlast that click. The
+          # action's own default is 10 minutes, which is not enough in practice.
+          wait-for-completion-timeout-in-seconds: 1800
+
+      - name: Put signed binaries back
+        if: env.SIGN_WINDOWS == 'true'
+        shell: bash
+        run: |
+          cp signed/* instdir/bin/
+          ls -la instdir/bin
 
       - name: Upload
         uses: actions/upload-artifact@v4
