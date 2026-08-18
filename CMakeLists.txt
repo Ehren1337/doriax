@@ -103,15 +103,17 @@ if(WIN32)
     endif()
 endif()
 
+if(APPLE)
+    set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
+endif()
+
 set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
 set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
 # Icon and version resource for one binary. Each target needs its own so
-# OriginalFilename matches the file on disk. Added after Defender quarantined
-# doriax-editor-cmd.exe, the only binary that shipped without any resource;
-# SignPath additionally requires every signed binary to carry product metadata,
-# which is why the DLL gets a resource too. Pass an empty icon_name for it.
+# OriginalFilename matches the file on disk. SignPath wants metadata on every
+# signed binary, so the DLL gets one too: pass an empty icon_name for it.
 function(doriax_add_windows_resource out_var target_name icon_name original_filename description)
     set(DORIAX_ORIGINAL_FILENAME ${original_filename})
     set(DORIAX_FILE_DESCRIPTION ${description})
@@ -383,9 +385,7 @@ include_directories (${SHADERCOMPILER_ROOT}/src)
 
 add_subdirectory(${DORIAX_ROOT})
 
-# The engine DLL is signed alongside the two executables, so it needs the same
-# product metadata. MinGW prefixes the file name, hence the computed name rather
-# than a literal "doriax.dll".
+# Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
 if(WIN32 AND DORIAX_SHARED)
     doriax_add_windows_resource(
         DORIAX_LIB_ICON_OBJECTS
@@ -640,6 +640,70 @@ if(PLATFORM_PROPERTIES_FLAGS)
     set_target_properties(doriax-editor PROPERTIES ${PLATFORM_PROPERTIES_FLAGS})
 endif()
 
+# engine/ and the dylib go in Contents/MacOS, where getExecutableDir() and
+# @loader_path already find them.
+if(APPLE)
+    set(DORIAX_BUNDLE_NAME "Doriax")
+    set(DORIAX_BUNDLE_IDENTIFIER "org.doriax.editor")
+    set(DORIAX_BUNDLE_ICON_NAME "doriax.icns")
+
+    # CFBundleShortVersionString takes digits and dots only.
+    string(REPLACE "," "." DORIAX_BUNDLE_VERSION "${DORIAX_VERSION_NUMERIC}")
+    string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*$" "\\1" DORIAX_BUNDLE_VERSION "${DORIAX_BUNDLE_VERSION}")
+
+    # engine/CMakeLists.txt sets this in its own scope, which does not reach here.
+    set(DORIAX_BUNDLE_MIN_OS "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    if(NOT DORIAX_BUNDLE_MIN_OS)
+        set(DORIAX_BUNDLE_MIN_OS "12.0")
+    endif()
+
+    set(DORIAX_ICON_PNG "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/doriax-editor.png")
+    set(DORIAX_ICONSET "${CMAKE_CURRENT_BINARY_DIR}/resources/doriax.iconset")
+    set(DORIAX_ICNS "${CMAKE_CURRENT_BINARY_DIR}/resources/${DORIAX_BUNDLE_ICON_NAME}")
+
+    add_custom_command(
+        OUTPUT ${DORIAX_ICNS}
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${DORIAX_ICONSET}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${DORIAX_ICONSET}
+        COMMAND sips -z 16 16     ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_16x16.png
+        COMMAND sips -z 32 32     ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_16x16@2x.png
+        COMMAND sips -z 32 32     ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_32x32.png
+        COMMAND sips -z 64 64     ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_32x32@2x.png
+        COMMAND sips -z 128 128   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_128x128.png
+        COMMAND sips -z 256 256   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_128x128@2x.png
+        COMMAND sips -z 256 256   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_256x256.png
+        COMMAND sips -z 512 512   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_256x256@2x.png
+        COMMAND sips -z 512 512   ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_512x512.png
+        COMMAND sips -z 1024 1024 ${DORIAX_ICON_PNG} --out ${DORIAX_ICONSET}/icon_512x512@2x.png
+        COMMAND iconutil -c icns ${DORIAX_ICONSET} -o ${DORIAX_ICNS}
+        DEPENDS ${DORIAX_ICON_PNG}
+        COMMENT "Generating ${DORIAX_BUNDLE_ICON_NAME}"
+        VERBATIM
+    )
+
+    target_sources(doriax-editor PRIVATE ${DORIAX_ICNS})
+    set_source_files_properties(${DORIAX_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/macos/Info.plist.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/resources/Info.plist"
+        @ONLY
+    )
+
+    set_target_properties(doriax-editor PROPERTIES
+        OUTPUT_NAME "${DORIAX_BUNDLE_NAME}"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/resources/Info.plist"
+    )
+
+    if(DORIAX_SHARED)
+        add_custom_command(TARGET doriax-editor POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:doriax> $<TARGET_FILE_DIR:doriax-editor>
+            COMMENT "Copying the engine runtime into the bundle"
+        )
+    endif()
+endif()
+
 add_custom_target(copy_doriax_editor_engine
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/engine
@@ -684,14 +748,22 @@ if(WIN32)
     list(APPEND DORIAX_EDITOR_INSTALL_TARGETS doriax-editor-cmd)
 endif()
 
-install(TARGETS ${DORIAX_EDITOR_INSTALL_TARGETS} doriax
-        CONFIGURATIONS Release MinSizeRel 
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION bin
-        ARCHIVE DESTINATION bin
-)
+# The bundle already holds the dylib and engine/.
+if(APPLE)
+    install(TARGETS doriax-editor
+            CONFIGURATIONS Release MinSizeRel
+            BUNDLE DESTINATION bin
+    )
+else()
+    install(TARGETS ${DORIAX_EDITOR_INSTALL_TARGETS} doriax
+            CONFIGURATIONS Release MinSizeRel
+            RUNTIME DESTINATION bin
+            LIBRARY DESTINATION bin
+            ARCHIVE DESTINATION bin
+    )
 
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
-        DESTINATION bin
-        CONFIGURATIONS Release MinSizeRel
-)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
+            DESTINATION bin
+            CONFIGURATIONS Release MinSizeRel
+    )
+endif()

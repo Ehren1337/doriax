@@ -193,6 +193,29 @@ jobs:
           cp signed/* instdir/bin/
           ls -la instdir/bin
 
+      - name: Package the macOS app
+        if: startsWith(matrix.config.os, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="instdir/bin/Doriax.app"
+
+          # --strip invalidates the linker's ad-hoc signature, fatal on Apple Silicon.
+          codesign --remove-signature "$APP" || true
+          if [ -f "$APP/Contents/MacOS/libdoriax.dylib" ]; then
+            codesign --force --sign - --timestamp=none "$APP/Contents/MacOS/libdoriax.dylib"
+          fi
+          codesign --force --sign - --timestamp=none "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+          # Artifact zips lose the executable bit, so ship a dmg.
+          mkdir dmg-stage
+          cp -R "$APP" dmg-stage/
+          ln -s /Applications dmg-stage/Applications
+          hdiutil create -volname "Doriax" -srcfolder dmg-stage -ov -format UDZO instdir/bin/Doriax.dmg
+          rm -rf dmg-stage "$APP"
+          ls -la instdir/bin
+
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
