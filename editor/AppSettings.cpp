@@ -5,8 +5,44 @@
 #include "Out.h"
 #include <fstream>
 #include <algorithm>
+#include <cstdlib>
 
 namespace doriax::editor {
+
+namespace {
+
+std::filesystem::path userConfigDirectory() {
+#if defined(_WIN32)
+    if (const char* appData = std::getenv("APPDATA"); appData && *appData) {
+        return std::filesystem::path(appData) / "Doriax";
+    }
+#elif defined(__APPLE__)
+    if (const char* home = std::getenv("HOME"); home && *home) {
+        return std::filesystem::path(home) / "Library" / "Application Support" / "Doriax";
+    }
+#else
+    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
+        return std::filesystem::path(xdg) / "doriax";
+    }
+    if (const char* home = std::getenv("HOME"); home && *home) {
+        return std::filesystem::path(home) / ".config" / "doriax";
+    }
+#endif
+    return std::filesystem::current_path();
+}
+
+bool isWritableDirectory(const std::filesystem::path& dir) {
+    const std::filesystem::path probe = dir / ".doriax_write_test";
+    std::error_code ec;
+    {
+        std::ofstream f(probe);
+        if (!f.is_open()) return false;
+    }
+    std::filesystem::remove(probe, ec);
+    return true;
+}
+
+} // namespace
 
 // Initialize static members
 std::filesystem::path AppSettings::configFilePath;
@@ -17,6 +53,7 @@ std::string AppSettings::lastCMakeCCompiler;
 std::string AppSettings::lastCMakeCxxCompiler;
 std::string AppSettings::lastCMakeGenerator;
 std::string AppSettings::emsdkPath;
+std::string AppSettings::cmakePath;
 int AppSettings::windowWidth = 1280;
 int AppSettings::windowHeight = 720;
 bool AppSettings::isMaximized = false;
@@ -32,9 +69,25 @@ PanelVisibilitySettings AppSettings::panelVisibility;
 ai::Settings AppSettings::aiSettings;
 
 bool AppSettings::initialize() {
-    // Get config file path in the application directory
-    configFilePath = std::filesystem::current_path() / "settings.yaml";
-    
+    // Settings live in the working directory, where a run from a build tree
+    // keeps them. A desktop launcher starts the app in "/" instead, so there
+    // they go to the per-user config directory: nothing could be saved
+    // otherwise.
+    const std::filesystem::path workingDir = std::filesystem::current_path();
+    const std::filesystem::path workingDirSettings = workingDir / "settings.yaml";
+
+    std::error_code ec;
+    if (std::filesystem::exists(workingDirSettings, ec)) {
+        configFilePath = workingDirSettings;
+    } else {
+        const std::filesystem::path userDir = userConfigDirectory();
+        if (std::filesystem::exists(userDir / "settings.yaml", ec) || !isWritableDirectory(workingDir)) {
+            configFilePath = userDir / "settings.yaml";
+        } else {
+            configFilePath = workingDirSettings;
+        }
+    }
+
     ensureConfigDirectory();
     return loadSettings();
 }
@@ -85,6 +138,11 @@ bool AppSettings::loadSettings() {
         // Load Emscripten SDK path override
         if (settingsData["emsdk"] && settingsData["emsdk"]["path"]) {
             emsdkPath = settingsData["emsdk"]["path"].as<std::string>();
+        }
+
+        // Load cmake executable override
+        if (settingsData["cmake"] && settingsData["cmake"]["path"]) {
+            cmakePath = settingsData["cmake"]["path"].as<std::string>();
         }
 
         // Load recent projects
@@ -219,6 +277,15 @@ bool AppSettings::saveSettings() {
         } else {
             settingsData.remove("emsdk");
         }
+
+        // cmake executable override
+        if (!cmakePath.empty()) {
+            YAML::Node cmakeNode;
+            cmakeNode["path"] = cmakePath;
+            settingsData["cmake"] = cmakeNode;
+        } else {
+            settingsData.remove("cmake");
+        }
         
         // Window settings
         YAML::Node windowNode;
@@ -321,6 +388,15 @@ std::string AppSettings::getEmsdkPath() {
 
 void AppSettings::setEmsdkPath(const std::string& path) {
     emsdkPath = path;
+    saveSettings();
+}
+
+std::string AppSettings::getCMakePath() {
+    return cmakePath;
+}
+
+void AppSettings::setCMakePath(const std::string& path) {
+    cmakePath = path;
     saveSettings();
 }
 

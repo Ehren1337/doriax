@@ -28,14 +28,25 @@ using namespace doriax;
 namespace {
     constexpr std::chrono::milliseconds kReadSleepMs{10};
     constexpr std::chrono::milliseconds kKillGracePeriod{100};
+
+#ifdef _WIN32
+    // Without /S, a command line holding more than two quotes and starting with
+    // one loses its first and its last quote, so a quoted program path followed
+    // by quoted arguments ("C:\Program Files\CMake\bin\cmake.exe" -G "Ninja")
+    // decays into "C:\Program". /S "<command>" strips only the outer pair.
+    std::string cmdQuoting(const std::string& command) {
+        return "/s /c \"" + command + "\"";
+    }
+#endif
 }
 
 #ifdef _WIN32
-// Run "cmd.exe /c <command>" and capture its output WITHOUT flashing a console
-// window. The editor is a GUI app with no console of its own, so _popen() and
-// system() each briefly pop up a cmd.exe window; CreateProcess with
-// CREATE_NO_WINDOW avoids that flicker. Returns the captured output (stdout, plus
-// stderr unless the command redirects it) with trailing whitespace trimmed.
+// Run the command through cmd.exe (see cmdQuoting) and capture its output
+// WITHOUT flashing a console window. The editor is a GUI app with no console
+// of its own, so _popen() and system() each briefly pop up a cmd.exe window;
+// CreateProcess with CREATE_NO_WINDOW avoids that flicker. Returns the captured
+// output (stdout, plus stderr unless the command redirects it) with trailing
+// whitespace trimmed.
 std::string editor::CommandRunner::runCaptureNoWindow(const std::string& command) {
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE hRead = nullptr, hWrite = nullptr;
@@ -49,7 +60,7 @@ std::string editor::CommandRunner::runCaptureNoWindow(const std::string& command
     si.hStdError = hWrite;
 
     PROCESS_INFORMATION pi{};
-    std::string cmdLine = "cmd.exe /c " + command;
+    std::string cmdLine = "cmd.exe " + cmdQuoting(command);
     if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE,
                         CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
         CloseHandle(hRead);
@@ -214,7 +225,7 @@ bool editor::CommandRunner::run(const std::string& command, const fs::path& work
         si.hStdInput  = nullptr;
 
         PROCESS_INFORMATION pi{};
-        std::string cmdLine = "cmd.exe /c " + command;
+        std::string cmdLine = "cmd.exe " + cmdQuoting(command);
 
         // Track the whole child tree in a job object so cancellation can kill
         // cmake and the compilers it spawns, not only cmd.exe. KILL_ON_JOB_CLOSE

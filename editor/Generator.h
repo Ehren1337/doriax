@@ -47,6 +47,15 @@ namespace doriax::editor {
         std::string functionName;         // generated C++ function name (e.g. create_bundle_X)
     };
 
+    // Which cmake the editor would run, and where it came from.
+    struct CMakeInfo {
+        bool found = false;
+        std::string path;         // e.g. "/usr/local/bin/cmake"
+        std::string version;      // e.g. "3.31.6", empty when it could not be read
+        std::string source;       // "configured path" or "on PATH"
+        std::string error;        // why a configured path was rejected
+    };
+
     struct CMakeKit {
         std::string displayName;  // e.g. "GCC 15.2.0 x86_64-linux-gnu"
         std::string cCompiler;    // e.g. "/usr/bin/gcc"
@@ -105,6 +114,14 @@ namespace doriax::editor {
         ~Generator();
         static std::string checkBuildTools();
         static std::vector<CMakeKit> detectAvailableKits();
+        static CMakeInfo detectCMake();
+        // cmake for a command line: the configured path (quoted) or plain
+        // "cmake" for PATH to resolve.
+        static std::string cmakeExecutable();
+        // A file dialog pick turned into a cmake executable, "" when it holds none.
+        static std::string resolveCMakePath(const std::string& userPath);
+        // Version a cmake executable reports, "" when it is not one.
+        static std::string probeCMakeVersion(const std::string& path);
         // MSVC's /MP processMax accepts at most 65536, making this the universal
         // (machine-independent) ceiling for a stored Parallel Jobs value.
         static constexpr unsigned int MAX_SUPPORTED_PARALLEL_BUILD_JOBS = 65536;

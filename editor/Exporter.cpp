@@ -458,10 +458,11 @@ bool editor::Exporter::configureBuild() {
     std::string cmd;
     if (config.mode == ExportMode::Web) {
         // The emcmake wrapper injects the Emscripten toolchain file; the
-        // subsequent cmake --build needs no wrapper.
+        // subsequent cmake --build needs no wrapper. emcmake resolves the cmake
+        // it wraps itself, so the editor override does not apply here.
         cmd = "\"" + toCMakePath(emcmake) + "\" cmake ";
     } else {
-        cmd = "cmake ";
+        cmd = Generator::cmakeExecutable() + " ";
         if (!config.cmakeGenerator.empty()) {
             cmd += "-G \"" + config.cmakeGenerator + "\" ";
         }
@@ -517,7 +518,13 @@ bool editor::Exporter::runBuild() {
     unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
     jobs = std::min(jobs, Generator::getMaxParallelBuildJobs());
 
-    std::string cmd = "cmake --build \"" + buildDir.string() + "\" --config " + config.buildType + " --parallel " + std::to_string(jobs);
+    // A Web tree was configured by the cmake emcmake picked, and driving its
+    // build with a different one either fails or reconfigures the tree.
+    const std::string cmakeCmd = config.mode == ExportMode::Web
+        ? std::string("cmake")
+        : Generator::cmakeExecutable();
+
+    std::string cmd = cmakeCmd + " --build \"" + buildDir.string() + "\" --config " + config.buildType + " --parallel " + std::to_string(jobs);
     if (config.mode == ExportMode::Desktop) {
         // The build step invokes the compiler/linker, so it needs the same
         // MSVC environment as configure.

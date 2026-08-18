@@ -53,6 +53,10 @@ private:
     // Emscripten SDK root override for Web exports ("" = auto-detect).
     // Machine-specific, so stored editor-wide rather than per-project.
     static std::string emsdkPath;
+
+    // cmake executable override ("" = look it up on PATH). Machine-specific,
+    // stored editor-wide like emsdkPath.
+    static std::string cmakePath;
     
     // Window settings. The size is physical pixels, only meaningful again at the
     // scale it was captured at; 0 marks a file from before that was tracked.
@@ -108,6 +112,10 @@ public:
     // Emscripten SDK root override for Web exports ("" = auto-detect)
     static std::string getEmsdkPath();
     static void setEmsdkPath(const std::string& path);
+
+    // cmake executable override ("" = look it up on PATH)
+    static std::string getCMakePath();
+    static void setCMakePath(const std::string& path);
     
     // Window settings
     static int getWindowWidth();

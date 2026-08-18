@@ -7,6 +7,7 @@
 #include "Backend.h"
 #include "window/Widgets.h"
 #include "Theme.h"
+#include "external/IconsFontAwesome6.h"
 
 #include <algorithm>
 
@@ -363,6 +364,9 @@ void ProjectSettingsWindow::open(Project* project) {
 
     m_availableKits = Generator::detectAvailableKits();
     m_cmakeKitIndex = 0; // 0 = "Default"
+    m_cmakeOverride = AppSettings::getCMakePath();
+    m_cmakePickError.clear();
+    refreshCMakeStatus();
     m_cmakeBuildJobs = static_cast<int>(project->getCMakeBuildJobs());
     m_cmakeBuildJobsTooltip =
         "Maximum number of concurrent build jobs used for C++ scripts. Set to 0 to automatically use " +
@@ -624,8 +628,92 @@ void ProjectSettingsWindow::drawDirectoriesSettings() {
     });
 }
 
+void ProjectSettingsWindow::refreshCMakeStatus() {
+    m_cmakeInfo = Generator::detectCMake();
+}
+
+// An editor started by a desktop launcher can see a PATH with no CMake on it,
+// so the install can be pointed at by hand here.
+void ProjectSettingsWindow::drawCMakeSetting() {
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("CMake");
+    ImGui::SameLine(0.0f, Theme::dpi(4.0f));
+    if (m_cmakeInfo.found) {
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK);
+        if (m_cmakeInfo.version.empty()) {
+            ImGui::SetItemTooltip("CMake found %s: %s", m_cmakeInfo.source.c_str(), m_cmakeInfo.path.c_str());
+        } else {
+            ImGui::SetItemTooltip("CMake %s found %s: %s", m_cmakeInfo.version.c_str(), m_cmakeInfo.source.c_str(), m_cmakeInfo.path.c_str());
+        }
+    } else {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION);
+        if (m_cmakeInfo.error.empty()) {
+            ImGui::SetItemTooltip("CMake not found on PATH. Install it, or choose the cmake executable here.");
+        } else {
+            ImGui::SetItemTooltip("%s", m_cmakeInfo.error.c_str());
+        }
+    }
+    ImGui::TableNextColumn();
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float browseWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
+    float autoWidth = ImGui::CalcTextSize("Auto").x + style.FramePadding.x * 2.0f;
+    float pathWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - browseWidth - autoWidth - style.ItemSpacing.x * 2.0f);
+
+    fs::path cmakeDisplay = m_cmakeOverride.empty()
+        ? fs::path(m_cmakeInfo.found ? m_cmakeInfo.path : "<Not found on PATH>")
+        : fs::path(m_cmakeOverride);
+    Widgets::pathDisplay("##CMakePath", cmakeDisplay, Vector2(pathWidth, ImGui::GetFrameHeight()));
+
+    ImGui::SameLine();
+    if (ImGui::Button("Browse##cmake")) {
+        std::string startDir = m_cmakeOverride.empty()
+            ? std::string()
+            : fs::path(m_cmakeOverride).parent_path().string();
+
+        std::string selectedPath = FileDialogs::openFileDialog(startDir, FILE_DIALOG_ALL, false);
+        if (!selectedPath.empty()) {
+            // A rejected pick leaves the current setting alone.
+            const std::string resolved = Generator::resolveCMakePath(selectedPath);
+            const std::string version = resolved.empty() ? std::string() : Generator::probeCMakeVersion(resolved);
+
+            if (version.empty()) {
+                m_cmakePickError = resolved.empty()
+                    ? "No CMake executable in: " + selectedPath
+                    : "Not a working CMake: " + resolved;
+            } else {
+                m_cmakeOverride = resolved;
+                m_cmakePickError.clear();
+                AppSettings::setCMakePath(m_cmakeOverride);
+            }
+            refreshCMakeStatus();
+        }
+    }
+
+    ImGui::SameLine();
+    ImGui::BeginDisabled(m_cmakeOverride.empty());
+    if (ImGui::Button("Auto##cmake")) {
+        m_cmakeOverride.clear();
+        m_cmakePickError.clear();
+        AppSettings::setCMakePath(m_cmakeOverride);
+        refreshCMakeStatus();
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Clear the override and look CMake up on PATH again.");
+
+    if (!m_cmakePickError.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
+        ImGui::TextWrapped("%s", m_cmakePickError.c_str());
+        ImGui::PopStyleColor();
+    }
+}
+
 void ProjectSettingsWindow::drawBuildSettings() {
     drawSettingsPanel("##BuildSettingsPanel", [this]() {
+        drawCMakeSetting();
+
         beginSettingsRow("Compiler");
 
         if (m_cmakeKitIndex < 0 || m_cmakeKitIndex > static_cast<int>(m_availableKits.size())) {

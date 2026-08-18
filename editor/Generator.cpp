@@ -6,9 +6,12 @@
 #include "Factory.h"
 #include "App.h"
 #include "editor/Out.h"
+#include "AppSettings.h"
 #include "util/FileUtils.h"
+#include "util/ShellEnv.h"
 
 #include <cstdlib>
+#include <cctype>
 #include <stdexcept>
 #include <chrono>
 #include <fstream>
@@ -307,7 +310,7 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
         return out;
     };
 
-    std::string cmakeCommand = "cmake ";
+    std::string cmakeCommand = cmakeExecutable() + " ";
     if (!generator.empty()) {
         cmakeCommand += "-G \"" + generator + "\" ";
     }
@@ -361,7 +364,7 @@ unsigned int editor::Generator::getMaxParallelBuildJobs() {
 }
 
 bool editor::Generator::buildProject(const fs::path& projectPath, const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs) {
-    std::string buildCommand = "cmake --build \"" + buildPath.string() + "\" --config " + configType;
+    std::string buildCommand = cmakeExecutable() + " --build \"" + buildPath.string() + "\" --config " + configType;
     buildCommand += " --parallel " + std::to_string(parallelJobs);
     Out::info("Building project with %u parallel jobs...", parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
@@ -1281,6 +1284,120 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, windowSettings, assetsPath, luaPath);
 }
 
+std::string editor::Generator::resolveCMakePath(const std::string& userPath) {
+    if (userPath.empty()) return "";
+
+    std::error_code ec;
+    fs::path candidate = fs::path(userPath);
+
+#ifdef _WIN32
+    const std::string exeName = "cmake.exe";
+#else
+    const std::string exeName = "cmake";
+#endif
+
+    if (fs::is_regular_file(candidate, ec)) {
+        // CMake.app/Contents/MacOS/CMake is the GUI, which answers --version
+        // like the real thing; the command line tool is next door in bin.
+        if (candidate.parent_path().filename() == "MacOS") {
+            const fs::path cli = candidate.parent_path().parent_path() / "bin" / exeName;
+            if (fs::is_regular_file(cli, ec)) {
+                return cli.string();
+            }
+        }
+
+        // The dialog lists every file, and an installer or a disk image must not
+        // become the cmake every later build runs.
+        std::string name = candidate.filename().string();
+        std::transform(name.begin(), name.end(), name.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        return (name == "cmake" || name == "cmake.exe") ? candidate.string() : std::string();
+    }
+
+    if (fs::is_directory(candidate, ec)) {
+        // A pick can land on the install root, its bin directory or the macOS
+        // bundle, all of which the user thinks of as "CMake".
+        const fs::path insideDir[] = {
+            candidate / exeName,
+            candidate / "bin" / exeName,
+            candidate / "Contents" / "bin" / exeName,
+            candidate / "CMake.app" / "Contents" / "bin" / exeName
+        };
+        for (const auto& path : insideDir) {
+            if (fs::is_regular_file(path, ec)) {
+                return path.string();
+            }
+        }
+    }
+
+    return "";
+}
+
+std::string editor::Generator::cmakeExecutable() {
+    const std::string configured = AppSettings::getCMakePath();
+    // Quoted: an install path may contain spaces ("Program Files", a bundle).
+    return configured.empty() ? "cmake" : ("\"" + configured + "\"");
+}
+
+std::string editor::Generator::probeCMakeVersion(const std::string& path) {
+    const std::string command = "\"" + path + "\" --version";
+#ifdef _WIN32
+    const std::string output = CommandRunner::runCaptureNoWindow(command + " 2>nul");
+#else
+    const std::string output = ShellEnv::runCapture(command + " 2>/dev/null", 5000);
+#endif
+
+    // "cmake version 3.31.6" on the first line.
+    const std::string prefix = "cmake version ";
+    const size_t at = output.find(prefix);
+    if (at == std::string::npos) return "";
+
+    size_t end = output.find_first_of("\r\n", at + prefix.size());
+    if (end == std::string::npos) end = output.size();
+
+    std::string version = output.substr(at + prefix.size(), end - (at + prefix.size()));
+    while (!version.empty() && (version.back() == '\r' || version.back() == ' ')) {
+        version.pop_back();
+    }
+    return version;
+}
+
+editor::CMakeInfo editor::Generator::detectCMake() {
+    CMakeInfo info;
+
+    const std::string configured = AppSettings::getCMakePath();
+    if (!configured.empty()) {
+        std::error_code ec;
+        if (!fs::is_regular_file(configured, ec)) {
+            info.error = "The configured CMake path no longer exists: " + configured;
+            return info;
+        }
+        // A hand-picked path is trusted only once it answers --version, so it
+        // cannot show as healthy here and then fail on Play.
+        info.version = probeCMakeVersion(configured);
+        if (info.version.empty()) {
+            info.error = "The configured CMake path does not run as CMake: " + configured;
+            return info;
+        }
+        info.found = true;
+        info.path = configured;
+        info.source = "configured path";
+        return info;
+    }
+
+    // What PATH yields is an executable named cmake that the shell would run
+    // too, so it stays usable even if the version cannot be read.
+    const std::string onPath = ShellEnv::findExecutable("cmake");
+    if (onPath.empty()) return info;
+
+    info.found = true;
+    info.path = onPath;
+    info.source = "on PATH";
+    info.version = probeCMakeVersion(onPath);
+
+    return info;
+}
+
 std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
     std::vector<CMakeKit> kits;
 
@@ -1463,13 +1580,16 @@ std::string editor::Generator::checkBuildTools() {
     };
 #endif
 
-    if (!commandExists("cmake")) {
+    const CMakeInfo cmakeInfo = detectCMake();
+    if (!cmakeInfo.error.empty()) {
+        missing += "- CMake: " + cmakeInfo.error + ". Choose it again in Project Settings > Build.\n";
+    } else if (!cmakeInfo.found) {
 #ifdef _WIN32
         missing += "- CMake: not found. Download from https://cmake.org/download/ and ensure it is added to PATH during installation.\n";
 #elif defined(__APPLE__)
-        missing += "- CMake: not found. Install with: brew install cmake\n";
+        missing += "- CMake: not found. Install with: brew install cmake, or choose an existing install in Project Settings > Build.\n";
 #else
-        missing += "- CMake: not found. Install with: sudo apt install cmake (Debian/Ubuntu) or sudo dnf install cmake (Fedora).\n";
+        missing += "- CMake: not found. Install with: sudo apt install cmake (Debian/Ubuntu) or sudo dnf install cmake (Fedora), or choose an existing install in Project Settings > Build.\n";
 #endif
     }
 

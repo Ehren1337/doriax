@@ -43,6 +43,11 @@ namespace doriax::editor {
         fs::path m_luaDir;
         std::vector<CMakeKit> m_availableKits;
         int m_cmakeKitIndex = 0;
+        // Editor-wide, so it is applied when picked instead of on Apply, the
+        // same way the Export dialog treats the Emscripten SDK path.
+        std::string m_cmakeOverride;
+        CMakeInfo m_cmakeInfo;
+        std::string m_cmakePickError;   // why the last pick was rejected
         int m_cmakeBuildJobs = 0;
         std::string m_cmakeBuildJobsTooltip;
 
@@ -53,6 +58,8 @@ namespace doriax::editor {
         Texture* findThumbnail(const std::string& path);
         void drawDirectoriesSettings();
         void drawBuildSettings();
+        void drawCMakeSetting();
+        void refreshCMakeStatus();
         void applySettings();
 
     public:
