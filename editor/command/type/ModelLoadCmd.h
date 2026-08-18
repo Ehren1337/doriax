@@ -8,6 +8,7 @@
 #include "command/type/CreateEntityCmd.h"
 #include "Project.h"
 #include "math/Vector3.h"
+#include "subsystem/MeshSystem.h"
 #include "yaml-cpp/yaml.h"
 
 #include <atomic>
@@ -37,6 +38,10 @@ namespace doriax::editor{
         bool isNewModel = false;
         bool asyncPending = false;
         std::shared_ptr<std::atomic<bool>> cancelFlag;
+
+        // The generated mesh entities are destroyed before the load, so their submesh edits are
+        // taken aside here. Empty when the asset itself changed.
+        MeshSystem::SubmeshOverrides savedSubmeshOverrides;
 
         static std::vector<Entity> collectModelDeleteRoots(Scene* scene, Entity modelEntity,
                                                            const ModelComponent& model);

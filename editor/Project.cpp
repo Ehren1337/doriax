@@ -673,15 +673,6 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
             model.needUpdateModel = true;
             changed = true;
         }
-
-        // Overrides hold their own copy of the textures they replace, and it outlives the mesh's.
-        for (auto& submeshOverride : model.submeshOverrides) {
-            for (const SubmeshOverrideTextureSlot& slot : submeshOverrideTextureSlots) {
-                if (submeshOverride.fields & slot.field) {
-                    changed |= visitTexturePaths(submeshOverride.material.*slot.texture, transform);
-                }
-            }
-        }
     });
 
     visitComponents(registry->getComponentArray<SoundComponent>(), [&](SoundComponent& sound) {
@@ -857,7 +848,6 @@ void editor::Project::remapMaterialFilePath(const std::filesystem::path& oldPath
                 if (remapRelativeString(oldRelative, newRelative, material.name, updatedMaterialName)) {
                     material.name = updatedMaterialName;
                     mesh->submeshes[submeshIndex].needUpdateTexture = true;
-                    Catalog::refreshSubmeshOverride(sceneProject->scene, entity, submeshIndex);
                     sceneProject->needUpdateRender = true;
                     sceneProject->isModified = true;
                 }
@@ -1059,7 +1049,6 @@ void editor::Project::cleanupMaterialFilePath(const std::filesystem::path& delet
 
                 material.name.clear();
                 mesh.submeshes[submeshIndex].needUpdateTexture = true;
-                Catalog::refreshSubmeshOverride(sceneProject.scene, entity, submeshIndex);
                 sceneProject.needUpdateRender = true;
                 sceneProject.isModified = true;
                 sceneChanged = true;
@@ -1535,7 +1524,6 @@ void editor::Project::refreshLinkedMaterials(bool force) {
         if (mesh->submeshes[keySubmeshIndex].material != updatedMaterial) {
             mesh->submeshes[keySubmeshIndex].material = updatedMaterial;
             mesh->submeshes[keySubmeshIndex].needUpdateTexture = true;
-            Catalog::refreshSubmeshOverride(sceneProject->scene, keyEntity, keySubmeshIndex);
             sceneProject->needUpdateRender = true;
             sceneProject->isModified = true;
         }
@@ -2856,9 +2844,6 @@ void editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                         if (material != fileMaterial) {
                             material = fileMaterial;
                             mesh->submeshes[submeshIndex].needUpdateTexture = true;
-                            // Runs before the model loads, which would otherwise put the
-                            // override's older material back on top.
-                            Catalog::refreshSubmeshOverride(targetScene->scene, entity, submeshIndex);
                             targetScene->needUpdateRender = true;
                         }
                     } catch (const std::exception& e) {
@@ -6990,12 +6975,6 @@ bool editor::Project::bundlePropertyChanged(uint32_t sceneId, Entity entity, Com
     bundle->isModified = true;
 
     return true;
-}
-
-void editor::Project::bundleSubmeshOverridesChanged(uint32_t sceneId, Entity modelEntity){
-    if (modelEntity != NULL_ENTITY && isEntityInBundle(sceneId, modelEntity)){
-        bundlePropertyChanged(sceneId, modelEntity, ComponentType::ModelComponent, {"submeshOverrides"});
-    }
 }
 
 bool editor::Project::bundleNameChanged(uint32_t sceneId, Entity entity, std::string name, bool changeItself){

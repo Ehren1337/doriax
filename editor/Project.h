@@ -574,10 +574,6 @@ namespace doriax::editor{
         NodeRecovery removeEntityFromBundle(uint32_t sceneId, Entity entity, bool destroyItself = true);
 
         bool bundlePropertyChanged(uint32_t sceneId, Entity entity, ComponentType componentType, std::vector<std::string> properties, bool changeItself = false);
-
-        // A submesh edit is stored on the owning model, which the bundle system only learns about
-        // when it is told the ModelComponent changed as well.
-        void bundleSubmeshOverridesChanged(uint32_t sceneId, Entity modelEntity);
         bool bundleNameChanged(uint32_t sceneId, Entity entity, std::string name, bool changeItself = false);
         bool isEntityInBundle(uint32_t sceneId, Entity entity) const;
 

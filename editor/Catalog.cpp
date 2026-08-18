@@ -4,7 +4,6 @@
 #include "Catalog.h"
 
 #include "Stream.h"
-#include "subsystem/MeshSystem.h"
 
 #include <cctype>
 
@@ -122,7 +121,7 @@ namespace {
         return true;
     }
 
-    // Submesh properties the model loaders rewrite, and the bits that keep an edit alive across a
+    // Submesh properties the model loaders rewrite, and the bit that keeps an edit across a
     // reload. textureRect is absent on purpose: no loader touches it.
     struct SubmeshOverrideField {
         const char* name;
@@ -169,54 +168,6 @@ namespace {
         }
 
         return false;
-    }
-
-    // What an override addresses: the owning model and the live submesh.
-    struct SubmeshOverrideTarget {
-        ModelComponent* model = nullptr;
-        const Submesh* submesh = nullptr;
-        std::string sourceName;
-    };
-
-    bool resolveSubmeshOverrideTarget(EntityRegistry* registry, Entity entity, unsigned int submeshIndex, SubmeshOverrideTarget& target) {
-        Entity modelEntity = Stream::findModelOwner(entity, registry);
-        if (modelEntity == NULL_ENTITY) {
-            return false;
-        }
-
-        MeshComponent* mesh = registry->findComponent<MeshComponent>(entity);
-        if (!mesh || submeshIndex >= mesh->numSubmeshes) {
-            return false;
-        }
-
-        target.model = &registry->getComponent<ModelComponent>(modelEntity);
-        target.submesh = &mesh->submeshes[submeshIndex];
-        target.sourceName = MeshSystem::getSourceName(*target.model, target.submesh->sourceNode, target.submesh->sourcePrimitive);
-
-        return true;
-    }
-
-    // Mirrors MeshSystem's matching, through the primitive stamped on the submesh.
-    SubmeshOverride* findSubmeshOverrideEntry(const SubmeshOverrideTarget& target) {
-        for (auto& submeshOverride : target.model->submeshOverrides) {
-            // Identity decides here too: an orphaned entry can still hold the numeric key of a
-            // primitive that now belongs to someone else.
-            if (submeshOverride.nodeIndex == target.submesh->sourceNode &&
-                    submeshOverride.primitiveIndex == target.submesh->sourcePrimitive &&
-                    (submeshOverride.sourceName.empty() || submeshOverride.sourceName == target.sourceName)) {
-                return &submeshOverride;
-            }
-        }
-
-        return nullptr;
-    }
-
-    // The entry keeps the whole submesh state; only its flagged fields are re-applied on load.
-    void storeSubmeshOverrideValues(SubmeshOverride& submeshOverride, const Submesh& submesh) {
-        submeshOverride.material = submesh.material;
-        submeshOverride.faceCulling = submesh.faceCulling;
-        submeshOverride.textureShadow = submesh.textureShadow;
-        submeshOverride.primitiveType = submesh.primitiveType;
     }
 
     void* getLightShadowNearRef(void* comp) {
@@ -1751,10 +1702,6 @@ namespace {
             return {PropertyType::Custom, UpdateFlags_None, (void*)&def.animations, (void*)&comp->animations};
         }
 
-        if (propertyName == "submeshOverrides") {
-            return {PropertyType::Custom, UpdateFlags_None, (void*)&def.submeshOverrides, (void*)&comp->submeshOverrides};
-        }
-
         if (propertyName.compare(0, 11, "animations[") == 0) {
             size_t pos = 11;
             size_t index = 0;
@@ -2011,7 +1958,6 @@ namespace {
         ps["mergeStaticMeshes"] = {PropertyType::Bool, UpdateFlags_Model, (void*)&def.mergeStaticMeshes, compRef ? (void*)&comp->mergeStaticMeshes : nullptr};
         ps["skeleton"] = {PropertyType::Entity, UpdateFlags_Mesh_Reload, (void*)&def.skeleton, compRef ? (void*)&comp->skeleton : nullptr};
         ps["animations"] = {PropertyType::Custom, UpdateFlags_None, (void*)&def.animations, compRef ? (void*)&comp->animations : nullptr};
-        ps["submeshOverrides"] = {PropertyType::Custom, UpdateFlags_None, (void*)&def.submeshOverrides, compRef ? (void*)&comp->submeshOverrides : nullptr};
 
         for (size_t i = 0; i < (compRef ? comp->animations.size() : 0); i++) {
             std::string idx = std::to_string(i);
@@ -3681,68 +3627,22 @@ uint64_t editor::Catalog::getComponentStructuralUpdateFlags(ComponentType compTy
     }
 }
 
-Entity editor::Catalog::findSubmeshOverrideModel(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName) {
+uint32_t* editor::Catalog::getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint32_t& propertyFields) {
     if (component != ComponentType::MeshComponent) {
-        return NULL_ENTITY;
+        return nullptr;
     }
 
     size_t submeshIndex = 0;
-    uint32_t fields = 0;
-    if (!parseSubmeshOverrideProperty(propertyName, submeshIndex, fields)) {
-        return NULL_ENTITY;
+    if (!parseSubmeshOverrideProperty(propertyName, submeshIndex, propertyFields)) {
+        return nullptr;
     }
 
-    return Stream::findModelOwner(entity, registry);
-}
-
-std::vector<SubmeshOverride>* editor::Catalog::getSubmeshOverrides(EntityRegistry* registry, Entity modelEntity) {
-    if (ModelComponent* model = registry->findComponent<ModelComponent>(modelEntity)) {
-        return &model->submeshOverrides;
+    MeshComponent* mesh = registry->findComponent<MeshComponent>(entity);
+    if (!mesh || submeshIndex >= mesh->numSubmeshes) {
+        return nullptr;
     }
 
-    return nullptr;
-}
-
-void editor::Catalog::recordSubmeshOverride(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName) {
-    if (component != ComponentType::MeshComponent) {
-        return;
-    }
-
-    size_t submeshIndex = 0;
-    uint32_t fields = 0;
-    if (!parseSubmeshOverrideProperty(propertyName, submeshIndex, fields)) {
-        return;
-    }
-
-    SubmeshOverrideTarget target;
-    if (!resolveSubmeshOverrideTarget(registry, entity, static_cast<unsigned int>(submeshIndex), target)) {
-        return;
-    }
-
-    SubmeshOverride* entry = findSubmeshOverrideEntry(target);
-    if (!entry) {
-        target.model->submeshOverrides.push_back(SubmeshOverride());
-        entry = &target.model->submeshOverrides.back();
-        entry->nodeIndex = target.submesh->sourceNode;
-        entry->primitiveIndex = target.submesh->sourcePrimitive;
-        // Recorded now and not on the next load, or a re-export could move the key onto another
-        // primitive and this edit would follow it.
-        entry->sourceName = target.sourceName;
-    }
-
-    entry->fields |= fields;
-    storeSubmeshOverrideValues(*entry, *target.submesh);
-}
-
-void editor::Catalog::refreshSubmeshOverride(EntityRegistry* registry, Entity entity, unsigned int submeshIndex) {
-    SubmeshOverrideTarget target;
-    if (!resolveSubmeshOverrideTarget(registry, entity, submeshIndex, target)) {
-        return;
-    }
-
-    if (SubmeshOverride* entry = findSubmeshOverrideEntry(target)) {
-        storeSubmeshOverrideValues(*entry, *target.submesh);
-    }
+    return &mesh->submeshes[submeshIndex].overrideFields;
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
@@ -4326,15 +4226,19 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         case PropertyType::Custom:
             if (compType == ComponentType::ScriptComponent) {
                 copyComponent(sourceRegistry, sourceEntity, targetRegistry, targetEntity, compType);
-            } else if (compType == ComponentType::ModelComponent && property == "submeshOverrides") {
-                auto* source = getPropertyRef<std::vector<SubmeshOverride>>(sourceRegistry, sourceEntity, compType, property);
-                auto* target = getPropertyRef<std::vector<SubmeshOverride>>(targetRegistry, targetEntity, compType, property);
-                if (source && target) *target = *source;
             }
             break;
         default:
             // For any unknown/unsupported type, do nothing
             break;
+    }
+
+    // The override bit travels with the value, or the target keeps it only until its model loads.
+    uint32_t propertyFields = 0;
+    if (uint32_t* source = getSubmeshOverrideMask(sourceRegistry, sourceEntity, compType, property, propertyFields)) {
+        if (uint32_t* target = getSubmeshOverrideMask(targetRegistry, targetEntity, compType, property, propertyFields)) {
+            *target = (*target & ~propertyFields) | (*source & propertyFields);
+        }
     }
 
     // Apply any update flags that are associated with this property

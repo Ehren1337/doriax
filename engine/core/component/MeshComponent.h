@@ -25,6 +25,33 @@
 
 namespace doriax{
 
+    // Submesh fields a model load rewrites from its source file, so an edit to one only survives
+    // the load while it is flagged in Submesh::overrideFields.
+    enum SubmeshOverrideFlags : uint32_t {
+        SubmeshOverride_BaseColorFactor          = 1 << 0,
+        SubmeshOverride_MetallicFactor           = 1 << 1,
+        SubmeshOverride_RoughnessFactor          = 1 << 2,
+        SubmeshOverride_AlphaCutoff              = 1 << 3,
+        SubmeshOverride_EmissiveFactor           = 1 << 4,
+        SubmeshOverride_AlphaMode                = 1 << 5,
+        SubmeshOverride_MaterialName             = 1 << 6,
+        SubmeshOverride_BaseColorTexture         = 1 << 7,
+        SubmeshOverride_EmissiveTexture          = 1 << 8,
+        SubmeshOverride_MetallicRoughnessTexture = 1 << 9,
+        SubmeshOverride_OcclusionTexture         = 1 << 10,
+        SubmeshOverride_NormalTexture            = 1 << 11,
+        SubmeshOverride_FaceCulling              = 1 << 12,
+        SubmeshOverride_TextureShadow            = 1 << 13,
+        SubmeshOverride_PrimitiveType            = 1 << 14,
+
+        SubmeshOverride_Material = SubmeshOverride_BaseColorFactor | SubmeshOverride_MetallicFactor |
+                                   SubmeshOverride_RoughnessFactor | SubmeshOverride_AlphaCutoff |
+                                   SubmeshOverride_EmissiveFactor | SubmeshOverride_AlphaMode |
+                                   SubmeshOverride_MaterialName | SubmeshOverride_BaseColorTexture |
+                                   SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
+                                   SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture
+    };
+
     struct DORIAX_API Submesh{
         Material material;
         std::map<AttributeType, Attribute> attributes;
@@ -78,10 +105,7 @@ namespace doriax{
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
         unsigned int vertexCount = 0;
 
-        // Primitive this submesh came from (-1 node for OBJ). Submeshes are reversed after loading,
-        // so it is the only stable key for ModelComponent::submeshOverrides.
-        int sourceNode = -1;
-        unsigned int sourcePrimitive = 0;
+        uint32_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
 
         bool faceCulling = true;
         bool textureShadow = false;

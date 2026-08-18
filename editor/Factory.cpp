@@ -739,61 +739,85 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     // Keep it off the scene factory's stack and move it directly into the ECS.
     const std::string meshValue = beginHeapComponentCode(code, ind, "MeshComponent", "mesh");
 
-    // Same detection the scene stream uses, so a model's generated mesh children count as
-    // model-backed too. Their submeshes come from the model file at runtime and the user's edits
-    // ride along as overrides, so emitting the imported state would only be overwritten.
-    const bool hasModel = Stream::findModelOwner(entity, scene) != NULL_ENTITY;
+    // Model and heightmapped terrain rebuild their mesh data at runtime, so what the loaders
+    // regenerate is not emitted. An empty model filename and a terrain without a heightmap are
+    // not runtime geometry sources and keep their inline data.
+    const bool hasModel = Stream::isModelBackedMesh(entity, scene, scene->getSignature(entity));
 
     code << ind << "mesh.receiveIBL = " << formatBool(mesh.receiveIBL) << ";\n";
     code << ind << "mesh.castShadows = " << formatBool(mesh.castShadows) << ";\n";
     code << ind << "mesh.receiveShadows = " << formatBool(mesh.receiveShadows) << ";\n";
     if (!mesh.customShader.empty())
         code << ind << "mesh.customShader = " << formatString(mesh.customShader) << ";\n";
+    code << ind << "mesh.vertexCount = " << formatUInt(mesh.vertexCount) << ";\n";
+    //code << ind << "mesh.submeshes.resize(" << formatUInt(mesh.numSubmeshes) << ");\n";
+    // Kept for a model too: its load reads the count to find the edited submeshes.
+    code << ind << "mesh.numSubmeshes = " << formatUInt(mesh.numSubmeshes) << ";\n";
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        // A model load rewrites every submesh, so only the edited ones are worth emitting.
+        if (hasModel && mesh.submeshes[s].overrideFields == 0){
+            continue;
+        }
 
-    if (!hasModel){
-        code << ind << "mesh.vertexCount = " << formatUInt(mesh.vertexCount) << ";\n";
-        //code << ind << "mesh.submeshes.resize(" << formatUInt(mesh.numSubmeshes) << ");\n";
-        code << ind << "mesh.numSubmeshes = " << formatUInt(mesh.numSubmeshes) << ";\n";
-        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-            std::string idx = std::to_string(s);
-            code << ind << "mesh.submeshes[" << idx << "].material.name = " << formatString(mesh.submeshes[s].material.name) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].material.baseColorFactor = " << formatVector4(mesh.submeshes[s].material.baseColorFactor) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].material.metallicFactor = " << formatFloat(mesh.submeshes[s].material.metallicFactor) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].material.roughnessFactor = " << formatFloat(mesh.submeshes[s].material.roughnessFactor) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].material.alphaCutoff = " << formatFloat(mesh.submeshes[s].material.alphaCutoff) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].material.alphaMode = static_cast<MaterialAlphaMode>(" << static_cast<int>(mesh.submeshes[s].material.alphaMode) << ");\n";
-            code << ind << "mesh.submeshes[" << idx << "].material.emissiveFactor = " << formatVector3(mesh.submeshes[s].material.emissiveFactor) << ";\n";
+        std::string idx = std::to_string(s);
+        code << ind << "mesh.submeshes[" << idx << "].material.name = " << formatString(mesh.submeshes[s].material.name) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].material.baseColorFactor = " << formatVector4(mesh.submeshes[s].material.baseColorFactor) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].material.metallicFactor = " << formatFloat(mesh.submeshes[s].material.metallicFactor) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].material.roughnessFactor = " << formatFloat(mesh.submeshes[s].material.roughnessFactor) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].material.alphaCutoff = " << formatFloat(mesh.submeshes[s].material.alphaCutoff) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].material.alphaMode = static_cast<MaterialAlphaMode>(" << static_cast<int>(mesh.submeshes[s].material.alphaMode) << ");\n";
+        code << ind << "mesh.submeshes[" << idx << "].material.emissiveFactor = " << formatVector3(mesh.submeshes[s].material.emissiveFactor) << ";\n";
 
-            code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
-            code << formatTexture(indentSpaces, mesh.submeshes[s].material.emissiveTexture, "mesh.submeshes[" + idx + "].material.emissiveTexture", projectPath);
-            code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);
-            code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
-            code << formatTexture(indentSpaces, mesh.submeshes[s].material.normalTexture, "mesh.submeshes[" + idx + "].material.normalTexture", projectPath);
+        code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        code << formatTexture(indentSpaces, mesh.submeshes[s].material.emissiveTexture, "mesh.submeshes[" + idx + "].material.emissiveTexture", projectPath);
+        code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);
+        code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
+        code << formatTexture(indentSpaces, mesh.submeshes[s].material.normalTexture, "mesh.submeshes[" + idx + "].material.normalTexture", projectPath);
 
-            code << ind << "mesh.submeshes[" << idx << "].primitiveType = " << formatPrimitiveType(mesh.submeshes[s].primitiveType) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
-            code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+        // The UV set each texture samples: only a model or a linked material sets it, and an
+        // overridden texture is put back together with it.
+        const Material& submeshMaterial = mesh.submeshes[s].material;
+        if (submeshMaterial.baseColorTexCoord != 0)
+            code << ind << "mesh.submeshes[" << idx << "].material.baseColorTexCoord = " << formatInt(submeshMaterial.baseColorTexCoord) << ";\n";
+        if (submeshMaterial.emissiveTexCoord != 0)
+            code << ind << "mesh.submeshes[" << idx << "].material.emissiveTexCoord = " << formatInt(submeshMaterial.emissiveTexCoord) << ";\n";
+        if (submeshMaterial.metallicRoughnessTexCoord != 0)
+            code << ind << "mesh.submeshes[" << idx << "].material.metallicRoughnessTexCoord = " << formatInt(submeshMaterial.metallicRoughnessTexCoord) << ";\n";
+        if (submeshMaterial.occlusionTexCoord != 0)
+            code << ind << "mesh.submeshes[" << idx << "].material.occlusionTexCoord = " << formatInt(submeshMaterial.occlusionTexCoord) << ";\n";
+        if (submeshMaterial.normalTexCoord != 0)
+            code << ind << "mesh.submeshes[" << idx << "].material.normalTexCoord = " << formatInt(submeshMaterial.normalTexCoord) << ";\n";
 
-            for (auto const& [type, attr] : mesh.submeshes[s].attributes) {
-                code << ind << "{\n";
-                code << ind << "    Attribute attr;\n";
-                code << ind << "    attr.setBufferName(" << formatString(attr.getBufferName()) << ");\n";
-                code << ind << "    attr.setDataType(" << formatAttributeDataType(attr.getDataType()) << ");\n";
-                code << ind << "    attr.setElements(" << attr.getElements() << ");\n";
-                code << ind << "    attr.setOffset(" << attr.getOffset() << ");\n";
-                code << ind << "    attr.setCount(" << attr.getCount() << ");\n";
-                code << ind << "    attr.setNormalized(" << formatBool(attr.getNormalized()) << ");\n";
-                code << ind << "    attr.setPerInstance(" << formatBool(attr.getPerInstance()) << ");\n";
-                code << ind << "    mesh.submeshes[" << idx << "].attributes[" << formatAttributeType(type) << "] = attr;\n";
-                code << ind << "}\n";
-            }
+        code << ind << "mesh.submeshes[" << idx << "].primitiveType = " << formatPrimitiveType(mesh.submeshes[s].primitiveType) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+
+        // The model load puts these fields back over the ones the file gives the new submesh.
+        if (mesh.submeshes[s].overrideFields != 0){
+            code << ind << "mesh.submeshes[" << idx << "].overrideFields = " << formatUInt(mesh.submeshes[s].overrideFields) << ";\n";
+        }
+
+        if (hasModel){ // the load rebuilds the attributes
+            continue;
+        }
+
+        for (auto const& [type, attr] : mesh.submeshes[s].attributes) {
+            code << ind << "{\n";
+            code << ind << "    Attribute attr;\n";
+            code << ind << "    attr.setBufferName(" << formatString(attr.getBufferName()) << ");\n";
+            code << ind << "    attr.setDataType(" << formatAttributeDataType(attr.getDataType()) << ");\n";
+            code << ind << "    attr.setElements(" << attr.getElements() << ");\n";
+            code << ind << "    attr.setOffset(" << attr.getOffset() << ");\n";
+            code << ind << "    attr.setCount(" << attr.getCount() << ");\n";
+            code << ind << "    attr.setNormalized(" << formatBool(attr.getNormalized()) << ");\n";
+            code << ind << "    attr.setPerInstance(" << formatBool(attr.getPerInstance()) << ");\n";
+            code << ind << "    mesh.submeshes[" << idx << "].attributes[" << formatAttributeType(type) << "] = attr;\n";
+            code << ind << "}\n";
         }
     }
 
-    // Heightmapped terrain rebuilds its mesh buffers at runtime too; a terrain without a heightmap
-    // is not a runtime geometry source, so it keeps its inline buffers.
     bool hasTerrain = false;
     if (scene->findComponent<TerrainComponent>(entity)) {
         hasTerrain = !scene->getComponent<TerrainComponent>(entity).heightMap.empty();
@@ -1874,7 +1898,7 @@ std::string editor::Factory::createAnimationComponent(int indentSpaces, EntityRe
     return code.str();
 }
 
-std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<ModelComponent>(entity)) return "";
     ModelComponent& model = scene->getComponent<ModelComponent>(entity);
     std::ostringstream code;
@@ -1903,55 +1927,6 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     }
     for (const auto& [name, index] : model.morphNameMapping) {
         code << ind << "modelcomp.morphNameMapping[" << formatString(name) << "] = " << formatInt(index) << ";\n";
-    }
-
-    // The edited fields MeshSystem puts back on top of every load.
-    for (const auto& submeshOverride : model.submeshOverrides) {
-        const uint32_t fields = submeshOverride.fields;
-        if (fields == 0) continue;
-
-        const Material& material = submeshOverride.material;
-        const std::string subInd = ind + "    ";
-
-        code << ind << "{\n";
-        code << subInd << "SubmeshOverride submeshOverride;\n";
-        code << subInd << "submeshOverride.nodeIndex = " << formatInt(submeshOverride.nodeIndex) << ";\n";
-        code << subInd << "submeshOverride.primitiveIndex = " << formatUInt(submeshOverride.primitiveIndex) << ";\n";
-        code << subInd << "submeshOverride.sourceName = " << formatString(submeshOverride.sourceName) << ";\n";
-        code << subInd << "submeshOverride.fields = " << formatUInt(fields) << ";\n";
-
-        if (fields & SubmeshOverride_BaseColorFactor)
-            code << subInd << "submeshOverride.material.baseColorFactor = " << formatVector4(material.baseColorFactor) << ";\n";
-        if (fields & SubmeshOverride_MetallicFactor)
-            code << subInd << "submeshOverride.material.metallicFactor = " << formatFloat(material.metallicFactor) << ";\n";
-        if (fields & SubmeshOverride_RoughnessFactor)
-            code << subInd << "submeshOverride.material.roughnessFactor = " << formatFloat(material.roughnessFactor) << ";\n";
-        if (fields & SubmeshOverride_AlphaCutoff)
-            code << subInd << "submeshOverride.material.alphaCutoff = " << formatFloat(material.alphaCutoff) << ";\n";
-        if (fields & SubmeshOverride_EmissiveFactor)
-            code << subInd << "submeshOverride.material.emissiveFactor = " << formatVector3(material.emissiveFactor) << ";\n";
-        if (fields & SubmeshOverride_AlphaMode)
-            code << subInd << "submeshOverride.material.alphaMode = static_cast<MaterialAlphaMode>(" << static_cast<int>(material.alphaMode) << ");\n";
-        if (fields & SubmeshOverride_MaterialName)
-            code << subInd << "submeshOverride.material.name = " << formatString(material.name) << ";\n";
-
-        // An empty texture emits nothing: a default slot is already the cleared state.
-        for (const SubmeshOverrideTextureSlot& slot : submeshOverrideTextureSlots) {
-            if (!(fields & slot.field)) continue;
-
-            code << formatTexture(indentSpaces + 4, material.*slot.texture, std::string("submeshOverride.material.") + slot.name, projectPath);
-            code << subInd << "submeshOverride.material." << slot.texCoordName << " = " << formatInt(material.*slot.texCoord) << ";\n";
-        }
-
-        if (fields & SubmeshOverride_FaceCulling)
-            code << subInd << "submeshOverride.faceCulling = " << formatBool(submeshOverride.faceCulling) << ";\n";
-        if (fields & SubmeshOverride_TextureShadow)
-            code << subInd << "submeshOverride.textureShadow = " << formatBool(submeshOverride.textureShadow) << ";\n";
-        if (fields & SubmeshOverride_PrimitiveType)
-            code << subInd << "submeshOverride.primitiveType = " << formatPrimitiveType(submeshOverride.primitiveType) << ";\n";
-
-        code << subInd << "modelcomp.submeshOverrides.push_back(submeshOverride);\n";
-        code << ind << "}\n";
     }
 
     addComponentCode(code, ind, sceneName, entityName, entity, "ModelComponent", "modelcomp", assignExisting);
@@ -2131,7 +2106,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::AlphaActionComponent: return createAlphaActionComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::SpriteAnimationComponent: return createSpriteAnimationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AnimationComponent: return createAnimationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ModelComponent: return createModelComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::ModelComponent: return createModelComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::BoneComponent: return createBoneComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::KeyframeTracksComponent: return createKeyframeTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TranslateTracksComponent: return createTranslateTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

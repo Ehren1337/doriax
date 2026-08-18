@@ -40,21 +40,19 @@ bool editor::UnlinkMaterialCmd::execute(){
         // Unlink the material file
         project->unlinkMaterialFile(sceneId, entity, submeshIndex);
 
-        Entity modelEntity = Catalog::findSubmeshOverrideModel(sceneProject->scene, entity, componentType, propertyName);
-        if (modelEntity != NULL_ENTITY && oldOverrides.find(modelEntity) == oldOverrides.end()) {
-            if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, modelEntity)) {
-                oldOverrides[modelEntity] = *overrides;
-            }
-        }
-
         // Clear material.name
         PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, componentType, propertyName);
         if (prop.ref) {
             Material* matRef = static_cast<Material*>(prop.ref);
             matRef->name = "";
             Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
-            Catalog::recordSubmeshOverride(sceneProject->scene, entity, componentType, propertyName);
-            project->bundleSubmeshOverridesChanged(sceneId, modelEntity);
+
+            // The material the mesh keeps is the user's now, not the model file's.
+            uint32_t propertyFields = 0;
+            if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
+                data.oldOverrideFields = *overrideMask;
+                *overrideMask |= propertyFields;
+            }
 
             if (project->isEntityInBundle(sceneId, entity)){
                 project->bundlePropertyChanged(sceneId, entity, componentType, {propertyName});
@@ -85,6 +83,11 @@ void editor::UnlinkMaterialCmd::undo(){
             *matRef = data.oldMaterial;
             Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
+            uint32_t propertyFields = 0;
+            if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
+                *overrideMask = data.oldOverrideFields;
+            }
+
             if (project->isEntityInBundle(sceneId, entity)){
                 project->bundlePropertyChanged(sceneId, entity, componentType, {propertyName});
             }
@@ -93,13 +96,6 @@ void editor::UnlinkMaterialCmd::undo(){
         // Re-link the material file if it was linked
         if (!data.linkedFilePath.empty()) {
             project->linkMaterialFile(sceneId, entity, submeshIndex, data.linkedFilePath);
-        }
-    }
-
-    for (auto& [modelEntity, saved] : oldOverrides) {
-        if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, modelEntity)) {
-            *overrides = saved;
-            project->bundleSubmeshOverridesChanged(sceneId, modelEntity);
         }
     }
 

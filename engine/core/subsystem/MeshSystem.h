@@ -73,9 +73,8 @@ namespace doriax{
         }
         static void applyDefaultGLTFMaterial(Material& material);
         static void applyDefaultObjMaterial(Submesh& submesh);
-        static unsigned int countSourceName(const ModelComponent& model, const std::string& sourceName);
-        static SubmeshOverride* matchSubmeshOverride(ModelComponent& model, const Submesh& submesh);
-        static void applySubmeshOverrides(ModelComponent& model, MeshComponent& mesh);
+        std::vector<std::pair<MeshComponent*, unsigned int>> getSubmeshRuns(Entity entity, const ModelComponent& model) const;
+        static void applySubmeshOverride(const Submesh& saved, Submesh& submesh);
         void addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized);
         bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
@@ -119,8 +118,13 @@ namespace doriax{
         // Canonical form of a model path: the same file spelled in different ways maps to one key.
         static std::string getModelFilenameKey(const std::string& filename);
 
-        // How a primitive is named in its source file, used to identify submesh overrides.
-        static std::string getSourceName(const ModelComponent& model, int nodeIndex, unsigned int primitiveIndex);
+        // Submesh edits (Submesh::overrideFields) carried across a load, keyed by the ordinal of
+        // the primitive that built each one. The loaders do this themselves; it is public for the
+        // editor, which destroys the generated mesh entities before reloading.
+        typedef std::map<unsigned int, Submesh> SubmeshOverrides;
+        SubmeshOverrides collectSubmeshOverrides(Entity entity, const ModelComponent& model) const;
+        void applySubmeshOverrides(const SubmeshOverrides& overrides, Entity entity, const ModelComponent& model) const;
+
         bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
 

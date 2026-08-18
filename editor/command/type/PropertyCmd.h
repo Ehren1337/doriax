@@ -47,6 +47,7 @@ namespace doriax::editor{
     struct PropertyCmdValue{
         T oldValue;
         T newValue;
+        uint32_t oldOverrideFields = 0; // submesh properties only, see getSubmeshOverrideMask
     };
 
     // Component types the Structure tree reads nothing from: it caches names, signature
@@ -90,10 +91,6 @@ namespace doriax::editor{
         std::function<void()> onValueChanged;
 
         std::map<Entity,PropertyCmdValue<T>> values;
-        // Submesh edits also change the owning model's override list, so undo restores the list as
-        // it was instead of re-recording the value it puts back. Keyed by model, since a multi
-        // selection can hold several mesh children of one model, all sharing a single list.
-        std::map<Entity,std::vector<SubmeshOverride>> oldOverrides;
 
     public:
 
@@ -121,15 +118,16 @@ namespace doriax::editor{
                     continue;
                 }
 
-                Entity modelEntity = Catalog::findSubmeshOverrideModel(sceneProject->scene, entity, type, propertyName);
-                if (modelEntity != NULL_ENTITY && oldOverrides.find(modelEntity) == oldOverrides.end()){
-                    if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, modelEntity)){
-                        oldOverrides[modelEntity] = *overrides;
-                    }
-                }
-
                 value.oldValue = T(*valueRef);
                 *valueRef = value.newValue;
+
+                // Read before the no-op check below: a command merging into this one adopts this
+                // mask, and an entity already at the new value still carries its earlier edits.
+                uint32_t propertyFields = 0;
+                uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, type, propertyName, propertyFields);
+                if (overrideMask){
+                    value.oldOverrideFields = *overrideMask;
+                }
 
                 if constexpr (has_equality_operator_v<T>) {
                     if (value.oldValue == value.newValue){
@@ -137,9 +135,11 @@ namespace doriax::editor{
                     }
                 }
 
+                if (overrideMask){
+                    *overrideMask |= propertyFields;
+                }
+
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
-                Catalog::recordSubmeshOverride(sceneProject->scene, entity, type, propertyName);
-                project->bundleSubmeshOverridesChanged(sceneId, modelEntity);
 
                 if (project->isEntityInBundle(sceneId, entity)){
                     project->bundlePropertyChanged(sceneId, entity, type, {propertyName});
@@ -169,6 +169,12 @@ namespace doriax::editor{
 
                 *valueRef = value.oldValue;
 
+                // Mirrors execute: restored whether or not the value moved.
+                uint32_t propertyFields = 0;
+                if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, type, propertyName, propertyFields)){
+                    *overrideMask = value.oldOverrideFields;
+                }
+
                 if constexpr (has_equality_operator_v<T>) {
                     if (value.oldValue == value.newValue){
                         continue;
@@ -179,14 +185,6 @@ namespace doriax::editor{
 
                 if (project->isEntityInBundle(sceneId, entity)){
                     project->bundlePropertyChanged(sceneId, entity, type, {propertyName});
-                }
-            }
-
-            // After every live property is back: one write per model, once all its meshes are done.
-            for (auto const& [modelEntity, saved] : oldOverrides){
-                if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, modelEntity)){
-                    *overrides = saved;
-                    project->bundleSubmeshOverridesChanged(sceneId, modelEntity);
                 }
             }
 
@@ -207,14 +205,12 @@ namespace doriax::editor{
                 if (sceneId == otherCmd->sceneId && propertyName == otherCmd->propertyName){
                     for (auto const& [otherEntity, otherValue] : otherCmd->values){
                         if (values.find(otherEntity) != values.end()) {
+                            // The older command holds the state a single undo has to restore.
                             values[otherEntity].oldValue = otherValue.oldValue;
+                            values[otherEntity].oldOverrideFields = otherValue.oldOverrideFields;
                         }else{
                             values[otherEntity] = otherValue;
                         }
-                    }
-                    // The older command's snapshot is the state a single undo has to restore.
-                    for (auto const& [otherEntity, otherOverrides] : otherCmd->oldOverrides){
-                        oldOverrides[otherEntity] = otherOverrides;
                     }
                     wasModified = wasModified && otherCmd->wasModified;
                     // Keep the most recent callback

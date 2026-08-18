@@ -34,18 +34,18 @@ bool editor::LinkMaterialCmd::execute(){
         return false;
     }
 
-    oldOverridesModel = Catalog::findSubmeshOverrideModel(sceneProject->scene, entity, componentType, propertyName);
-    if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, oldOverridesModel)) {
-        oldOverrides = *overrides;
-    }
-
     PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, componentType, propertyName);
     if (prop.ref) {
         Material* matRef = static_cast<Material*>(prop.ref);
         *matRef = newMaterial;
         Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
-        Catalog::recordSubmeshOverride(sceneProject->scene, entity, componentType, propertyName);
-        project->bundleSubmeshOverridesChanged(sceneId, oldOverridesModel);
+
+        // The linked material is the user's now, not the model file's.
+        uint32_t propertyFields = 0;
+        if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
+            oldOverrideFields = *overrideMask;
+            *overrideMask |= propertyFields;
+        }
 
         if (project->isEntityInBundle(sceneId, entity)){
             project->bundlePropertyChanged(sceneId, entity, componentType, {propertyName});
@@ -82,9 +82,9 @@ void editor::LinkMaterialCmd::undo(){
         *matRef = oldMaterial;
         Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
-        if (auto* overrides = Catalog::getSubmeshOverrides(sceneProject->scene, oldOverridesModel)) {
-            *overrides = oldOverrides;
-            project->bundleSubmeshOverridesChanged(sceneId, oldOverridesModel);
+        uint32_t propertyFields = 0;
+        if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
+            *overrideMask = oldOverrideFields;
         }
 
         if (project->isEntityInBundle(sceneId, entity)){

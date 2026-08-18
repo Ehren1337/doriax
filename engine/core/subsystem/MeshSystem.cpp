@@ -183,151 +183,101 @@ void MeshSystem::applyDefaultObjMaterial(Submesh& submesh) {
     submesh.material.occlusionTexture = Texture();
 }
 
-// How a primitive is named in its source file: glTF node and material, or the OBJ material.
-std::string MeshSystem::getSourceName(const ModelComponent& model, int nodeIndex, unsigned int primitiveIndex) {
-    if (model.gltfModel && isValidGLTFIndex(nodeIndex, model.gltfModel->nodes)) {
-        const tinygltf::Node& node = model.gltfModel->nodes[nodeIndex];
+// Where each of a model's meshes starts in the primitive numbering a merged load produces. The
+// submeshes are filled in ascending node order and then reversed, so a node's primitives form one
+// run and the runs come in descending node order. The root mesh owns the numbering, and is empty
+// unless the model is merged or single-node.
+std::vector<std::pair<MeshComponent*, unsigned int>> MeshSystem::getSubmeshRuns(Entity entity, const ModelComponent& model) const {
+    std::vector<std::pair<MeshComponent*, unsigned int>> runs;
 
-        std::string materialName;
-        if (isValidGLTFIndex(node.mesh, model.gltfModel->meshes)) {
-            const std::vector<tinygltf::Primitive>& primitives = model.gltfModel->meshes[node.mesh].primitives;
-            if (primitiveIndex < primitives.size() &&
-                    isValidGLTFIndex(primitives[primitiveIndex].material, model.gltfModel->materials)) {
-                materialName = model.gltfModel->materials[primitives[primitiveIndex].material].name;
-            }
-        }
-
-        if (node.name.empty() && materialName.empty()) {
-            return std::string();
-        }
-
-        return node.name + "/" + materialName;
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
+        runs.emplace_back(mesh, 0);
     }
 
-    if (model.objModel && primitiveIndex < model.objModel->materials.size()) {
-        return model.objModel->materials[primitiveIndex].name;
+    unsigned int base = 0;
+    for (auto node = model.meshNodesMapping.rbegin(); node != model.meshNodesMapping.rend(); ++node) {
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(node->second)) {
+            runs.emplace_back(mesh, base);
+            base += mesh->numSubmeshes;
+        }
     }
 
-    return std::string();
+    return runs;
 }
 
-// How many primitives answer to this name: only one makes it safe to move an override onto it.
-unsigned int MeshSystem::countSourceName(const ModelComponent& model, const std::string& sourceName) {
-    if (sourceName.empty()) {
-        return 0;
-    }
+// Edited submeshes taken aside before a load rewrites them, under the ordinal of the primitive
+// that built each one so they are found again wherever the load puts them.
+MeshSystem::SubmeshOverrides MeshSystem::collectSubmeshOverrides(Entity entity, const ModelComponent& model) const {
+    SubmeshOverrides overrides;
 
-    unsigned int count = 0;
-
-    if (model.gltfModel) {
-        for (size_t n = 0; n < model.gltfModel->nodes.size() && count < 2; n++) {
-            int gltfMeshIndex = model.gltfModel->nodes[n].mesh;
-            if (!isValidGLTFIndex(gltfMeshIndex, model.gltfModel->meshes)) {
-                continue;
-            }
-
-            const size_t primitives = model.gltfModel->meshes[gltfMeshIndex].primitives.size();
-            for (size_t p = 0; p < primitives && count < 2; p++) {
-                if (getSourceName(model, static_cast<int>(n), static_cast<unsigned int>(p)) == sourceName) {
-                    count++;
-                }
-            }
-        }
-    } else if (model.objModel) {
-        for (const tinyobj::material_t& material : model.objModel->materials) {
-            if (material.name == sourceName) {
-                count++;
+    for (auto const& [mesh, base] : getSubmeshRuns(entity, model)) {
+        for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
+            if (mesh->submeshes[i].overrideFields != 0) {
+                overrides.emplace(base + i, mesh->submeshes[i]);
             }
         }
     }
 
-    return count;
+    return overrides;
 }
 
-// Finds the override that patches a loaded submesh: by source key, then by name for a reordered
-// asset.
-SubmeshOverride* MeshSystem::matchSubmeshOverride(ModelComponent& model, const Submesh& submesh) {
-    const std::string sourceName = getSourceName(model, submesh.sourceNode, submesh.sourcePrimitive);
-
-    for (auto& submeshOverride : model.submeshOverrides) {
-        // The key is only trusted while the recorded name agrees: deleting a primitive shifts the
-        // ones behind it, and a rename cannot be told from a deletion.
-        if (submeshOverride.nodeIndex == submesh.sourceNode &&
-                submeshOverride.primitiveIndex == submesh.sourcePrimitive &&
-                (submeshOverride.sourceName.empty() || submeshOverride.sourceName == sourceName)) {
-            return &submeshOverride;
-        }
-    }
-
-    // Reordered asset: an override only moves when one primitive and one entry answer to the name.
-    // Orphaning costs an edit; guessing wrong repaints geometry the user never touched.
-    if (countSourceName(model, sourceName) != 1) {
-        return nullptr;
-    }
-
-    SubmeshOverride* match = nullptr;
-    for (auto& submeshOverride : model.submeshOverrides) {
-        if (submeshOverride.sourceName != sourceName) {
-            continue;
-        }
-        if (match) {
-            return nullptr;
-        }
-
-        match = &submeshOverride;
-    }
-
-    return match;
-}
-
-// Re-applies the user's edits after a load, once per MeshComponent the loaders filled.
-void MeshSystem::applySubmeshOverrides(ModelComponent& model, MeshComponent& mesh) {
-    if (model.submeshOverrides.empty() || mesh.numSubmeshes == 0) {
+// Puts the edited fields back on the meshes the load rebuilt.
+void MeshSystem::applySubmeshOverrides(const SubmeshOverrides& overrides, Entity entity, const ModelComponent& model) const {
+    if (overrides.empty()) {
         return;
     }
 
-    for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
-        Submesh& submesh = mesh.submeshes[i];
-
-        SubmeshOverride* submeshOverride = matchSubmeshOverride(model, submesh);
-        if (!submeshOverride) {
-            continue;
-        }
-
-        // Re-key to where the primitive lives now: a name match should not have to happen twice.
-        submeshOverride->nodeIndex = submesh.sourceNode;
-        submeshOverride->primitiveIndex = submesh.sourcePrimitive;
-        submeshOverride->sourceName = getSourceName(model, submesh.sourceNode, submesh.sourcePrimitive);
-
-        const uint32_t fields = submeshOverride->fields;
-        if (fields == 0) {
-            continue;
-        }
-
-        const Material& source = submeshOverride->material;
-        Material& material = submesh.material;
-
-        if (fields & SubmeshOverride_BaseColorFactor)  material.baseColorFactor  = source.baseColorFactor;
-        if (fields & SubmeshOverride_MetallicFactor)   material.metallicFactor   = source.metallicFactor;
-        if (fields & SubmeshOverride_RoughnessFactor)  material.roughnessFactor  = source.roughnessFactor;
-        if (fields & SubmeshOverride_AlphaCutoff)      material.alphaCutoff      = source.alphaCutoff;
-        if (fields & SubmeshOverride_EmissiveFactor)   material.emissiveFactor   = source.emissiveFactor;
-        if (fields & SubmeshOverride_AlphaMode)        material.alphaMode        = source.alphaMode;
-        if (fields & SubmeshOverride_MaterialName)     material.name             = source.name;
-
-        for (const SubmeshOverrideTextureSlot& slot : submeshOverrideTextureSlots) {
-            if (fields & slot.field) {
-                material.*slot.texture = source.*slot.texture;
-                material.*slot.texCoord = source.*slot.texCoord;
+    for (auto const& [mesh, base] : getSubmeshRuns(entity, model)) {
+        for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
+            auto found = overrides.find(base + i);
+            if (found != overrides.end()) {
+                applySubmeshOverride(found->second, mesh->submeshes[i]);
             }
         }
-
-        if (fields & SubmeshOverride_FaceCulling)   submesh.faceCulling   = submeshOverride->faceCulling;
-        if (fields & SubmeshOverride_TextureShadow) submesh.textureShadow = submeshOverride->textureShadow;
-        if (fields & SubmeshOverride_PrimitiveType) submesh.primitiveType = submeshOverride->primitiveType;
-
-        submesh.needUpdateTexture = true;
     }
+}
+
+void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
+    const uint32_t fields = saved.overrideFields;
+
+    Material& material = submesh.material;
+    const Material& savedMaterial = saved.material;
+
+    if (fields & SubmeshOverride_BaseColorFactor) material.baseColorFactor = savedMaterial.baseColorFactor;
+    if (fields & SubmeshOverride_MetallicFactor)  material.metallicFactor  = savedMaterial.metallicFactor;
+    if (fields & SubmeshOverride_RoughnessFactor) material.roughnessFactor = savedMaterial.roughnessFactor;
+    if (fields & SubmeshOverride_AlphaCutoff)     material.alphaCutoff     = savedMaterial.alphaCutoff;
+    if (fields & SubmeshOverride_EmissiveFactor)  material.emissiveFactor  = savedMaterial.emissiveFactor;
+    if (fields & SubmeshOverride_AlphaMode)       material.alphaMode       = savedMaterial.alphaMode;
+    if (fields & SubmeshOverride_MaterialName)    material.name            = savedMaterial.name;
+
+    if (fields & SubmeshOverride_BaseColorTexture) {
+        material.baseColorTexture = savedMaterial.baseColorTexture;
+        material.baseColorTexCoord = savedMaterial.baseColorTexCoord;
+    }
+    if (fields & SubmeshOverride_EmissiveTexture) {
+        material.emissiveTexture = savedMaterial.emissiveTexture;
+        material.emissiveTexCoord = savedMaterial.emissiveTexCoord;
+    }
+    if (fields & SubmeshOverride_MetallicRoughnessTexture) {
+        material.metallicRoughnessTexture = savedMaterial.metallicRoughnessTexture;
+        material.metallicRoughnessTexCoord = savedMaterial.metallicRoughnessTexCoord;
+    }
+    if (fields & SubmeshOverride_OcclusionTexture) {
+        material.occlusionTexture = savedMaterial.occlusionTexture;
+        material.occlusionTexCoord = savedMaterial.occlusionTexCoord;
+    }
+    if (fields & SubmeshOverride_NormalTexture) {
+        material.normalTexture = savedMaterial.normalTexture;
+        material.normalTexCoord = savedMaterial.normalTexCoord;
+    }
+
+    if (fields & SubmeshOverride_FaceCulling)   submesh.faceCulling   = saved.faceCulling;
+    if (fields & SubmeshOverride_TextureShadow) submesh.textureShadow = saved.textureShadow;
+    if (fields & SubmeshOverride_PrimitiveType) submesh.primitiveType = saved.primitiveType;
+
+    submesh.overrideFields = fields;
+    submesh.needUpdateTexture = true;
 }
 
 bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, CameraComponent& camera){
@@ -3479,6 +3429,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     ModelComponent& model = scene->getComponent<ModelComponent>(entity);
 
+    // Taken before anything is torn down, put back once every mesh is filled.
+    const SubmeshOverrides submeshOverrides = collectSubmeshOverrides(entity, model);
+
     // A merged root owns all renderable geometry. Remove any generated mesh-node entities left
     // by the previously loaded hierarchy before taking MeshComponent references: destroying a
     // child mesh can compact its component array and invalidate an already captured root reference.
@@ -3874,9 +3827,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.submeshes[i].primitiveType = PrimitiveType::TRIANGLES;
             applyDefaultGLTFMaterial(mesh.submeshes[i].material);
 
-            // Where this submesh came from, so the user's overrides find it again on the next load.
-            mesh.submeshes[i].sourceNode = nodeIdx;
-            mesh.submeshes[i].sourcePrimitive = static_cast<unsigned int>(p);
+            mesh.submeshes[i].overrideFields = 0; // the slot may carry an edit from a past load
 
             const tinygltf::Primitive& primitive = gltfmesh.primitives[p];
 
@@ -4270,7 +4221,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         if (useChildEntities) {
             mesh.numSubmeshes = submeshIndex; // reserved-but-skipped slots (invalid data) dropped
             std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
-            applySubmeshOverrides(model, mesh);
             calculateMeshAABB(mesh);
             mesh.needReload = true;
         }
@@ -4650,13 +4600,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     if (!useChildEntities) {
         std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
 
-        applySubmeshOverrides(model, mesh);
-
         calculateMeshAABB(mesh);
 
         if (mesh.loaded)
             mesh.needReload = true;
     }
+
+    // Only here are all submesh counts final, which is what the run ordinals are read from.
+    applySubmeshOverrides(submeshOverrides, entity, model);
 
     if (asyncLoad) {
         ResourceProgress::updateProgress(buildId, 1.0f); // Complete
@@ -4688,6 +4639,9 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
     ModelComponent& model = scene->getComponent<ModelComponent>(entity);
     Transform& transform = scene->getComponent<Transform>(entity);
+
+    // Taken before the submeshes are rewritten, put back once they are filled.
+    const SubmeshOverrides submeshOverrides = collectSubmeshOverrides(entity, model);
 
     scene->getSystem<RenderSystem>()->prepareMeshForDataReload(entity, mesh);
 
@@ -4777,9 +4731,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
             ResourceProgress::updateProgress(buildId, materialProgress);
         }
 
-        // OBJ has no node hierarchy: the material index alone identifies the submesh for overrides.
-        mesh.submeshes[i].sourceNode = -1;
-        mesh.submeshes[i].sourcePrimitive = static_cast<unsigned int>(i);
+        mesh.submeshes[i].overrideFields = 0;
 
         if (!hasMaterials) {
             applyDefaultObjMaterial(mesh.submeshes[i]);
@@ -4928,7 +4880,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
 
     std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
 
-    applySubmeshOverrides(model, mesh);
+    applySubmeshOverrides(submeshOverrides, entity, model);
 
     calculateMeshAABB(mesh);
 

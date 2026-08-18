@@ -4558,7 +4558,7 @@ ActionResult EditorActionExecutor::regenerateMeshGeometry(const Json& arguments)
     // from a model source on load, or from its own component in the MeshSystem::update sweep,
     // which would throw the primitive away as soon as that component is next dirtied.
     Signature signature = sceneProject->scene->getSignature(entity);
-    if (Stream::isModelBackedMesh(entity, sceneProject->scene)) {
+    if (Stream::isModelBackedMesh(entity, sceneProject->scene, signature)) {
         return failResult("Entity geometry comes from a model file and is rebuilt from that source on load.");
     }
     if (Stream::isGeneratedMesh(sceneProject->scene, signature)) {

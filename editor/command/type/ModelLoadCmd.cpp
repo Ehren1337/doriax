@@ -103,6 +103,9 @@ void editor::ModelLoadCmd::finalizeLoad(){
         sceneProject->entities.push_back(e);
     }
 
+    // Put back on whichever mesh the primitive ended up in, which a merge change moves.
+    scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides, entity, newModel);
+
     sceneProject->isModified = true;
 
     if (project->isEntityInBundle(sceneId, entity)){
@@ -183,6 +186,16 @@ bool editor::ModelLoadCmd::execute(){
         : false;
     mergeStaticMeshesChanged = model.mergeStaticMeshes != requestedMergeStaticMeshes;
 
+    // A different asset is a fresh import and its own materials win. Reloading the same file keeps
+    // the submesh edits, taken now because the meshes holding them are deleted below.
+    if (MeshSystem::getModelFilenameKey(model.filename) == MeshSystem::getModelFilenameKey(modelPath)) {
+        savedSubmeshOverrides = scene->getSystem<MeshSystem>()->collectSubmeshOverrides(entity, model);
+    } else {
+        for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
+            mesh.submeshes[i].overrideFields = 0;
+        }
+    }
+
     std::vector<Entity> oldSubEntityRoots = collectModelDeleteRoots(scene, entity, model);
     if (!oldSubEntityRoots.empty()) {
         oldSubEntitiesDeleteCmd = new DeleteEntityCmd(project, sceneId, oldSubEntityRoots, true);
@@ -191,12 +204,6 @@ bool editor::ModelLoadCmd::execute(){
             oldSubEntitiesDeleteCmd = nullptr;
             return false;
         }
-    }
-
-    // A different asset is a fresh import and its own materials win; reloading the same file (a
-    // hierarchy or merge change) keeps the user's submesh edits.
-    if (MeshSystem::getModelFilenameKey(model.filename) != MeshSystem::getModelFilenameKey(modelPath)) {
-        model.submeshOverrides.clear();
     }
 
     // Clear stale model data before loading new model
