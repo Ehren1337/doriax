@@ -516,17 +516,13 @@ void editor::ResourcesWindow::refreshProjectFiles(){
     }
 }
 
-const char* editor::ResourcesWindow::fileNotInProject(const FileEntry& fe) const{
+bool editor::ResourcesWindow::fileNotInProject(const FileEntry& fe) const{
     if (fe.type != FileType::SCENE && fe.type != FileType::BUNDLE)
-        return nullptr;
+        return false;
 
     const std::string relativePath = (currentPath / fe.name).lexically_relative(project->getProjectPath()).generic_string();
-    if (projectFiles.count(relativePath))
-        return nullptr;
 
-    return fe.type == FileType::SCENE
-        ? "Not in the project scenes"
-        : "Not built: no scene uses it and it is not in Project > Bundles";
+    return !projectFiles.count(relativePath);
 }
 
 ImU32 editor::ResourcesWindow::fileSeparatorColor(const FileEntry& fe) const{
@@ -1065,7 +1061,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
             // =================================================================
             // Draw content per style
             // =================================================================
-            const char* notInProject = fileNotInProject(file);
+            const bool notInProject = fileNotInProject(file);
 
             if (useCardView){
                 ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1195,10 +1191,7 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 if (notInProject) ImGui::PopStyleVar();
 
                 if (hovered){
-                    if (notInProject)
-                        ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), notInProject);
-                    else
-                        ImGui::SetTooltip("%s", file.displayName.c_str());
+                    ImGui::SetTooltip("%s", file.displayName.c_str());
                 }
 
             }else{
@@ -1227,10 +1220,6 @@ void editor::ResourcesWindow::renderFileListing(bool showDirectories){
                 if (notInProject) ImGui::PopStyleVar();
 
                 ImGui::EndGroup(); // classic group
-
-                if (hovered && notInProject){
-                    ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), notInProject);
-                }
             }
 
             // --- Selection behavior (unified) ------------------------------

@@ -2774,6 +2774,7 @@ void editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
             std::error_code ec;
             fs::path relPath = fs::relative(fullPath, getProjectPath(), ec);
             if (ec || relPath.empty()) {
+                scenes.pop_back();
                 Out::error("Scene filepath must be relative to project path: %s", fullPath.string().c_str());
                 return;
             }
@@ -3051,6 +3052,29 @@ void editor::Project::removeScene(uint32_t sceneId) {
     removeTab(TabType::SCENE, it->filepath.string());
     editor::getEditorHost().clearSceneWindowState(sceneId);
     scenes.erase(it);
+
+    if (startSceneId == sceneId) {
+        startSceneId = NULL_PROJECT_SCENE;
+    }
+}
+
+std::vector<std::filesystem::path> editor::Project::findSceneFiles() const {
+    return findProjectFiles(&Util::isSceneFile);
+}
+
+uint32_t editor::Project::findSceneByPath(const std::filesystem::path& filepath) const {
+    const fs::path normalized = normalizeToProjectRelative(filepath);
+    if (normalized.empty()) {
+        return NULL_PROJECT_SCENE;
+    }
+
+    for (const SceneProject& sceneProject : scenes) {
+        if (sceneProject.filepath.lexically_normal() == normalized) {
+            return sceneProject.id;
+        }
+    }
+
+    return NULL_PROJECT_SCENE;
 }
 
 void editor::Project::markParentScenesNeedUpdate(uint32_t childSceneId) {
@@ -5501,10 +5525,10 @@ void editor::Project::setStandaloneBundles(std::vector<std::filesystem::path> bu
     }
 }
 
-std::vector<std::filesystem::path> editor::Project::findBundleFiles() const {
-    std::vector<fs::path> bundleFiles;
+std::vector<std::filesystem::path> editor::Project::findProjectFiles(const std::function<bool(const std::string&)>& matches) const {
+    std::vector<fs::path> files;
     if (projectPath.empty()) {
-        return bundleFiles;
+        return files;
     }
 
     std::error_code ec;
@@ -5520,19 +5544,23 @@ std::vector<std::filesystem::path> editor::Project::findBundleFiles() const {
             continue;
         }
 
-        if (!entry.is_regular_file(ec) || !Util::isBundleFile(entry.path().string())) {
+        if (!entry.is_regular_file(ec) || !matches(entry.path().string())) {
             continue;
         }
 
         fs::path relativePath = normalizeToProjectRelative(entry.path());
         if (!relativePath.empty() && !relativePath.is_absolute()) {
-            bundleFiles.push_back(std::move(relativePath));
+            files.push_back(std::move(relativePath));
         }
     }
 
-    std::sort(bundleFiles.begin(), bundleFiles.end());
+    std::sort(files.begin(), files.end());
 
-    return bundleFiles;
+    return files;
+}
+
+std::vector<std::filesystem::path> editor::Project::findBundleFiles() const {
+    return findProjectFiles(&Util::isBundleFile);
 }
 
 void editor::Project::saveEntityBundleToDisk(const std::filesystem::path& filepath) {

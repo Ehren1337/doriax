@@ -312,6 +312,7 @@ namespace doriax::editor{
         void collectStartActiveScenes(uint32_t sceneId, std::vector<uint32_t>& activeSceneIds);
 
         uint32_t createNewSceneInternal(std::string sceneName, SceneType type, uint32_t previousSceneId);
+        std::vector<std::filesystem::path> findProjectFiles(const std::function<bool(const std::string&)>& matches) const;
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
 
         // The standalone build reads shaders from the editor cache (DORIAX_SHADER_PATH)
@@ -453,6 +454,9 @@ namespace doriax::editor{
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
         void removeScene(uint32_t sceneId);
+
+        std::vector<std::filesystem::path> findSceneFiles() const;
+        uint32_t findSceneByPath(const std::filesystem::path& filepath) const;
 
         bool loadChildSceneInline(uint32_t childSceneId);
         void unloadChildSceneInline(uint32_t childSceneId);

@@ -180,6 +180,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleDetachableWindows,
     ResetLayout,
     ProjectSettings,
+    ProjectScenes,
     ProjectBundles,
     ClearTrash,
     ClearShaderCache,
@@ -315,7 +316,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuCommand(AppMenuCommand::NewSceneUI, "UI Scene")
         }, !isProjectBusy),
         menuSeparator(),
-        menuShortcut(AppMenuCommand::OpenProject, "Open Project", "Ctrl+O",
+        menuShortcut(AppMenuCommand::OpenProject, "Open Project...", "Ctrl+O",
                      !isProjectBusy),
         menuSubmenu("Recent Projects", std::move(recentItems), !isProjectBusy),
         menuCommand(AppMenuCommand::SaveProject, "Save Project"),
@@ -358,6 +359,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
 
     menu.menus.push_back(menuSubmenu("Project", {
         menuCommand(AppMenuCommand::ProjectSettings, "Project Settings..."),
+        menuCommand(AppMenuCommand::ProjectScenes, "Scenes...", !isProjectBusy),
         menuCommand(AppMenuCommand::ProjectBundles, "Bundles..."),
         menuSeparator(),
         menuCommand(AppMenuCommand::ClearTrash, "Clear Trash"),
@@ -528,6 +530,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ProjectSettings:
             projectSettingsWindow.open(&project);
+            break;
+        case AppMenuCommand::ProjectScenes:
+            if (!project.isAnyScenePlaying())
+                scenesWindow.open(&project);
             break;
         case AppMenuCommand::ProjectBundles:
             bundlesWindow.open(&project);
@@ -1521,6 +1527,7 @@ void editor::App::show(){
     exportWindow.show();
     projectSettingsWindow.show();
     bundlesWindow.show();
+    scenesWindow.show();
 
     if (!saveDialogInProgress && !sceneSaveDialog.isOpen() && !projectSaveDialog.isOpen() && !saveDialogQueue.empty()) {
         processNextSaveDialog();

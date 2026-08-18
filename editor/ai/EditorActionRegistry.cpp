@@ -409,6 +409,14 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
+            "add_project_scene",
+            "Add an existing .scene file found in the project folder to the project scene list, closed. A .scene file that is not listed is not built, exported, opened, or usable as a child scene. Scenes made with create_scene are already listed; use delete_scene to take one off the list.",
+            objectSchema({
+                {"scene_path", stringSchema("Safe project-relative .scene path")}
+            }, {"scene_path"}),
+            false
+        },
+        {
             "create_scene",
             "Create a new 2D, 3D, or UI scene in the project.",
             objectSchema({
@@ -1299,6 +1307,9 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         }
         return ok();
     }
+    if (name == "add_project_scene") {
+        return hasString(arguments, "scene_path") ? ok() : fail("add_project_scene requires scene_path.");
+    }
     if (name == "create_scene") {
         return hasString(arguments, "name") && hasString(arguments, "type")
             ? ok() : fail("create_scene requires name and type.");
@@ -1645,6 +1656,9 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
     }
     if (name == "set_texture_settings") {
         return "Set texture settings of " + arguments.value("component", "component") + "." + arguments.value("property", "property");
+    }
+    if (name == "add_project_scene") {
+        return "Add scene " + arguments.value("scene_path", "") + " to the project";
     }
     if (name == "create_scene") {
         return "Create " + arguments.value("type", "scene") + " scene \"" + arguments.value("name", "Scene") + "\"";

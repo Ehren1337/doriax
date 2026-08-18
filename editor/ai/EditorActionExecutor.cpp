@@ -1787,17 +1787,6 @@ bool normalizeMaterialPayload(const fs::path& rel, const std::string& content,
     }
 }
 
-uint32_t findSceneByPath(Project* project, const fs::path& relPath) {
-    if (!project) return NULL_PROJECT_SCENE;
-    const fs::path normalized = relPath.lexically_normal();
-    for (const SceneProject& scene : project->getScenes()) {
-        if (scene.filepath.lexically_normal() == normalized) {
-            return scene.id;
-        }
-    }
-    return NULL_PROJECT_SCENE;
-}
-
 class ReplaceMaterialFileCmd : public Command {
 public:
     ReplaceMaterialFileCmd(Project* project, ResourcesWindow* resourcesWindow,
@@ -1862,7 +1851,7 @@ public:
         uint32_t targetSceneId = sceneId;
         SceneProject* sceneProject = project->getScene(targetSceneId);
         if (!sceneProject && !scenePath.empty()) {
-            targetSceneId = findSceneByPath(project, scenePath);
+            targetSceneId = project->findSceneByPath(scenePath);
             sceneProject = project->getScene(targetSceneId);
         }
         if (!sceneProject || sceneProject->filepath.empty()) {
@@ -1879,7 +1868,7 @@ public:
         previousSelectedScene = project->getSelectedSceneId();
 
         project->removeScene(sceneId);
-        if (project->getScene(sceneId) || findSceneByPath(project, scenePath) != NULL_PROJECT_SCENE) {
+        if (project->getScene(sceneId) || project->findSceneByPath(scenePath) != NULL_PROJECT_SCENE) {
             return false;
         }
 
@@ -1904,11 +1893,11 @@ public:
 private:
     void restoreScene() {
         if (!project || scenePath.empty()) return;
-        if (findSceneByPath(project, scenePath) == NULL_PROJECT_SCENE) {
+        if (project->findSceneByPath(scenePath) == NULL_PROJECT_SCENE) {
             project->loadScene(scenePath, wasOpened, true, wasOpened);
         }
 
-        uint32_t restoredSceneId = findSceneByPath(project, scenePath);
+        uint32_t restoredSceneId = project->findSceneByPath(scenePath);
         if (previousSelectedScene != NULL_PROJECT_SCENE && project->getScene(previousSelectedScene)) {
             project->setSelectedSceneId(previousSelectedScene);
         } else if (restoredSceneId != NULL_PROJECT_SCENE) {
@@ -1986,6 +1975,7 @@ ActionResult EditorActionExecutor::dispatch(const std::string& name,
     if (name == "add_body2d_shape") return addBody2DShape(arguments);
     if (name == "set_component_property") return setComponentProperty(arguments);
     if (name == "set_texture_settings") return setTextureSettings(arguments);
+    if (name == "add_project_scene") return addProjectScene(arguments);
     if (name == "create_scene") return createScene(arguments);
     if (name == "rename_scene") return renameScene(arguments);
     if (name == "save_scene") return saveScene(arguments);
@@ -2813,6 +2803,41 @@ ActionResult EditorActionExecutor::setTextureSettings(const Json& arguments) {
     CommandHandle::get(sceneId)->addCommandNoMerge(new PropertyCmd<Texture>(
         project, sceneId, entity, component, propertyName, modified, onChanged));
     return okResult("Texture settings applied through the command history.");
+}
+
+ActionResult EditorActionExecutor::addProjectScene(const Json& arguments) {
+    std::string error;
+    fs::path sceneRel;
+    if (!safeRelativePath(project, arguments, "scene_path", sceneRel, error, true)) return failResult(error);
+    if (!Util::isSceneFile(sceneRel.string())) return failResult("scene_path must point to a .scene file.");
+    if (project->isAnyScenePlaying()) {
+        return failResult("Cannot change the project scenes while play mode is active.");
+    }
+
+    const uint32_t existingSceneId = project->findSceneByPath(sceneRel);
+    if (existingSceneId != NULL_PROJECT_SCENE) {
+        return okResult("Scene is already part of the project.",
+                        Json{{"scene_path", sceneRel.generic_string()}, {"scene_id", existingSceneId}});
+    }
+
+    if (!fs::exists(project->getProjectPath() / sceneRel)) {
+        return failResult("scene_path does not exist.");
+    }
+
+    // Closed, so it is listed without loading its render data
+    project->loadScene(sceneRel, false, true, false);
+
+    const uint32_t sceneId = project->findSceneByPath(sceneRel);
+    if (sceneId == NULL_PROJECT_SCENE) {
+        return failResult("Failed to add the scene to the project.");
+    }
+
+    project->saveProjectFile();
+    const SceneProject* sceneProject = project->getScene(sceneId);
+    return okResult("Added the scene to the project.",
+                    Json{{"scene_path", sceneRel.generic_string()},
+                         {"scene_id", sceneId},
+                         {"name", sceneProject ? sceneProject->name : std::string()}});
 }
 
 ActionResult EditorActionExecutor::createScene(const Json& arguments) {
@@ -4607,7 +4632,7 @@ ActionResult EditorActionExecutor::deleteScene(const Json& arguments) {
     const std::string sceneName = sceneProject->name;
     const fs::path scenePath = sceneProject->filepath.lexically_normal();
     project->getProjectCommandHistory()->addCommandNoMerge(new RemoveProjectSceneCmd(project, sceneId));
-    if (project->getScene(sceneId) || findSceneByPath(project, scenePath) != NULL_PROJECT_SCENE) {
+    if (project->getScene(sceneId) || project->findSceneByPath(scenePath) != NULL_PROJECT_SCENE) {
         return failResult("Failed to remove scene.");
     }
     return okResult("Removed scene from project through the project command history.",

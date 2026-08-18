@@ -195,8 +195,7 @@ namespace doriax::editor {
 
         ImU32 fileSeparatorColor(const FileEntry& fe) const;
         void refreshProjectFiles();
-        // Null when the file is part of the project, otherwise why it is not
-        const char* fileNotInProject(const FileEntry& fe) const;
+        bool fileNotInProject(const FileEntry& fe) const;
 
         void renderHeader();
         void renderPathBreadcrumb(const ImVec2& size);
