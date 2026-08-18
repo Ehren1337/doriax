@@ -90,6 +90,22 @@ public:
         return normalizedPath.parent_path();
     }
 
+    // Inside Doriax.app the SDK sits in Contents/Resources: codesign treats
+    // everything in Contents/MacOS as code and rejects plain files there.
+    static std::filesystem::path getEngineDir() {
+        namespace fs = std::filesystem;
+
+        const fs::path exeDir = getExecutableDir();
+#if defined(__APPLE__)
+        std::error_code ec;
+        const fs::path bundled = exeDir.parent_path() / "Resources" / "engine";
+        if (fs::exists(bundled, ec)) {
+            return bundled;
+        }
+#endif
+        return exeDir / "engine";
+    }
+
     // Returns true if the file was written/updated.
     // Returns false if the file was unchanged or if an error occurred.
     static bool writeIfChanged(const std::filesystem::path& filePath, const std::string& newContent) {

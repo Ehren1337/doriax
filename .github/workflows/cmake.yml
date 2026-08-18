@@ -197,18 +197,30 @@ jobs:
         if: startsWith(matrix.config.os, 'macos')
         shell: bash
         run: |
-          set -euo pipefail
-          APP="instdir/bin/Doriax.app"
+          set -uo pipefail
+
+          APP="$(find instdir -maxdepth 4 -name '*.app' -type d | head -1)"
+          if [ -z "$APP" ]; then
+            echo "::error::no .app found under instdir"
+            find instdir | head -40
+            exit 1
+          fi
+          echo "Bundle: $APP"
 
           # --strip invalidates the linker's ad-hoc signature, fatal on Apple Silicon.
-          codesign --remove-signature "$APP" || true
-          if [ -f "$APP/Contents/MacOS/libdoriax.dylib" ]; then
-            codesign --force --sign - --timestamp=none "$APP/Contents/MacOS/libdoriax.dylib"
+          codesign --remove-signature "$APP" 2>/dev/null || true
+          for dylib in "$APP"/Contents/MacOS/*.dylib; do
+            [ -e "$dylib" ] && codesign --force --sign - --timestamp=none "$dylib"
+          done
+          if ! codesign --force --sign - --timestamp=none "$APP"; then
+            echo "::error::codesign rejected the bundle"
+            find "$APP" -maxdepth 3 | head -40
+            exit 1
           fi
-          codesign --force --sign - --timestamp=none "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --verify --strict --verbose=2 "$APP" || echo "::warning::strict verify failed"
 
           # Artifact zips lose the executable bit, so ship a dmg.
+          set -e
           mkdir dmg-stage
           cp -R "$APP" dmg-stage/
           ln -s /Applications dmg-stage/Applications

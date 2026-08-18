@@ -640,8 +640,7 @@ if(PLATFORM_PROPERTIES_FLAGS)
     set_target_properties(doriax-editor PROPERTIES ${PLATFORM_PROPERTIES_FLAGS})
 endif()
 
-# engine/ and the dylib go in Contents/MacOS, where getExecutableDir() and
-# @loader_path already find them.
+# The dylib goes in Contents/MacOS, where @loader_path already finds it.
 if(APPLE)
     set(DORIAX_BUNDLE_NAME "Doriax")
     set(DORIAX_BUNDLE_IDENTIFIER "org.doriax.editor")
@@ -704,11 +703,23 @@ if(APPLE)
     endif()
 endif()
 
+# In the bundle this has to be Resources, not MacOS: codesign treats everything in
+# Contents/MacOS as code. FileUtils::getEngineDir() looks in both places.
+if(APPLE)
+    set(DORIAX_EDITOR_ENGINE_DIR $<TARGET_BUNDLE_CONTENT_DIR:doriax-editor>/Resources/engine)
+    # Build trees from before the move still hold a copy in MacOS, which codesign rejects.
+    set(DORIAX_CLEAN_STALE_ENGINE COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:doriax-editor>/engine)
+else()
+    set(DORIAX_EDITOR_ENGINE_DIR $<TARGET_FILE_DIR:doriax-editor>/engine)
+    set(DORIAX_CLEAN_STALE_ENGINE)
+endif()
+
 add_custom_target(copy_doriax_editor_engine
+    ${DORIAX_CLEAN_STALE_ENGINE}
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/engine
-        $<TARGET_FILE_DIR:doriax-editor>/engine
-    COMMENT "Copying engine to executable directory"
+        ${DORIAX_EDITOR_ENGINE_DIR}
+    COMMENT "Copying engine next to the editor"
 )
 
 add_dependencies(doriax-editor copy_doriax_editor_engine)

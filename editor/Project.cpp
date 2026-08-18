@@ -3492,8 +3492,7 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
 
 void editor::Project::copyEngineApiToProject() {
     try {
-        std::filesystem::path exePath = FileUtils::getExecutableDir();
-        std::filesystem::path engineApiSource = exePath / "engine";
+        std::filesystem::path engineApiSource = FileUtils::getEngineDir();
 
         if (!std::filesystem::exists(engineApiSource)) {
             Out::warning("engine folder not found at: %s", engineApiSource.string().c_str());

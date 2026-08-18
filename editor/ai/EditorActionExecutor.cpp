@@ -4371,7 +4371,7 @@ ActionResult EditorActionExecutor::searchEngineSource(const Json& arguments) {
     int maxResults = arguments.value("max_results", 40);
     maxResults = std::max(1, std::min(80, maxResults));
 
-    const fs::path engineRoot = FileUtils::getExecutableDir() / "engine";
+    const fs::path engineRoot = FileUtils::getEngineDir();
     if (!fs::exists(engineRoot)) {
         return failResult("Engine source not found next to the editor (expected <editor>/engine).");
     }
@@ -4436,7 +4436,7 @@ ActionResult EditorActionExecutor::readEngineSource(const Json& arguments) {
             "(.h, .hpp, .inl, .cpp, .lua).");
     }
 
-    const fs::path engineRoot = FileUtils::getExecutableDir() / "engine";
+    const fs::path engineRoot = FileUtils::getEngineDir();
     if (!fs::exists(engineRoot)) {
         return failResult(
             "Engine source not found next to the editor "
