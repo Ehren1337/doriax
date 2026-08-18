@@ -4398,7 +4398,7 @@ ActionResult EditorActionExecutor::searchEngineSource(const Json& arguments) {
 
     const fs::path engineRoot = FileUtils::getEngineDir();
     if (!fs::exists(engineRoot)) {
-        return failResult("Engine source not found next to the editor (expected <editor>/engine).");
+        return failResult("Engine source not found at: " + engineRoot.generic_string());
     }
     // core/ holds the scriptable API surface (math, object, input, components, bindings);
     // skip the huge third-party libs/ tree so results stay fast and relevant.
@@ -4463,9 +4463,7 @@ ActionResult EditorActionExecutor::readEngineSource(const Json& arguments) {
 
     const fs::path engineRoot = FileUtils::getEngineDir();
     if (!fs::exists(engineRoot)) {
-        return failResult(
-            "Engine source not found next to the editor "
-            "(expected <editor>/engine).");
+        return failResult("Engine source not found at: " + engineRoot.generic_string());
     }
     const fs::path fullPath = engineRoot / rel;
     if (!fs::exists(fullPath)) {
