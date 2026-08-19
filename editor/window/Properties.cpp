@@ -5517,7 +5517,7 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
 
     RowSettings reflectionProbeSettings;
     reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep an object out of its own reflection.";
-    propertyRow(RowPropertyType::Bool, cpType, "renderInReflectionProbes", "Draw in Probes", sceneProject, entities, reflectionProbeSettings);
+    propertyRow(RowPropertyType::Bool, cpType, "renderInReflectionProbes", "Render in Probes", sceneProject, entities, reflectionProbeSettings);
 
     RowSettings transparencySettings;
     transparencySettings.help = "Just for render ordering";
