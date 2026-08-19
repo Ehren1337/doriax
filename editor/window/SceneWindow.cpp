@@ -857,6 +857,16 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             ? ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)
             : isMouseInWindow;
 
+        // A drag that leaves the viewport keeps being forwarded until its button comes up
+        if (playMouseSceneId == sceneProject->id) {
+            for (int button : playPressedMouseButtons) {
+                if (ImGui::IsMouseDown(button)) {
+                    forwardMouse = true;
+                    break;
+                }
+            }
+        }
+
         if (forwardMouse) {
             float x = mousePos.x - windowPos.x;
             float y = mousePos.y - windowPos.y;
