@@ -169,6 +169,7 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     ssrSlotParams = -1;
     ssrBlurSlotParams = -1;
     compositeSlotParams = -1;
+    ssrSwapchainRedirect = false;
 
     blitLoaded = false;
     fixedResWidth = 0;
@@ -3702,10 +3703,8 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         return;
 
     // The depth buffer is in logical orientation; the offscreen scene color was
-    // rendered with the same flip the destination would have used. On GL (with a
-    // framebuffer destination) the two differ by a Y flip; the same flag also makes
-    // the composite store an upright image. isRenderingFlipped captures exactly this
-    // (true only on GL when targeting a framebuffer, which SSR requires).
+    // rendered with the flip an offscreen target uses, so on GL the two differ by a
+    // Y flip (isRenderingFlipped, always true on GL here).
     float flipGL = isRenderingFlipped(camera) ? 1.0f : 0.0f;
     Matrix4 renderProj = camera.projectionMatrix;
 
@@ -3760,7 +3759,11 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     // reflection already in the scene is not double-counted.
     fs_composite.invProjection = renderProj.inverse();
     fs_composite.invView = camera.viewMatrix.inverse();
-    fs_composite.params = Vector4(scene->getSSRIntensity(), flipGL, (float)scene->getSSRDebugMode(), 0.0f);
+
+    // the GL swapchain keeps row 0 at the bottom while the offscreen sources do not,
+    // so a swapchain destination samples them flipped (renderBlit does the same)
+    float flipDest = (!destination && Engine::isOpenGL()) ? 1.0f : 0.0f;
+    fs_composite.params = Vector4(scene->getSSRIntensity(), flipGL, (float)scene->getSSRDebugMode(), flipDest);
 
     // environment color/rotation, matching mesh.frag's lighting.envColor; the prefiltered
     // GGX map comes from the sky (fall back to a black cube when there is no IBL sky)
@@ -4750,6 +4753,10 @@ Rect RenderSystem::getScissorRect(UILayoutComponent& layout, ImageComponent& img
             // viewport fills the whole target (no letterbox offset at this stage)
             viewWidth = (float)scene->getFixedResolutionWidth();
             viewHeight = (float)scene->getFixedResolutionHeight();
+            targetWidth = viewWidth;
+            targetHeight = viewHeight;
+        }else if (ssrSwapchainRedirect){
+            // same for the SSR scene color buffer, which is the size of the view rect
             targetWidth = viewWidth;
             targetHeight = viewHeight;
         }
@@ -5844,7 +5851,7 @@ bool RenderSystem::isRenderingFlipped(const CameraComponent& camera) const{
     // OpenGL offscreen targets are bottom-up; rendering them with a Y-flipped
     // projection makes framebuffer textures top-left origin on every backend.
     // Must match the PIP_RTT pipeline selection (its winding is reversed on GL).
-    return (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive()) && Engine::isOpenGL();
+    return (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive() || ssrSwapchainRedirect) && Engine::isOpenGL();
 }
 
 bool RenderSystem::isFixedResolutionActive() const{
@@ -5854,6 +5861,32 @@ bool RenderSystem::isFixedResolutionActive() const{
         && scene->getFixedResolutionWidth() > 0
         && scene->getFixedResolutionHeight() > 0
         && Engine::getMainScene() == scene;
+}
+
+void RenderSystem::updateSSRSwapchainRedirect(){
+    // SSR needs the scene in an offscreen color buffer. Without a framebuffer
+    // destination (exported builds) the color pass is redirected into it and the
+    // composite targets the swapchain. Main scene only: a layer scene composites
+    // over the scene below, and its own pass would clear it.
+    bool redirect = false;
+
+    if (scene->isSSREnabled() && !Engine::getFramebuffer() && !isFixedResolutionActive()
+            && Engine::getMainScene() == scene && Engine::isViewLoaded()){
+        loadSSR();
+
+        unsigned int w = (unsigned int)Engine::getViewRect().getWidth();
+        unsigned int h = (unsigned int)Engine::getViewRect().getHeight();
+
+        // the meshes render with PIP_RTT (flipped on GL) while it is on, so the
+        // redirect only starts once everything it needs exists
+        redirect = ssrLoaded && ensureSSRFramebuffers(w, h) && ensureGBufferFramebuffer(w, h);
+    }
+
+    if (redirect != ssrSwapchainRedirect){
+        ssrSwapchainRedirect = redirect;
+        // the flip is baked in the MVP matrices
+        scene->getComponent<CameraComponent>(scene->getCamera()).needUpdate = true;
+    }
 }
 
 void RenderSystem::updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform){
@@ -6011,6 +6044,9 @@ void RenderSystem::update(double dt){
 
     updateReflectionProbes(dt);
 
+    // the pipeline mask below depends on the redirect
+    updateSSRSwapchainRedirect();
+
     Entity mainCameraEntity = scene->getCamera();
     uint8_t pipelines = 0;
 
@@ -6066,7 +6102,7 @@ void RenderSystem::update(double dt){
             pipelines |= PIP_DEFAULT;
         }
 
-        if (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive()){
+        if (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive() || ssrSwapchainRedirect){
             pipelines |= PIP_RTT;
         }
 
@@ -6745,9 +6781,8 @@ void RenderSystem::draw(){
         // FIRST so SSAO can share its depth (a single geometry pre-pass feeds both
         // effects). Further below the opaque color pass is redirected into an offscreen
         // buffer, then renderSSR() marches the G-buffer and composites reflections to the
-        // real destination. SSR requires a framebuffer destination (editor / render-to-
-        // texture / engine framebuffer): the meshes then already render flipped via
-        // PIP_RTT into the offscreen, which the orientation math relies on.
+        // real destination: a framebuffer (editor / render-to-texture / fixed resolution)
+        // or the swapchain in exported builds (see updateSSRSwapchainRedirect).
         // Fixed game resolution (main scene main camera only): the color pass is
         // redirected into fixedResFramebuffer at the scene's fixed size, and
         // renderFixedResolutionBlit() upscales it to the view rect afterwards.
@@ -6762,7 +6797,7 @@ void RenderSystem::draw(){
 
         bool useSSR = false;
         FramebufferRender* ssrDestination = nullptr;
-        if (isMainCamera && scene->isSSREnabled() && (Engine::getFramebuffer() || camera.renderToTexture || useFixedRes)){
+        if (isMainCamera && scene->isSSREnabled() && (Engine::getFramebuffer() || camera.renderToTexture || useFixedRes || ssrSwapchainRedirect)){
             loadSSR();
             unsigned int sw = (unsigned int)Engine::getViewRect().getWidth();
             unsigned int sh = (unsigned int)Engine::getViewRect().getHeight();
@@ -6790,7 +6825,7 @@ void RenderSystem::draw(){
 
         // whether this camera's color pass targets an offscreen framebuffer
         // (selects PIP_RTT pipelines and flipped rendering on GL)
-        bool offscreenTarget = camera.renderToTexture || Engine::getFramebuffer() || useFixedRes;
+        bool offscreenTarget = camera.renderToTexture || Engine::getFramebuffer() || useFixedRes || useSSR;
 
         if (Engine::getMainScene() == scene || camera.renderToTexture){
             camera.render.setClearColor(scene->getBackgroundColor());
@@ -6811,7 +6846,7 @@ void RenderSystem::draw(){
                 ssrDestination = &camera.framebuffer->getRender();
             }else if (useFixedRes){
                 ssrDestination = &fixedResFramebuffer.getRender();
-            }else{
+            }else if (Engine::getFramebuffer()){
                 if (!Engine::getFramebuffer()->isCreated()){
                     Engine::getFramebuffer()->create();
                 }

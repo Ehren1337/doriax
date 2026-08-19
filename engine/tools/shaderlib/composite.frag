@@ -14,8 +14,9 @@
 // reconstruct multiple per-object cubemap bindings without a deferred probe atlas.
 //
 // A fullscreen pass fragment at v_texcoord t writes destination texel t and samples
-// scene/SSR (composite space) at t. The G-buffer is in depth space, sampled at
-// the flipped coordinate when params.y says the two spaces differ.
+// scene/SSR (composite space) at t, flipped by params.w when the destination is the
+// GL swapchain (bottom-up) and the sources are not. The G-buffer is in depth space,
+// sampled at the flipped composite coordinate when params.y says the spaces differ.
 
 in vec2 v_texcoord;
 out vec4 frag_color;
@@ -36,7 +37,7 @@ uniform sampler u_GGXEnv_smp;
 uniform u_fs_compositeParams {
     mat4 invProjection;
     mat4 invView;
-    vec4 params;    // x = intensity, y = flip G-buffer Y, z = debug, w = unused
+    vec4 params;    // x = intensity, y = flip G-buffer Y, z = debug, w = flip destination Y
     vec4 envColor;  // rgb = env color (linear), w = env rotation (radians)
 } comp;
 
@@ -71,14 +72,18 @@ vec3 reconstructViewPos(vec2 uv, float depth01){
 }
 
 void main(){
-    vec3 scene = texture(sampler2D(u_sceneColorTexture, u_sceneColor_smp), v_texcoord).rgb;
-    vec4 refl  = texture(sampler2D(u_ssrTexture, u_ssr_smp), v_texcoord);
+    // composite space, flipped when writing to the GL swapchain
+    vec2 c = v_texcoord;
+    if (comp.params.w > 0.5) c.y = 1.0 - c.y;
+
+    vec3 scene = texture(sampler2D(u_sceneColorTexture, u_sceneColor_smp), c).rgb;
+    vec4 refl  = texture(sampler2D(u_ssrTexture, u_ssr_smp), c);
 
     int mode = int(comp.params.z + 0.5);   // debug mode (0 = off)
     float intensity = comp.params.x;
 
     // G-buffer is in depth space
-    vec2 d = v_texcoord;
+    vec2 d = c;
     if (comp.params.y > 0.5) d.y = 1.0 - d.y;
 
     float depth01 = decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), d));

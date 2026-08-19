@@ -373,6 +373,7 @@ namespace doriax{
 		int ssrSlotParams;
 		int ssrBlurSlotParams;
 		int compositeSlotParams;
+		bool ssrSwapchainRedirect;         // exported builds: composite targets the swapchain
 
 		// Fixed game resolution: when enabled on the Engine main scene (Scene
 		// fixedResolution settings), the main camera renders into
@@ -395,6 +396,7 @@ namespace doriax{
 		static bool samplesCameraTarget(const CameraComponent& camera, const Texture& texture);
 		bool isRenderingFlipped(const CameraComponent& camera) const;
 		bool isFixedResolutionActive() const;
+		void updateSSRSwapchainRedirect();
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
 
 		void createEmptyTextures();

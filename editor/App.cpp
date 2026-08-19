@@ -2079,7 +2079,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v20: dynamically sized skinning uses storage buffers, or an unfilterable bone
     //      texture with a nonfiltering sampler on GL/GLES.
     // v21: backend-specific storage-buffer bindings are preserved in reflection data.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v21";
+    // v22: composite.frag samples the scene color and reflection in destination space
+    //      (params.w), so SSR can composite to the swapchain in exported builds.
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v22";
 }
 
 void editor::App::pushTabNotificationStyle(){

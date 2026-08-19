@@ -10,10 +10,10 @@
 // physical reflectance (Fresnel / GGX BRDF) is applied later by the composite.
 //
 // Orientation: the G-buffer keeps the target's own orientation while the scene
-// color was rendered with the destination's flip, so on GL offscreen targets the
-// two differ by a Y flip (misc.z). This fragment writes the SSR buffer in
-// scene-color (composite) space: the G-buffer coordinate for this fragment is the
-// flipped texcoord, and a hit's scene color is sampled back in scene-color space.
+// color was rendered flipped into the offscreen, so on GL the two differ by a Y
+// flip (misc.z). This fragment writes the SSR buffer in scene-color (composite)
+// space: the G-buffer coordinate for this fragment is the flipped texcoord, and a
+// hit's scene color is sampled back in scene-color space.
 
 #ifndef SSR_MAX_STEPS
 #define SSR_MAX_STEPS 128
