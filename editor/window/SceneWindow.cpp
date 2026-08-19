@@ -824,8 +824,12 @@ void editor::SceneWindow::endLook(uint32_t sceneId){
 }
 
 void editor::SceneWindow::releasePlayMouseButtons(int mods){
+    // The engine drops events outside the view rect, so keep the synthetic release inside it
+    const Rect view = Engine::getViewRect();
+    const float x = std::clamp(playMousePos.x, view.getX(), view.getX() + std::max(0.0f, view.getWidth()));
+    const float y = std::clamp(playMousePos.y, view.getY(), view.getY() + std::max(0.0f, view.getHeight()));
     for (int button : playPressedMouseButtons){
-        Engine::systemMouseUp(button, playMousePos.x, playMousePos.y, mods);
+        Engine::systemMouseUp(button, x, y, mods);
     }
     playPressedMouseButtons.clear();
 }
@@ -890,11 +894,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             float y = mousePos.y - windowPos.y;
             toEngineCanvas(sceneProject->id, x, y);
 
-            // Engine::transformCoordPos drops events outside the canvas, so a button
-            // released out there is still down and needs the synthetic up below.
+            // Engine::transformCoordPos maps the view rect onto the canvas and drops what
+            // falls outside, so a button released out there is still down and needs the
+            // synthetic up below. LETTERBOX insets the rect, so test it and not the widget.
+            const Rect view = Engine::getViewRect();
             const bool accepted = capturedMouse || Engine::isAllowEventsOutCanvas() ||
-                (x >= 0 && x <= getWidth(sceneProject->id) &&
-                 y >= 0 && y <= getHeight(sceneProject->id));
+                (x >= view.getX() && x <= view.getX() + view.getWidth() &&
+                 y >= view.getY() && y <= view.getY() + view.getHeight());
 
             Engine::systemMouseMove(x, y, mods);
             if (accepted) {
