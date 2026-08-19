@@ -796,15 +796,22 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    #  - DORIAX_EDITOR keeps HybridArray (and other editor-only layouts)\n";
     cmakeContent += "    #    ABI-compatible across the DLL boundary.\n";
     cmakeContent += "    add_compile_definitions(DORIAX_SHARED DORIAX_EDITOR)\n";
-    cmakeContent += "    if(MSVC)\n";
-    cmakeContent += "        # Match the editor engine's CRT (it builds DORIAX_SHARED with the\n";
-    cmakeContent += "        # dynamic runtime) so std::string/std::vector cross the plugin<->engine\n";
-    cmakeContent += "        # DLL boundary on a single shared CRT heap. A static (/MT) or\n";
-    cmakeContent += "        # debug/release-mismatched runtime here corrupts memory and crashes on\n";
-    cmakeContent += "        # play. The editor builds the plugin with the configuration matching\n";
-    cmakeContent += "        # its own, so this expression resolves to the same runtime.\n";
-    cmakeContent += "        set(CMAKE_MSVC_RUNTIME_LIBRARY \"MultiThreaded$<$<CONFIG:Debug>:Debug>DLL\")\n";
-    cmakeContent += "    endif()\n";
+    cmakeContent += "endif()\n\n";
+
+    // Match the engine DLL shipped beside this editor, which DORIAX_LIB_DIR defaults
+    // to; _DEBUG is defined iff this editor was built against the debug CRT.
+    std::string runtimeLibrary = "MultiThreadedDLL";
+#if defined(_DEBUG)
+    runtimeLibrary = "MultiThreadedDebugDLL";
+#endif
+
+    cmakeContent += "# Every translation unit linking the engine DLL needs the CRT that DLL was built\n";
+    cmakeContent += "# with: debug and release STL disagree on std::string/std::vector layout and use\n";
+    cmakeContent += "# separate heaps, and an import library carries no /FAILIFMISMATCH records, so\n";
+    cmakeContent += "# the linker cannot catch the mismatch. The build type cannot pick it either,\n";
+    cmakeContent += "# since IDEs default to Debug, so it follows the editor that generated this file.\n";
+    cmakeContent += "if(MSVC AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)\n";
+    cmakeContent += "    set(CMAKE_MSVC_RUNTIME_LIBRARY \"" + runtimeLibrary + "\")\n";
     cmakeContent += "endif()\n\n";
 
     cmakeContent += getPlatformCMakeConfig(windowSettings, assetsPath, luaPath) + "\n";
