@@ -1675,7 +1675,10 @@ void processEvent(XEvent& event) {
             window->focused = false;
             if (window->inputContext) XUnsetICFocus(window->inputContext);
             io.AddFocusEvent(false);
-            if (window == backend->mainWindow) WindowLinux::releasePointer();
+            if (window == backend->mainWindow) {
+                WindowLinux::releasePointer();
+                WindowLinux::discardSavedPointer();
+            }
             if (window == backend->mainWindow && backend->menu.activeTop >= 0)
                 closeNativeMenu();
             break;

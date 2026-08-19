@@ -79,6 +79,10 @@ bool editor::SceneWindow::isFocused() const {
 void editor::SceneWindow::resetProjectState() {
     releasePlayKeys(0);
     releasePlayMouseButtons(0);
+    for (const auto& entry : lookActive) {
+        // Only one look can be active, and endLook only rewrites keys that exist
+        if (entry.second) { endLook(entry.first); break; }
+    }
     windowFocused = false;
     mouseLeftDown = false;
     mouseLeftDraggedInside = false;
@@ -104,6 +108,9 @@ void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
     }
     if (sceneId == playMouseSceneId) {
         releasePlayMouseButtons(0);
+    }
+    if (lookActive[sceneId]) {
+        endLook(sceneId);
     }
     draggingMouse.erase(sceneId);
     suppressLeftMouseUntilRelease.erase(sceneId);
@@ -806,6 +813,16 @@ void editor::SceneWindow::releasePlayKeys(int mods){
     playPressedKeys.clear();
 }
 
+// Gives the cursor back and lets ImGui see the mouse again. NoMouse is global, so
+// this has to run even when the viewport that armed it is no longer drawn.
+void editor::SceneWindow::endLook(uint32_t sceneId){
+    draggingMouse[sceneId] = false;
+    lookActive[sceneId] = false;
+    resyncLookDelta[sceneId] = false;
+    Backend::enableMouseCursor();
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+}
+
 void editor::SceneWindow::releasePlayMouseButtons(int mods){
     for (int button : playPressedMouseButtons){
         Engine::systemMouseUp(button, playMousePos.x, playMousePos.y, mods);
@@ -853,7 +870,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     if (sceneProject->playState == ScenePlayState::PLAYING) {
         // A captured cursor reports a virtual position that leaves the viewport,
         // so the mouse follows window focus like the keyboard below.
-        bool forwardMouse = Engine::getMouseMode() == MouseMode::CAPTURED
+        const bool capturedMouse = Engine::getMouseMode() == MouseMode::CAPTURED;
+        bool forwardMouse = capturedMouse
             ? ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)
             : isMouseInWindow;
 
@@ -872,9 +890,17 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             float y = mousePos.y - windowPos.y;
             toEngineCanvas(sceneProject->id, x, y);
 
+            // Engine::transformCoordPos drops events outside the canvas, so a button
+            // released out there is still down and needs the synthetic up below.
+            const bool accepted = capturedMouse || Engine::isAllowEventsOutCanvas() ||
+                (x >= 0 && x <= getWidth(sceneProject->id) &&
+                 y >= 0 && y <= getHeight(sceneProject->id));
+
             Engine::systemMouseMove(x, y, mods);
-            playMouseSceneId = sceneProject->id;
-            playMousePos = ImVec2(x, y);
+            if (accepted) {
+                playMouseSceneId = sceneProject->id;
+                playMousePos = ImVec2(x, y);
+            }
 
             if (mouseWheel != 0) {
                 Engine::systemMouseScroll(0, mouseWheel, mods);
@@ -883,11 +909,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             for (int i = 0; i < 5; i++) {
                 if (ImGui::IsMouseClicked(i)) {
                     Engine::systemMouseDown(i, x, y, mods);
-                    playPressedMouseButtons.insert(i);
+                    if (accepted) playPressedMouseButtons.insert(i);
                 }
                 if (ImGui::IsMouseReleased(i)) {
                     Engine::systemMouseUp(i, x, y, mods);
-                    playPressedMouseButtons.erase(i);
+                    if (accepted) playPressedMouseButtons.erase(i);
                 }
             }
         } else if (playMouseSceneId == sceneProject->id) {
@@ -1356,11 +1382,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle) &&
             !ImGui::IsMouseDown(ImGuiMouseButton_Right) &&
             (draggingMouse[sceneId] || lookActive[sceneId] || (io.ConfigFlags & ImGuiConfigFlags_NoMouse))) {
-        draggingMouse[sceneId] = false;
-        lookActive[sceneId] = false;
-        resyncLookDelta[sceneId] = false;
-        Backend::enableMouseCursor();
-        io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+        endLook(sceneId);
     }
 
     Camera* camera = sceneProject->sceneRender->getCamera();

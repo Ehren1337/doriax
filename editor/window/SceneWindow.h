@@ -74,6 +74,7 @@ namespace doriax::editor {
         void forwardPlayKeyboardInput(ImGuiIO& io, int mods);
         void releasePlayKeys(int mods);
         void releasePlayMouseButtons(int mods);
+        void endLook(uint32_t sceneId);
         void handleResourceFileDragDrop(SceneProject* sceneProject);
         Vector3 getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity);
         void handleTileRectDragDrop(SceneProject* sceneProject);

@@ -486,6 +486,10 @@ void WindowLinux::releasePointer() {
     gRelativeMouse = false;
 }
 
+void WindowLinux::discardSavedPointer() {
+    gHasSavedPointer = false;
+}
+
 void WindowLinux::centerPointer() {
     if (!gDisplay || !gWindow) return;
     gLastWarpX = gWidth / 2;

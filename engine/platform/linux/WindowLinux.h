@@ -93,6 +93,9 @@ namespace doriax {
         // Drops the grab and the relative mode both, without touching the
         // cursor shape the host has applied.
         static void releasePointer();
+        // Keeps the pointer where it is instead of warping it back, for a window
+        // that has lost focus and no longer owns the cursor.
+        static void discardSavedPointer();
         // X11 has no relative motion without XInput2, so CAPTURED warps the
         // pointer back to the centre and measures the next event against it.
         static void centerPointer();
