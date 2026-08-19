@@ -146,6 +146,60 @@ static void drawDirectorySetting(
     }
 }
 
+static void drawScriptDirsSetting(Project* project, std::vector<fs::path>& directories) {
+    beginSettingsRow("Script Directories",
+        "Extra C++ roots. Each one is an include directory, and the sources under it "
+        "are compiled without a script component referencing them.");
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float removeWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x + style.FramePadding.x * 2.0f;
+
+    size_t removeIndex = directories.size();
+    for (size_t i = 0; i < directories.size(); i++) {
+        ImGui::PushID(static_cast<int>(i));
+
+        float pathWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - removeWidth - style.ItemSpacing.x);
+        Widgets::pathDisplay("##ScriptDir", directories[i], Vector2(pathWidth, ImGui::GetFrameHeight()));
+
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]);
+        if (ImGui::Button(ICON_FA_TRASH_CAN "##RemoveScriptDir", ImVec2(removeWidth, 0))) {
+            removeIndex = i;
+        }
+        ImGui::PopStyleColor(2);
+
+        ImGui::PopID();
+    }
+
+    if (removeIndex < directories.size()) {
+        directories.erase(directories.begin() + static_cast<std::ptrdiff_t>(removeIndex));
+    }
+
+    if (!project) {
+        ImGui::BeginDisabled();
+        ImGui::Button(ICON_FA_PLUS " Add##AddScriptDir");
+        ImGui::EndDisabled();
+        return;
+    }
+
+    if (!ImGui::Button(ICON_FA_PLUS " Add##AddScriptDir")) return;
+
+    std::string selectedPath = FileDialogs::openFileDialog(project->getProjectPath().string(), FILE_DIALOG_ALL, true);
+    if (selectedPath.empty()) return;
+
+    // Only a root inside the project survives the export, and fs::relative reaches
+    // a sibling through ".."; anything outside is stored whole and builds locally.
+    std::error_code ec;
+    fs::path relativePath = fs::relative(fs::path(selectedPath), project->getProjectPath(), ec);
+    const bool insideProject = !ec && !relativePath.empty() && *relativePath.begin() != "..";
+    fs::path directory = insideProject ? relativePath : fs::path(selectedPath);
+
+    if (std::find(directories.begin(), directories.end(), directory) == directories.end()) {
+        directories.push_back(std::move(directory));
+    }
+}
+
 static void showDisabledItemTooltip(const std::string& text) {
     if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) return;
 
@@ -349,6 +403,7 @@ void ProjectSettingsWindow::open(Project* project) {
     m_windowIcon = project->getWindowIcon();
     m_assetsDir = project->getAssetsDir();
     m_luaDir = project->getLuaDir();
+    m_scriptDirs = project->getScriptDirs();
 
     m_startSceneId = project->getStartSceneId();
     const SceneProject* startScene = project->getScene(m_startSceneId);
@@ -625,6 +680,7 @@ void ProjectSettingsWindow::drawDirectoriesSettings() {
             m_project, "Lua Directory", nullptr, "##LuaPath", "Browse##lua",
             m_luaDir, fs::path("."), true
         );
+        drawScriptDirsSetting(m_project, m_scriptDirs);
     });
 }
 
@@ -787,6 +843,7 @@ void ProjectSettingsWindow::applySettings() {
 
     // Moves the referenced files in and rewrites every reference to the new roots
     m_project->changeAssetRoots(m_assetsDir, m_luaDir);
+    m_project->setScriptDirs(m_scriptDirs);
 
     const SceneProject* startScene = m_project->getScene(m_startSceneId);
     if (startScene && !startScene->filepath.empty()) {

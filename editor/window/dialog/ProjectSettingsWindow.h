@@ -41,6 +41,7 @@ namespace doriax::editor {
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
         fs::path m_assetsDir;
         fs::path m_luaDir;
+        std::vector<fs::path> m_scriptDirs;
         std::vector<CMakeKit> m_availableKits;
         int m_cmakeKitIndex = 0;
         // Editor-wide, so it is applied when picked instead of on Apply, the

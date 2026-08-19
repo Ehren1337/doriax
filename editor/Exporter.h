@@ -138,6 +138,10 @@ namespace doriax::editor {
         // add_definitions() block that sizes the engine's fixed-capacity
         // HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...) for the export.
         std::string buildSceneMaxValuesDefinitions() const;
+        // Project-relative form of a script root, empty when it falls outside the project.
+        fs::path scriptDirRelativePath(const fs::path& scriptDir) const;
+        // target_include_directories() call putting the script roots on the exported game target.
+        std::string buildScriptDirIncludes() const;
 
         static void copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec);
         static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec, bool pruneStale = false);

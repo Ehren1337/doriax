@@ -1542,6 +1542,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (!project->getLuaDir().empty()) {
         root["luaDir"] = project->getLuaDir().string();
     }
+    if (!project->getScriptDirs().empty()) {
+        YAML::Node scriptDirsNode;
+        for (const fs::path& scriptDir : project->getScriptDirs()) {
+            scriptDirsNode.push_back(scriptDir.generic_string());
+        }
+        root["scriptDirs"] = scriptDirsNode;
+    }
     if (!project->getCMakeCCompiler().empty()) {
         root["cmakeCCompiler"] = project->getCMakeCCompiler();
     }
@@ -1717,6 +1724,14 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node) {
 
     if (node["luaDir"]) {
         project->setLuaDir(node["luaDir"].as<std::string>());
+    }
+
+    if (node["scriptDirs"]) {
+        std::vector<fs::path> scriptDirs;
+        for (const auto& dirNode : node["scriptDirs"]) {
+            scriptDirs.push_back(dirNode.as<std::string>());
+        }
+        project->setScriptDirs(std::move(scriptDirs));
     }
 
     if (node["cmakeCCompiler"] || node["cmakeCxxCompiler"] || node["cmakeGenerator"]) {

@@ -172,6 +172,7 @@ namespace doriax::editor{
         std::filesystem::path windowIcon;  // project-relative image path; empty = no icon
         std::filesystem::path assetsDir;
         std::filesystem::path luaDir;
+        std::vector<std::filesystem::path> scriptDirs;  // extra C++ include and source roots
         std::string cmakeCCompiler;
         std::string cmakeCxxCompiler;
         std::string cmakeGenerator;
@@ -368,6 +369,11 @@ namespace doriax::editor{
 
         void setLuaDir(const std::filesystem::path& luaDir);
         std::filesystem::path getLuaDir() const;
+
+        // Roots added to the C++ build: each is an include directory, and the
+        // sources under it compile without a script component referencing them.
+        void setScriptDirs(std::vector<std::filesystem::path> scriptDirs);
+        const std::vector<std::filesystem::path>& getScriptDirs() const;
 
         // Absolute roots stored references are relative to: assets for textures, models,
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").

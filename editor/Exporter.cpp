@@ -1092,6 +1092,41 @@ bool editor::Exporter::copyCppScripts() {
         return false;
     }
 
+    // Sources under a script root are compiled without a script component
+    // referencing them, so they ship even when nothing registered pulls them in.
+    for (const fs::path& scriptDir : project->getScriptDirs()) {
+        const fs::path relDir = scriptDirRelativePath(scriptDir);
+        if (relDir.empty()) {
+            Out::warning("Script directory outside the project is not exported: %s", scriptDir.generic_string().c_str());
+            continue;
+        }
+
+        const fs::path rootPath = normalizedProjectRoot / relDir;
+        if (!fs::is_directory(rootPath, ec)) continue;
+
+        try {
+            for (auto it = fs::recursive_directory_iterator(rootPath, fs::directory_options::skip_permission_denied);
+                 it != fs::recursive_directory_iterator(); ++it) {
+                const std::string name = it->path().filename().string();
+                if (it->is_directory() && (name.empty() || name[0] == '.' || name == "build")) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
+                if (!it->is_regular_file() || !isCppSourceFile(it->path())) continue;
+
+                const fs::path relPath = projectRelativePath(it->path());
+                if (relPath.empty() || !copiedPaths.insert(it->path().string()).second) continue;
+
+                const fs::path dstPath = scriptsDst / relPath;
+                fs::create_directories(dstPath.parent_path(), ec);
+                fs::copy_file(it->path(), dstPath, fs::copy_options::overwrite_existing, ec);
+            }
+        } catch (const fs::filesystem_error& e) {
+            setError("Failed to copy script directory: " + std::string(e.what()));
+            return false;
+        }
+    }
+
     // Goes to the project root, not scripts/, because that is where the exported
     // CMakeLists includes it from.
     const fs::path userBuildFile = projectRoot / "ProjectBuild.cmake";
@@ -1365,6 +1400,14 @@ bool editor::Exporter::copyEngine() {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
     }
 
+    // Script roots reach the export as include directories; their sources come in
+    // through the recursive glob once copyCppScripts() has copied them.
+    const std::string scriptDirsMarker = "# @DORIAX_SCRIPT_DIRS@";
+    const size_t scriptDirsPos = cmakeContent.find(scriptDirsMarker);
+    if (scriptDirsPos != std::string::npos) {
+        cmakeContent.replace(scriptDirsPos, scriptDirsMarker.size(), buildScriptDirIncludes());
+    }
+
     // Inject per-project HybridArray capacities so the exported build sizes its
     // fixed-capacity arrays to the larger of what the project actually uses and the
     // engine defaults in core/Engine.h (big models grow past the defaults). Missing
@@ -1380,6 +1423,39 @@ bool editor::Exporter::copyEngine() {
     FileUtils::writeIfChanged(cmakeDst, cmakeContent);
 
     return true;
+}
+
+fs::path editor::Exporter::scriptDirRelativePath(const fs::path& scriptDir) const {
+    const fs::path projectRoot = project->getProjectPath().lexically_normal();
+    const fs::path rootPath = (scriptDir.is_absolute() ? scriptDir : projectRoot / scriptDir).lexically_normal();
+    const fs::path relPath = rootPath.lexically_relative(projectRoot);
+
+    if (relPath.empty() || relPath.is_absolute() || *relPath.begin() == "..") {
+        return {};
+    }
+    return relPath;
+}
+
+std::string editor::Exporter::buildScriptDirIncludes() const {
+    // copyCppScripts() mirrors the project-relative layout under scripts/, so a
+    // root keeps its path there.
+    std::string dirs;
+    for (const fs::path& scriptDir : project->getScriptDirs()) {
+        const fs::path relDir = scriptDirRelativePath(scriptDir);
+        if (relDir.empty()) {
+            continue;
+        }
+
+        dirs += "\n        ${PROJECT_ROOT}/scripts";
+        if (relDir != ".") {
+            dirs += "/" + relDir.generic_string();
+        }
+    }
+
+    if (dirs.empty()) {
+        return {};
+    }
+    return "target_include_directories(${APP_NAME} PRIVATE" + dirs + "\n    )";
 }
 
 std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {

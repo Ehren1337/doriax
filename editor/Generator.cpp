@@ -9,6 +9,7 @@
 #include "AppSettings.h"
 #include "util/FileUtils.h"
 #include "util/ShellEnv.h"
+#include "util/Util.h"
 
 #include <cstdlib>
 #include <cctype>
@@ -712,7 +713,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
     return sourceContent;
 }
 
-void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath) {
+void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs) {
     const fs::path exePath = FileUtils::getExecutableDir();
 
     fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
@@ -739,29 +740,95 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     }
     factorySources += ")\n";
 
-    // Build SCRIPT_SOURCES list for CMake
-    std::unordered_set<std::string> scriptIncludeDirs;
-    std::string scriptSources = "set(SCRIPT_SOURCES\n";
-    for (const auto& s : scriptFiles) {
-        if (s.path.is_relative()) {
-            scriptSources += "    ${CMAKE_CURRENT_SOURCE_DIR}/" + s.path.generic_string() + "\n";
-        } else {
-            scriptSources += "    " + s.path.generic_string() + "\n";
+    // Build SCRIPT_SOURCES list for CMake. Insertion order is kept so the file
+    // only changes when the project does, and roots are searched as listed.
+    std::vector<std::string> includeDirs;
+    std::unordered_set<std::string> addedIncludeDirs;
+    const auto addIncludeDir = [&](const std::string& dir) {
+        if (addedIncludeDirs.insert(dir).second) {
+            includeDirs.push_back(dir);
         }
+    };
+
+    std::string scriptSources = "set(SCRIPT_SOURCES\n";
+    std::unordered_set<std::string> addedScriptSources;
+    const auto addScriptSource = [&](const fs::path& path) {
+        const fs::path absolute = path.is_absolute() ? path : projectPath / path;
+        if (!addedScriptSources.insert(absolute.lexically_normal().generic_string()).second) {
+            return;
+        }
+        if (path.is_relative()) {
+            scriptSources += "    ${CMAKE_CURRENT_SOURCE_DIR}/" + path.generic_string() + "\n";
+        } else {
+            scriptSources += "    " + path.generic_string() + "\n";
+        }
+    };
+
+    for (const auto& s : scriptFiles) {
+        addScriptSource(s.path);
 
         if (!s.headerPath.empty()) {
             if (s.headerPath.is_relative()) {
-                scriptIncludeDirs.insert("    ${CMAKE_CURRENT_SOURCE_DIR}\n");
+                addIncludeDir("${CMAKE_CURRENT_SOURCE_DIR}");
             } else {
-                scriptIncludeDirs.insert("    " + s.headerPath.parent_path().generic_string() + "\n");
+                addIncludeDir(s.headerPath.parent_path().generic_string());
             }
+        }
+    }
+
+    // Each script root is an include directory, and every source under it is
+    // compiled: a file builds by living there, not by being referenced.
+    for (const fs::path& scriptDir : scriptDirs) {
+        const fs::path rootPath = (scriptDir.is_absolute() ? scriptDir : projectPath / scriptDir).lexically_normal();
+
+        std::error_code ec;
+        if (!fs::is_directory(rootPath, ec)) {
+            Out::warning("Script directory not found: %s", scriptDir.generic_string().c_str());
+            continue;
+        }
+
+        if (scriptDir.is_absolute()) {
+            addIncludeDir(scriptDir.generic_string());
+        } else {
+            addIncludeDir("${CMAKE_CURRENT_SOURCE_DIR}/" + scriptDir.generic_string());
+        }
+
+        // Iteration order is unspecified, so sort to keep the file stable.
+        std::vector<fs::path> rootSources;
+        try {
+            for (auto it = fs::recursive_directory_iterator(rootPath, fs::directory_options::skip_permission_denied);
+                 it != fs::recursive_directory_iterator(); ++it) {
+                // Hidden and build directories hold the generated sources the
+                // target already compiles through PROJECT_SOURCE and FACTORY_SOURCES.
+                const std::string name = it->path().filename().string();
+                if (it->is_directory() && (name.empty() || name[0] == '.' || name == "build")) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
+                if (!it->is_regular_file() || !Util::isSourceFile(it->path().string())) {
+                    continue;
+                }
+
+                const fs::path relativePath = fs::relative(it->path(), projectPath, ec);
+                const bool insideProject = !ec && !relativePath.empty() && *relativePath.begin() != "..";
+                rootSources.push_back(insideProject ? relativePath : it->path());
+            }
+        } catch (const fs::filesystem_error& e) {
+            Out::warning("Failed to scan script directory \"%s\": %s", scriptDir.generic_string().c_str(), e.what());
+        }
+
+        std::sort(rootSources.begin(), rootSources.end(), [](const fs::path& a, const fs::path& b) {
+            return a.generic_string() < b.generic_string();
+        });
+        for (const fs::path& source : rootSources) {
+            addScriptSource(source);
         }
     }
     scriptSources += ")\n";
 
-    std::string scriptDirs;
-    for (const auto& includeDir : scriptIncludeDirs) {
-        scriptDirs += includeDir;
+    std::string includeDirsBlock;
+    for (const std::string& includeDir : includeDirs) {
+        includeDirsBlock += "    " + includeDir + "\n";
     }
 
     std::string cmakeContent;
@@ -843,7 +910,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    set(DORIAX_LIB_SYSTEM SYSTEM)\n";
     cmakeContent += "endif()\n\n";
     cmakeContent += "target_include_directories(" + libName + " ${DORIAX_LIB_SYSTEM} PRIVATE\n";
-    cmakeContent += scriptDirs + "\n";
+    cmakeContent += includeDirsBlock + "\n";
     cmakeContent += "    " + engineApiPathStr + "\n";
     cmakeContent += "    " + engineApiPathStr + "/libs/sokol\n";
     cmakeContent += "    " + engineApiPathStr + "/libs/box2d/include\n";
@@ -1031,6 +1098,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "Each script class must inherit from `doriax::Script`. "
                      "The editor discovers and registers scripts automatically; "
                      "they are added to `SCRIPT_SOURCES` in the generated `CMakeLists.txt` and compiled into the project.\n";
+    agentsContent += "A directory listed as a script root (Doriax Editor: Project Settings > Directories) is compiled whole: "
+                     "every source under it is built with no component referencing it, and the root is an include directory, "
+                     "so a header at `<root>/PLAYER/Thing.h` is included as `PLAYER/Thing.h`.\n";
     agentsContent += "Lua scripts (`.lua`) are separate — they are loaded at runtime and are not compiled into the binary.\n\n";
     agentsContent += "## BundleManager API\n\n";
     agentsContent += "`registerBundle` factories return `bool`. Void-returning factories still register and are treated as success. "
@@ -1127,7 +1197,7 @@ void editor::Generator::clearSceneSource(const std::string& sceneName, const fs:
     }
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -1303,7 +1373,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     const fs::path mainFile = generatedPath / "main.cpp";
     FileUtils::writeIfChanged(mainFile, mainContent);
 
-    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, windowSettings, assetsPath, luaPath);
+    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, windowSettings, assetsPath, luaPath, scriptDirs);
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {

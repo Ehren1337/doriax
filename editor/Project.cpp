@@ -1750,6 +1750,14 @@ std::filesystem::path editor::Project::getLuaDir() const{
     return luaDir;
 }
 
+void editor::Project::setScriptDirs(std::vector<std::filesystem::path> scriptDirs){
+    this->scriptDirs = std::move(scriptDirs);
+}
+
+const std::vector<std::filesystem::path>& editor::Project::getScriptDirs() const{
+    return scriptDirs;
+}
+
 static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
     std::error_code ec;
     std::filesystem::path relativePath = std::filesystem::relative(path, root, ec);
@@ -3407,6 +3415,7 @@ void editor::Project::resetConfigs() {
     windowIcon.clear();
     assetsDir = ".";
     luaDir = ".";
+    scriptDirs.clear();
     cmakeCCompiler = "";
     cmakeCxxCompiler = "";
     cmakeGenerator = "";
@@ -4267,7 +4276,7 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
 
     Out::info("Scene saved to: \"%s\"", fullPath.string().c_str());
 
@@ -7446,7 +7455,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
         const unsigned int requestedBuildJobs = cmakeBuildJobs.load();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
 
         // play regenerates the standalone project, so its shaders are ensured here too
         buildStandaloneShaderCache();

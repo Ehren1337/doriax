@@ -943,6 +943,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
+    # Project script roots are injected here by the editor Exporter. They are
+    # scoped to this target: include_directories() would reach the doriax
+    # library too, ahead of core/, letting a project header shadow an engine one.
+    # @DORIAX_SCRIPT_DIRS@
+
     if(DEFINED ASSETS_DEST_DIR OR DEFINED LUA_DEST_DIR)
         install(TARGETS ${APP_NAME} RUNTIME DESTINATION bin)
     endif()
