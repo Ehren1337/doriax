@@ -125,9 +125,9 @@ bool editor::DuplicateEntityCmd::execute(){
         project->addSelectedEntity(sceneId, duplicated);
     }
 
-    // Update all created entities (exclude Scene_Mesh_Reload which reloads ALL meshes)
+    // Update all created entities (exclude scene-wide flags which reload ALL meshes and recapture ALL probes)
     for (Entity entity : createdEntities) {
-        Catalog::updateEntity(scene, entity, ~UpdateFlags_Scene_Mesh_Reload);
+        Catalog::updateEntity(scene, entity, ~UpdateFlags_SceneWide);
     }
 
     sceneProject->isModified = true;

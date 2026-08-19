@@ -5,6 +5,7 @@
 #include "render/ObjectRender.h"
 #include "util/Color.h"
 #include "component/MirrorComponent.h"
+#include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
 
@@ -276,6 +277,28 @@ bool Mesh::isReceiveShadows() const{
     MeshComponent& mesh = getComponent<MeshComponent>();
 
     return mesh.receiveShadows;
+}
+
+void Mesh::setRenderInReflectionProbes(bool renderInReflectionProbes){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    if (mesh.renderInReflectionProbes != renderInReflectionProbes){
+        mesh.renderInReflectionProbes = renderInReflectionProbes;
+
+        // baked cubemaps keep the old content until the probes capture again
+        auto probes = scene->getComponentArray<ReflectionProbeComponent>();
+        for (int i = 0; i < probes->size(); i++){
+            ReflectionProbeComponent& probe = probes->getComponentFromIndex(i);
+            probe.needUpdate = true;
+            probe.captureRevision++;
+        }
+    }
+}
+
+bool Mesh::isRenderInReflectionProbes() const{
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    return mesh.renderInReflectionProbes;
 }
 
 void Mesh::setShadowsBillboard(bool shadowsBillboard){

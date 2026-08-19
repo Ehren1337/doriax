@@ -4010,6 +4010,7 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["receiveIBL"] = mesh.receiveIBL;
     node["castShadows"] = mesh.castShadows;
     node["receiveShadows"] = mesh.receiveShadows;
+    node["renderInReflectionProbes"] = mesh.renderInReflectionProbes;
     node["shadowsBillboard"] = mesh.shadowsBillboard;
     node["transparent"] = mesh.transparent;
 
@@ -4094,6 +4095,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["receiveIBL"]) mesh.receiveIBL = node["receiveIBL"].as<bool>();
     if (node["castShadows"]) mesh.castShadows = node["castShadows"].as<bool>();
     if (node["receiveShadows"]) mesh.receiveShadows = node["receiveShadows"].as<bool>();
+    if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = node["renderInReflectionProbes"].as<bool>();
     if (node["shadowsBillboard"]) mesh.shadowsBillboard = node["shadowsBillboard"].as<bool>();
     if (node["transparent"]) mesh.transparent = node["transparent"].as<bool>();
 

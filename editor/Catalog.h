@@ -50,7 +50,11 @@ namespace doriax::editor{
         // customShader property of Mesh/UI/Points/Lines/Sky.
         UpdateFlags_Shader_Reload       = (uint64_t)1 << 31,
         UpdateFlags_Reflection_Probe_Capture  = (uint64_t)1 << 32,
-        UpdateFlags_Reflection_Probe_Sampling = (uint64_t)1 << 33
+        UpdateFlags_Reflection_Probe_Sampling = (uint64_t)1 << 33,
+        // for changes outside the probe itself, like a mesh leaving the capture pass
+        UpdateFlags_Reflection_Probe_Recapture_All = (uint64_t)1 << 34,
+        // handlers that touch the whole scene, must be masked out when applying all flags
+        UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Reflection_Probe_Recapture_All
     };
 
     // the order of components here affects properties window

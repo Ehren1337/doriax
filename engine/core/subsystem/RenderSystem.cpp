@@ -1421,7 +1421,7 @@ void RenderSystem::renderReflectionProbeCapture(){
             continue;
         Transform& transform = transforms->getComponentFromIndex(i);
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!mesh || !transform.visible || mesh->transparent)
+        if (!mesh || !transform.visible || mesh->transparent || !mesh->renderInReflectionProbes)
             continue;
 
         updateMVP(i, transform, captureCamera, captureTransform);

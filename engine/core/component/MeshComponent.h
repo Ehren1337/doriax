@@ -182,6 +182,7 @@ namespace doriax{
         bool castShadows = true;
         bool receiveShadows = true;
         bool shadowsBillboard = true;
+        bool renderInReflectionProbes = true; // when false the mesh is skipped by probe captures
 
         bool transparent = false;
         bool autoTransparency = true;

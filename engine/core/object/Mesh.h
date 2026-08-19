@@ -74,6 +74,9 @@ namespace doriax{
         void setReceiveShadows(bool receiveShadows);
         bool isReceiveShadows() const;
 
+        void setRenderInReflectionProbes(bool renderInReflectionProbes);
+        bool isRenderInReflectionProbes() const;
+
         void setShadowsBillboard(bool shadowsBillboard);
         bool isShadowsBillboard() const;
 

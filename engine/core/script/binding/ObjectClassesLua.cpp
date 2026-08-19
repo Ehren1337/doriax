@@ -438,6 +438,7 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addProperty("receiveLights", &Mesh::isReceiveLights, &Mesh::setReceiveLights)
         .addProperty("castShadows", &Mesh::isCastShadows, &Mesh::setCastShadows)
         .addProperty("receiveShadows", &Mesh::isReceiveShadows, &Mesh::setReceiveShadows)
+        .addProperty("renderInReflectionProbes", &Mesh::isRenderInReflectionProbes, &Mesh::setRenderInReflectionProbes)
         .addProperty("shadowsBillboard", &Mesh::isShadowsBillboard, &Mesh::setShadowsBillboard)
         .addProperty("transparent", &Mesh::isTransparent, &Mesh::setTransparent)
         .addProperty("autoTransparency", &Mesh::isAutoTransparency, &Mesh::setAutoTransparency)

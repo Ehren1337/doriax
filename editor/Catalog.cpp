@@ -582,6 +582,7 @@ namespace {
         makeFastProperty<MeshComponent, bool, &MeshComponent::receiveIBL>("receiveIBL", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::castShadows>("castShadows", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::receiveShadows>("receiveShadows", PropertyType::Bool, UpdateFlags_Mesh_Reload),
+        makeFastProperty<MeshComponent, bool, &MeshComponent::renderInReflectionProbes>("renderInReflectionProbes", PropertyType::Bool, UpdateFlags_Reflection_Probe_Recapture_All),
         makeFastProperty<MeshComponent, bool, &MeshComponent::transparent>("transparent", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::autoTransparency>("autoTransparency", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, std::string, &MeshComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
@@ -3724,6 +3725,14 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         if (ReflectionProbeComponent* probe = registry->findComponent<ReflectionProbeComponent>(entity)){
             probe->needUpdate = true;
             probe->captureRevision++;
+        }
+    }
+    if (updateFlags & UpdateFlags_Reflection_Probe_Recapture_All){
+        auto probes = registry->getComponentArray<ReflectionProbeComponent>();
+        for (int i = 0; i < probes->size(); i++) {
+            ReflectionProbeComponent& probe = probes->getComponentFromIndex(i);
+            probe.needUpdate = true;
+            probe.captureRevision++;
         }
     }
     if (updateFlags & UpdateFlags_Shader_Reload){

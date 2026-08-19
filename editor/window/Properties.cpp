@@ -5295,7 +5295,7 @@ void editor::Properties::drawShaderFilesPopup(const std::string& popupName, cons
 }
 
 void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    beginTable(cpType, getLabelSize("receive shadows"));
+    beginTable(cpType, getLabelSize("Receive Shadows"));
 
     // Static variables for shape parameters
     static ShapeParameters shapeParams;
@@ -5514,6 +5514,10 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
 
     propertyRow(RowPropertyType::Bool, cpType, "castShadows", "Cast Shadows", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "receiveShadows", "Receive Shadows", sceneProject, entities);
+
+    RowSettings reflectionProbeSettings;
+    reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep an object out of its own reflection.";
+    propertyRow(RowPropertyType::Bool, cpType, "renderInReflectionProbes", "Draw in Probes", sceneProject, entities, reflectionProbeSettings);
 
     RowSettings transparencySettings;
     transparencySettings.help = "Just for render ordering";
