@@ -78,6 +78,7 @@ bool editor::SceneWindow::isFocused() const {
 
 void editor::SceneWindow::resetProjectState() {
     releasePlayKeys(0);
+    releasePlayMouseButtons(0);
     windowFocused = false;
     mouseLeftDown = false;
     mouseLeftDraggedInside = false;
@@ -100,6 +101,9 @@ void editor::SceneWindow::resetProjectState() {
 void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
     if (sceneId == playKeysSceneId) {
         releasePlayKeys(0);
+    }
+    if (sceneId == playMouseSceneId) {
+        releasePlayMouseButtons(0);
     }
     draggingMouse.erase(sceneId);
     suppressLeftMouseUntilRelease.erase(sceneId);
@@ -802,6 +806,13 @@ void editor::SceneWindow::releasePlayKeys(int mods){
     playPressedKeys.clear();
 }
 
+void editor::SceneWindow::releasePlayMouseButtons(int mods){
+    for (int button : playPressedMouseButtons){
+        Engine::systemMouseUp(button, playMousePos.x, playMousePos.y, mods);
+    }
+    playPressedMouseButtons.clear();
+}
+
 void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     if (sceneProject->playState == ScenePlayState::SAVING || sceneProject->playState == ScenePlayState::LOADING || sceneProject->playState == ScenePlayState::CANCELLING) {
         return;
@@ -852,6 +863,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             toEngineCanvas(sceneProject->id, x, y);
 
             Engine::systemMouseMove(x, y, mods);
+            playMouseSceneId = sceneProject->id;
+            playMousePos = ImVec2(x, y);
 
             if (mouseWheel != 0) {
                 Engine::systemMouseScroll(0, mouseWheel, mods);
@@ -860,11 +873,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             for (int i = 0; i < 5; i++) {
                 if (ImGui::IsMouseClicked(i)) {
                     Engine::systemMouseDown(i, x, y, mods);
+                    playPressedMouseButtons.insert(i);
                 }
                 if (ImGui::IsMouseReleased(i)) {
                     Engine::systemMouseUp(i, x, y, mods);
+                    playPressedMouseButtons.erase(i);
                 }
             }
+        } else if (playMouseSceneId == sceneProject->id) {
+            releasePlayMouseButtons(mods);
         }
 
         // Keyboard follows window focus, not mouse hover, so held keys keep
@@ -881,9 +898,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (forwardMouse || isMouseInWindow) {
             return;
         }
-    } else if (playKeysSceneId == sceneProject->id) {
-        // Play stopped or paused with keys still held
-        releasePlayKeys(mods);
+    } else {
+        // Play stopped or paused with input still held
+        if (playKeysSceneId == sceneProject->id) releasePlayKeys(mods);
+        if (playMouseSceneId == sceneProject->id) releasePlayMouseButtons(mods);
     }
 
     if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->sceneRender->isPreviewCameraActive()) {
@@ -1297,14 +1315,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             (altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse))) {
         draggingMouse[sceneId] = true;
 
-        // The right-button look hides/locks the cursor (GLFW_CURSOR_DISABLED). GLFW then
-        // reports a virtual cursor position that drifts during the drag and is reset on the
-        // next lock, so io.MousePos is discontinuous across drags. The first reported motion
-        // after re-locking yields a huge bogus delta that would snap the view back. Arm a
-        // flag to discard that first delta whenever a right-look drag begins.
+        // X11 still delivers motion queued before the pointer was warped to the centre,
+        // which converts to one huge delta, so the first motion of a look is discarded.
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             resyncLookDelta[sceneId] = true;
-            // Remember where the look began so we can restore it on release (see below).
+            // Remember where the look began so we can restore it on release (see below)
             lookActive[sceneId] = true;
             lookReturnPos[sceneId] = mousePos;
         }
@@ -1318,11 +1333,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         Backend::enableMouseCursor();
         io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
 
-        // While looking, the cursor was locked (GLFW_CURSOR_DISABLED) and its virtual position
-        // may have drifted far outside the window. GLFW restores the real cursor to the lock
-        // point, but ImGui's io.MousePos keeps the stale far-off value until the next motion,
-        // which leaves the next click failing the isMouseInWindow test. Snap io.MousePos back
-        // to where the look started so subsequent clicks register again.
+        // The captured cursor left io.MousePos far outside the window, which would fail the
+        // isMouseInWindow test, so snap it back before the backend restore lands next frame.
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) && lookActive[sceneId]) {
             io.AddMousePosEvent(lookReturnPos[sceneId].x, lookReturnPos[sceneId].y);
             lookActive[sceneId] = false;
@@ -1363,8 +1375,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 float lookDeltaX = mouseDelta.x;
                 float lookDeltaY = mouseDelta.y;
 
-                // Swallow the first non-zero motion after the cursor was (re)locked: it is the
-                // discontinuity from GLFW's virtual cursor being reset, not real mouse movement.
+                // Drop the first motion of the look, it may predate the warp (see above)
                 if (resyncLookDelta[sceneId]) {
                     if (lookDeltaX != 0.0f || lookDeltaY != 0.0f) {
                         lookDeltaX = 0.0f;

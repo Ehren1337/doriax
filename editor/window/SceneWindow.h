@@ -49,6 +49,12 @@ namespace doriax::editor {
         std::set<int> playPressedKeys;
         uint32_t playKeysSceneId = 0;
 
+        // Same for mouse buttons, which stop being forwarded as soon as the
+        // pointer leaves the viewport, well before the button comes up.
+        std::set<int> playPressedMouseButtons;
+        uint32_t playMouseSceneId = 0;
+        ImVec2 playMousePos = ImVec2(0, 0);
+
         std::map<uint32_t, int> width;
         std::map<uint32_t, int> height;
         std::map<uint32_t, ImVec2> framebufferScale;
@@ -67,6 +73,7 @@ namespace doriax::editor {
         void sceneEventHandler(SceneProject* sceneProject);
         void forwardPlayKeyboardInput(ImGuiIO& io, int mods);
         void releasePlayKeys(int mods);
+        void releasePlayMouseButtons(int mods);
         void handleResourceFileDragDrop(SceneProject* sceneProject);
         Vector3 getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity);
         void handleTileRectDragDrop(SceneProject* sceneProject);
