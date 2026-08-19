@@ -209,9 +209,10 @@ void captureEditorCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDrawCursor = false;
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-    backend->virtualMouseX = std::isfinite(io.MousePos.x)
+    // ImGui parks MousePos at -FLT_MAX while the cursor is outside the window
+    backend->virtualMouseX = io.MousePos.x > -FLT_MAX
         ? io.MousePos.x : backend->view.bounds.size.width * 0.5;
-    backend->virtualMouseY = std::isfinite(io.MousePos.y)
+    backend->virtualMouseY = io.MousePos.y > -FLT_MAX
         ? io.MousePos.y : backend->view.bounds.size.height * 0.5;
     backend->rawMouseX = backend->rawMouseY = 0.0;
     WindowMac::setCursorCaptured(true, true);

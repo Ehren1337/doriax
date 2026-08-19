@@ -54,6 +54,9 @@ namespace {
     bool gPointerGrabbed = false;
     int gLastWarpX = 0;
     int gLastWarpY = 0;
+    bool gHasSavedPointer = false;
+    int gSavedPointerX = 0;
+    int gSavedPointerY = 0;
 
     void internAtoms() {
         gWmProtocols = XInternAtom(gDisplay, "WM_PROTOCOLS", False);
@@ -226,6 +229,7 @@ void WindowLinux::destroy() {
     gResizeCallback = nullptr;
     gWidth = gHeight = 0;
     gRelativeMouse = false;
+    gHasSavedPointer = false;
     gCursorHidden = false;
     gCurrentCursor = None;
     gFullscreen = false;
@@ -421,6 +425,19 @@ void WindowLinux::setMousePosition(float x, float y) {
 void WindowLinux::setPointer(bool relative, bool confined, Cursor cursor) {
     if (!gDisplay || !gWindow) return;
 
+    // Relative mode warps the pointer away, so remember where it was
+    if (relative && !gHasSavedPointer) {
+        Window root = None;
+        Window child = None;
+        int rootX = 0, rootY = 0, winX = 0, winY = 0;
+        unsigned int mask = 0;
+        if (XQueryPointer(gDisplay, gWindow, &root, &child, &rootX, &rootY, &winX, &winY, &mask)) {
+            gSavedPointerX = winX;
+            gSavedPointerY = winY;
+            gHasSavedPointer = true;
+        }
+    }
+
     if (gPointerGrabbed) {
         XUngrabPointer(gDisplay, CurrentTime);
         gPointerGrabbed = false;
@@ -443,6 +460,11 @@ void WindowLinux::setPointer(bool relative, bool confined, Cursor cursor) {
     if (cursor != None) XDefineCursor(gDisplay, gWindow, cursor);
     else XUndefineCursor(gDisplay, gWindow);
     XFlush(gDisplay);
+
+    if (!relative && gHasSavedPointer) {
+        gHasSavedPointer = false;
+        setMousePosition(static_cast<float>(gSavedPointerX), static_cast<float>(gSavedPointerY));
+    }
 }
 
 bool WindowLinux::isRelativeMouse() {

@@ -2769,10 +2769,14 @@ void editor::Backend::disableMouseCursor() {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     io.MouseDrawCursor = false;
-    backend->virtualMouseX = io.MousePos.x;
-    backend->virtualMouseY = io.MousePos.y;
-    WindowLinux::centerPointer();
-    WindowLinux::setPointer(true, false, WindowLinux::invisibleCursor());
+    if (!WindowLinux::isRelativeMouse()) {
+        // ImGui parks MousePos at -FLT_MAX while the cursor is outside the window
+        const bool hasPosition = io.MousePos.x > -FLT_MAX && io.MousePos.y > -FLT_MAX;
+        backend->virtualMouseX = hasPosition ? io.MousePos.x : WindowLinux::getWidth() * 0.5;
+        backend->virtualMouseY = hasPosition ? io.MousePos.y : WindowLinux::getHeight() * 0.5;
+        WindowLinux::setPointer(true, false, WindowLinux::invisibleCursor());
+        WindowLinux::centerPointer();
+    }
 }
 
 void editor::Backend::enableMouseCursor() {
