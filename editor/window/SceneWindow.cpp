@@ -1316,7 +1316,6 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             (altHeld && ImGui::IsMouseReleased(ImGuiMouseButton_Left))){
         draggingMouse[sceneId] = false;
         Backend::enableMouseCursor();
-        ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
 
         // While looking, the cursor was locked (GLFW_CURSOR_DISABLED) and its virtual position
@@ -1328,6 +1327,18 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             io.AddMousePosEvent(lookReturnPos[sceneId].x, lookReturnPos[sceneId].y);
             lookActive[sceneId] = false;
         }
+    }
+
+    // Focus loss clears the buttons without reporting a release, and the Alt+LMB term
+    // needs Alt still held, so end stale drags from the button state.
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle) &&
+            !ImGui::IsMouseDown(ImGuiMouseButton_Right) &&
+            (draggingMouse[sceneId] || lookActive[sceneId] || (io.ConfigFlags & ImGuiConfigFlags_NoMouse))) {
+        draggingMouse[sceneId] = false;
+        lookActive[sceneId] = false;
+        resyncLookDelta[sceneId] = false;
+        Backend::enableMouseCursor();
+        io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
     }
 
     Camera* camera = sceneProject->sceneRender->getCamera();
