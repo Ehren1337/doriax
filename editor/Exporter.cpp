@@ -286,7 +286,8 @@ std::string editor::Exporter::getEffectiveGenerator() const {
 }
 
 bool editor::Exporter::shouldSkipExportSupportFile(const fs::path& relativePath) {
-    return relativePath == "CMakeLists.txt" || relativePath.filename() == "AGENTS.md";
+    return relativePath == "CMakeLists.txt" || relativePath == "ProjectBuild.cmake"
+        || relativePath.filename() == "AGENTS.md";
 }
 
 bool editor::Exporter::isCppHeaderFile(const fs::path& path) {
@@ -1089,6 +1090,18 @@ bool editor::Exporter::copyCppScripts() {
     } catch (const fs::filesystem_error& e) {
         setError("Failed to copy project headers: " + std::string(e.what()));
         return false;
+    }
+
+    // Goes to the project root, not scripts/, because that is where the exported
+    // CMakeLists includes it from.
+    const fs::path userBuildFile = projectRoot / "ProjectBuild.cmake";
+    if (fs::is_regular_file(userBuildFile, ec)) {
+        fs::copy_file(userBuildFile, getExportProjectRoot() / "ProjectBuild.cmake",
+                      fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            setError("Failed to copy ProjectBuild.cmake: " + ec.message());
+            return false;
+        }
     }
 
     return true;

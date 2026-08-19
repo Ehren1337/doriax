@@ -985,9 +985,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     target_link_libraries(
         ${APP_NAME}
 
+        PRIVATE
+
         doriax
         Threads::Threads
         ${PLATFORM_LIBS}
     )
+
+    # Optional user build file; the editor writes the same hook, with the same
+    # variable names, into the project CMakeLists.txt it generates.
+    set(DORIAX_TARGET ${APP_NAME})
+    set(DORIAX_SCRIPTS_DIR ${PROJECT_ROOT}/scripts)
+    include(${PROJECT_ROOT}/ProjectBuild.cmake OPTIONAL)
 
 endif() # End standalone executable build
