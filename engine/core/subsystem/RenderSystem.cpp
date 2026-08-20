@@ -6029,6 +6029,10 @@ void RenderSystem::update(double dt){
                 continue;
 
             const Matrix4 inverseMeshTransform = meshTransform->modelMatrix.inverse();
+            // Scale 0 makes this NaN; posing the skinned AABB with it trips setExtents.
+            if (!inverseMeshTransform.isValid())
+                continue;
+
             const size_t jointCount = std::min(binding.joints.size(), binding.inverseBindMatrices.size());
             for (size_t jointIndex = 0; jointIndex < jointCount &&
                     mesh->bonesMatrix.validIndex(static_cast<int>(jointIndex)); jointIndex++) {
