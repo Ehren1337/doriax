@@ -118,7 +118,7 @@ namespace doriax{
         void createCylinder(MeshComponent& mesh, float baseRadius=1, float topRadius=1, float height=2, unsigned int slices=36, unsigned int stacks=18);
         void createCapsule(MeshComponent& mesh, float baseRadius=1, float topRadius=1, float height=2, unsigned int slices=36, unsigned int stacks=18);
         void createTorus(MeshComponent& mesh, float radius=1, float ringRadius=0.5, unsigned int sides=36, unsigned int rings=16);
-        bool canMergeStaticModel(const ModelComponent& model, std::string* reason = nullptr) const;
+        bool canMergeStaticModel(const ModelComponent& model, const MeshComponent& mesh, std::string* reason = nullptr) const;
 
         // Canonical form of a model path: the same file spelled in different ways maps to one key.
         static std::string getModelFilenameKey(const std::string& filename);

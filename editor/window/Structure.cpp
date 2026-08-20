@@ -1601,13 +1601,14 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
 
                 if (selectedScene && selectedScene->scene) {
                     ModelComponent* model = selectedScene->scene->findComponent<ModelComponent>(node.id);
-                    if (model && !model->filename.empty()) {
+                    MeshComponent* mesh = selectedScene->scene->findComponent<MeshComponent>(node.id);
+                    if (model && mesh && !model->filename.empty()) {
                         ImGui::Separator();
 
                         const bool restoreHierarchy = model->mergeStaticMeshes;
                         std::string mergeReason;
                         bool canChangeMerge = restoreHierarchy ||
-                            selectedScene->scene->getSystem<MeshSystem>()->canMergeStaticModel(*model, &mergeReason);
+                            selectedScene->scene->getSystem<MeshSystem>()->canMergeStaticModel(*model, *mesh, &mergeReason);
                         bool mergeEnabled = !node.isLocked && canChangeMerge;
                         const char* mergeLabel = restoreHierarchy
                             ? ICON_FA_OBJECT_GROUP "  Restore model mesh children"

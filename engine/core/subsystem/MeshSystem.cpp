@@ -1656,7 +1656,8 @@ int MeshSystem::convertGLTFColorToVec4(const tinygltf::Accessor& accessor, Model
     return static_cast<int>(model.gltfModel->bufferViews.size()) - 1;
 }
 
-bool MeshSystem::canMergeStaticModel(const ModelComponent& model, std::string* reason) const {
+bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComponent& mesh,
+                                     std::string* reason) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
         return false;
@@ -1678,9 +1679,9 @@ bool MeshSystem::canMergeStaticModel(const ModelComponent& model, std::string* r
             return reject("The model contains an invalid mesh reference");
         }
 
-        const tinygltf::Mesh& mesh = model.gltfModel->meshes[node.mesh];
-        primitiveCount += mesh.primitives.size();
-        for (const tinygltf::Primitive& primitive : mesh.primitives) {
+        const tinygltf::Mesh& gltfMesh = model.gltfModel->meshes[node.mesh];
+        primitiveCount += gltfMesh.primitives.size();
+        for (const tinygltf::Primitive& primitive : gltfMesh.primitives) {
             if (!primitive.targets.empty()) {
                 return reject("Models with morph targets cannot be merged as static geometry");
             }
@@ -1705,7 +1706,7 @@ bool MeshSystem::canMergeStaticModel(const ModelComponent& model, std::string* r
     if (primitiveCount == 0) {
         return reject("The model has no mesh primitives to merge");
     }
-    if (primitiveCount > MAX_SUBMESHES) {
+    if (!mesh.submeshes.validIndex(static_cast<int>(primitiveCount - 1))) {
         return reject("The merged model would exceed the root mesh submesh limit");
     }
     if (!model.gltfModel->animations.empty()) {
@@ -3572,7 +3573,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     const bool mergeMeshNodes = model.mergeStaticMeshes && meshNodes.size() > 1;
     if (mergeMeshNodes) {
         std::string reason;
-        if (!canMergeStaticModel(model, &reason)) {
+        if (!canMergeStaticModel(model, mesh, &reason)) {
             Log::error("Cannot merge static GLTF model (%s): %s", filename.c_str(), reason.c_str());
             if (asyncLoad) {
                 ResourceProgress::failBuild(buildId);
