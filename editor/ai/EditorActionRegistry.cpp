@@ -716,6 +716,37 @@ const std::vector<ToolDefinition>& cachedTools() {
             false
         },
         {
+            "create_source_file",
+            "Create a NEW C++ source or header that belongs to no entity: a helper class, a shared utility, or any library code scripts include. It never touches a ScriptComponent, so use create_script instead when the class is a script an entity runs. A source only reaches the build when it lives under a project script directory (get_project_summary reports script_dirs) or when an attached script includes it; the result says which case applies. Change the file afterwards with update_script_file.",
+            objectSchema({
+                {"path", stringSchema("New safe project-relative file path. Allowed extensions: .h, .hpp, .cpp")},
+                {"content", stringSchema("Complete file contents")},
+                {"reason", stringSchema("Short reason shown in the approval preview")}
+            }, {"path", "content"}),
+            false
+        },
+        {
+            "set_project_script_dirs",
+            "Replace the project C++ script directories. Each one becomes an include directory, and every source under it is compiled without a script component referencing it. Read the current list from get_project_summary (script_dirs) and pass the complete new list: entries it reported can be passed back verbatim, omitting one removes that root, and an empty list clears them all. A root you ADD must be a project-relative directory that already exists (create it with create_folder first); the project root itself and directories outside the project are added by the user in Project Settings.",
+            objectSchema({
+                {"directories", {
+                    {"type", "array"},
+                    {"description", "Complete list of safe project-relative directories to use as C++ script roots"},
+                    {"items", {{"type", "string"}}}
+                }}
+            }, {"directories"}),
+            false
+        },
+        {
+            "update_project_build_file",
+            "Write ProjectBuild.cmake at the project root: the optional CMake hook carrying extra include directories, libraries, and compile definitions. The generated CMakeLists.txt is rewritten on every build, so it is never the place for custom build settings and the user must never be asked to edit it. Attach settings to ${DORIAX_TARGET} instead of a literal target name (it differs between the editor and exported builds) and use ${DORIAX_SCRIPTS_DIR} as the root of script paths. This replaces the whole file, so read the current one with read_resource_file first and keep the settings it already has.",
+            objectSchema({
+                {"content", stringSchema("Complete replacement contents of ProjectBuild.cmake")},
+                {"reason", stringSchema("Short reason shown in the approval preview")}
+            }, {"content"}),
+            false
+        },
+        {
             "create_bundle_from_entity",
             "Create a .bundle from an entity hierarchy through CreateEntityBundleCmd.",
             objectSchema({
@@ -1402,6 +1433,41 @@ ValidationResult EditorActionRegistry::validate(const std::string& name, const J
         }
         return ok();
     }
+    if (name == "create_source_file") {
+        if (!hasString(arguments, "path")) return fail("create_source_file requires path.");
+        if (!arguments.contains("content") || !arguments["content"].is_string()) {
+            return fail("create_source_file requires string content.");
+        }
+        fs::path path = fs::path(arguments["path"].get<std::string>()).lexically_normal();
+        if (!PathUtils::isSafeRelativePath(path)) {
+            return fail("path must be a safe project-relative path.");
+        }
+        // The same set update_script_file accepts, so a created file stays editable.
+        const std::string ext = path.extension().string();
+        if (ext != ".cpp" && ext != ".h" && ext != ".hpp") {
+            return fail("create_source_file only supports .cpp, .h, and .hpp files.");
+        }
+        return ok();
+    }
+    if (name == "set_project_script_dirs") {
+        const auto it = arguments.find("directories");
+        if (it == arguments.end() || !it->is_array()) {
+            return fail("set_project_script_dirs requires a directories array.");
+        }
+        // Only the executor sees the configured roots that decide which forms are allowed.
+        for (const Json& entry : *it) {
+            if (!entry.is_string() || entry.get<std::string>().empty()) {
+                return fail("directories must contain only non-empty strings.");
+            }
+        }
+        return ok();
+    }
+    if (name == "update_project_build_file") {
+        if (!arguments.contains("content") || !arguments["content"].is_string()) {
+            return fail("update_project_build_file requires string content.");
+        }
+        return ok();
+    }
     if (name == "create_bundle_from_entity") {
         if (!hasString(arguments, "bundle_path")) return fail("create_bundle_from_entity requires bundle_path.");
         return hasEntitySelector(arguments) ? ok() : fail("create_bundle_from_entity requires entity_id or entity_name.");
@@ -1741,6 +1807,26 @@ std::string EditorActionRegistry::describe(const std::string& name, const Json& 
     }
     if (name == "update_script_file") {
         return "Update script file " + arguments.value("path", "");
+    }
+    if (name == "create_source_file") {
+        return "Create source file " + arguments.value("path", "");
+    }
+    if (name == "set_project_script_dirs") {
+        const auto it = arguments.find("directories");
+        if (it == arguments.end() || !it->is_array() || it->empty()) {
+            return "Clear project script directories";
+        }
+        std::string list;
+        for (const Json& entry : *it) {
+            if (!entry.is_string()) continue;
+            if (!list.empty()) list += ", ";
+            list += entry.get<std::string>();
+        }
+        return list.empty() ? "Set project script directories"
+                            : "Set project script directories: " + list;
+    }
+    if (name == "update_project_build_file") {
+        return "Update ProjectBuild.cmake";
     }
     if (name == "create_bundle_from_entity") {
         return "Create bundle " + arguments.value("bundle_path", "");

@@ -1289,6 +1289,19 @@ bool safeRelativePath(Project* project, const Json& args, const char* key, fs::p
     return true;
 }
 
+// A source under a script root compiles by living there, not by being referenced.
+bool isInsideScriptDir(Project* project, const fs::path& fullPath) {
+    const fs::path target = fullPath.lexically_normal();
+    for (const fs::path& scriptDir : project->getScriptDirs()) {
+        const fs::path root = (scriptDir.is_absolute() ? scriptDir : project->getProjectPath() / scriptDir).lexically_normal();
+        const fs::path relative = target.lexically_relative(root);
+        if (!relative.empty() && !relative.is_absolute() && *relative.begin() != "..") {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Json::value() throws when the key is present with another type.
 std::string optionalString(const Json& args, const char* key, const char* fallback = "") {
     const auto it = args.find(key);
@@ -1701,7 +1714,8 @@ void updateMeshShape(MeshComponent& meshComp, MeshSystem* meshSys, const ShapePa
 bool isReadableTextResource(const std::string& ext) {
     static const std::set<std::string> allowed = {
         ".lua", ".cpp", ".h", ".hpp", ".material", ".scene", ".yaml", ".yml",
-        ".json", ".txt", ".glsl", ".vert", ".frag", ".hlsl", ".md", ".csv", ".ini", ".cfg"
+        ".json", ".txt", ".glsl", ".vert", ".frag", ".hlsl", ".md", ".csv", ".ini", ".cfg",
+        ".cmake"
     };
     return allowed.count(ext) > 0;
 }
@@ -2002,6 +2016,9 @@ ActionResult EditorActionExecutor::dispatch(const std::string& name,
     if (name == "update_script_entry") return updateScriptEntry(arguments);
     if (name == "remove_script_entry") return removeScriptEntry(arguments);
     if (name == "update_script_file") return updateScriptFile(arguments);
+    if (name == "create_source_file") return createSourceFile(arguments);
+    if (name == "set_project_script_dirs") return setProjectScriptDirs(arguments);
+    if (name == "update_project_build_file") return updateProjectBuildFile(arguments);
     if (name == "create_bundle_from_entity") return createBundleFromEntity(arguments);
     if (name == "import_bundle_instance") return importBundleInstance(arguments);
     if (name == "add_entity_to_bundle") return addEntityToBundle(arguments);
@@ -2049,6 +2066,10 @@ ActionResult EditorActionExecutor::getProjectSummary() {
     data["start_scene_id"] = project->getStartSceneId();
     data["assets_dir"] = project->getAssetsDir().generic_string();
     data["lua_dir"] = project->getLuaDir().generic_string();
+    data["script_dirs"] = Json::array();
+    for (const fs::path& scriptDir : project->getScriptDirs()) {
+        data["script_dirs"].push_back(scriptDir.generic_string());
+    }
     data["standalone_bundles"] = Json::array();
     for (const fs::path& bundlePath : project->getStandaloneBundles()) {
         data["standalone_bundles"].push_back(bundlePath.generic_string());
@@ -3684,6 +3705,177 @@ ActionResult EditorActionExecutor::updateScriptFile(const Json& arguments) {
                     Json{{"path", relString},
                          {"bytes", content.size()},
                          {"refreshed_script_components", refreshedComponents},
+                         {"next_step", verifyStep}});
+}
+
+ActionResult EditorActionExecutor::createSourceFile(const Json& arguments) {
+    std::string error;
+    fs::path rel;
+    if (!safeRelativePath(project, arguments, "path", rel, error, false)) {
+        return failResult(error);
+    }
+
+    const std::string ext = lower(rel.extension().string());
+    if (ext != ".cpp" && ext != ".h" && ext != ".hpp") {
+        return failResult("path must point to a .cpp, .h, or .hpp file.");
+    }
+
+    const fs::path fullPath = project->getProjectPath() / rel;
+    if (fs::exists(fullPath)) {
+        return failResult("File already exists; replace its contents with update_script_file instead.");
+    }
+
+    const std::string content = arguments.value("content", "");
+    constexpr size_t kMaxSourceBytes = 2 * 1024 * 1024;
+    if (content.empty()) {
+        return failResult("create_source_file requires non-empty content.");
+    }
+    if (content.size() > kMaxSourceBytes) {
+        return failResult("Source content is too large for an AI edit.");
+    }
+    std::string validationError = validateDoriaxCppScriptContent(content);
+    if (!validationError.empty()) {
+        return failResult(validationError);
+    }
+
+    std::error_code ec;
+    fs::create_directories(fullPath.parent_path(), ec);
+    std::ofstream out(fullPath, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return failResult("Failed to open source file for writing.");
+    }
+    out << content;
+    out.close();
+    if (!out) {
+        return failResult("Failed to write source file.");
+    }
+
+    if (resourcesWindow) {
+        resourcesWindow->refreshCurrentDirectory();
+    }
+    Out::info("AI created source file: %s", rel.generic_string().c_str());
+
+    // A header under a root only joins the include path; a source becomes a translation unit.
+    const bool inScriptDir = isInsideScriptDir(project, fullPath);
+    std::string nextStep;
+    if (ext == ".h" || ext == ".hpp") {
+        nextStep = inScriptDir
+            ? "Its directory is on the include path, so scripts include it by name. A header is not compiled "
+              "on its own; verify it through a source that includes it."
+            : "Its directory is not on the include path, so scripts reach it only through a relative include. "
+              "Add its root with set_project_script_dirs to include it by name.";
+    } else {
+        nextStep = inScriptDir
+            ? "It compiles as its own translation unit. Verify it with control_play_mode (action=start) and "
+              "read_output_log, then stop play. Play only builds C++ when an enabled C++ script is attached to "
+              "an entity, so in a Lua-only project nothing is compiled until export."
+            : "The editor build never compiles it there; it only reaches the build through an attached script "
+              "that includes it. Add its root with set_project_script_dirs to compile it on its own.";
+    }
+
+    return okResult("Created source file (see next_step).",
+                    Json{{"path", rel.generic_string()},
+                         {"bytes", content.size()},
+                         {"in_script_dir", inScriptDir},
+                         {"next_step", nextStep}});
+}
+
+ActionResult EditorActionExecutor::setProjectScriptDirs(const Json& arguments) {
+    const auto it = arguments.find("directories");
+    if (it == arguments.end() || !it->is_array()) {
+        return failResult("set_project_script_dirs requires a directories array.");
+    }
+
+    // Project Settings stores the project root as "." and an outside folder whole; both forms
+    // fail isSafeRelativePath, so they can only be repeated back here, never added.
+    const std::vector<fs::path>& configured = project->getScriptDirs();
+    const auto isConfigured = [&configured](const fs::path& directory) {
+        for (const fs::path& current : configured) {
+            if (current.lexically_normal() == directory) return true;
+        }
+        return false;
+    };
+
+    std::vector<fs::path> directories;
+    for (const Json& entry : *it) {
+        if (!entry.is_string()) {
+            return failResult("directories must contain only strings.");
+        }
+        const std::string raw = entry.get<std::string>();
+        fs::path directory = fs::path(raw).lexically_normal();
+        if (!PathUtils::isSafeRelativePath(directory) && !isConfigured(directory)) {
+            return failResult("A new script directory must be project-relative and inside the project: " + raw +
+                              ". The project root and outside directories are added by the user in Project Settings; "
+                              "pass those back only as get_project_summary reported them.");
+        }
+
+        std::error_code ec;
+        if (!fs::is_directory(directory.is_absolute() ? directory : project->getProjectPath() / directory, ec)) {
+            return failResult("Script directory does not exist: " + directory.generic_string() +
+                              ". Create it with create_folder first.");
+        }
+        if (std::find(directories.begin(), directories.end(), directory) == directories.end()) {
+            directories.push_back(std::move(directory));
+        }
+    }
+
+    Json scriptDirs = Json::array();
+    for (const fs::path& directory : directories) {
+        scriptDirs.push_back(directory.generic_string());
+    }
+
+    project->setScriptDirs(std::move(directories));
+    if (!project->saveProjectFile()) {
+        return failResult("Failed to save the project with the new script directories.");
+    }
+
+    return okResult(scriptDirs.empty()
+                        ? "Cleared the project script directories."
+                        : "Set the project script directories. The next play or export builds with them.",
+                    Json{{"script_dirs", scriptDirs}});
+}
+
+ActionResult EditorActionExecutor::updateProjectBuildFile(const Json& arguments) {
+    const std::string content = arguments.value("content", "");
+    constexpr size_t kMaxBuildFileBytes = 256 * 1024;
+    if (content.empty()) {
+        return failResult("update_project_build_file requires non-empty content.");
+    }
+    if (content.size() > kMaxBuildFileBytes) {
+        return failResult("ProjectBuild.cmake content is too large for an AI edit.");
+    }
+
+    // The target name differs between the editor and exported builds.
+    if (content.find("target_") != std::string::npos && content.find("${DORIAX_TARGET}") == std::string::npos) {
+        return failResult("ProjectBuild.cmake must attach target settings to ${DORIAX_TARGET}, and use "
+                          "${DORIAX_SCRIPTS_DIR} as the root of script paths.");
+    }
+
+    const fs::path fullPath = project->getProjectPath() / "ProjectBuild.cmake";
+    std::ofstream out(fullPath, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return failResult("Failed to open ProjectBuild.cmake for writing.");
+    }
+    out << content;
+    out.close();
+    if (!out) {
+        return failResult("Failed to write ProjectBuild.cmake.");
+    }
+
+    if (resourcesWindow) {
+        resourcesWindow->refreshCurrentDirectory();
+    }
+    Out::info("AI updated ProjectBuild.cmake");
+
+    const std::string verifyStep =
+        "Verify it before telling the user it works: start the scene with control_play_mode (action=start), "
+        "then read_output_log for CMake or compiler errors; fix them here and verify again, then stop play. "
+        "Play only configures CMake when an enabled C++ script is attached to an entity, so a Lua-only project "
+        "first reads this file on export.";
+
+    return okResult("Updated ProjectBuild.cmake (see next_step).",
+                    Json{{"path", "ProjectBuild.cmake"},
+                         {"bytes", content.size()},
                          {"next_step", verifyStep}});
 }
 
