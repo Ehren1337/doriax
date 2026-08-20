@@ -464,6 +464,7 @@ set(DORIAX_EDITOR_SOURCES
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
+    ${EDITOR_DIR}/util/CrashHandler.cpp
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
@@ -589,9 +590,15 @@ function(configure_doriax_editor_target target_name)
     )
 
     if(WIN32)
-        target_link_libraries(${target_name} PRIVATE winhttp shell32)
+        # dbghelp resolves the crash-report backtrace.
+        target_link_libraries(${target_name} PRIVATE winhttp shell32 dbghelp)
     else()
         target_link_libraries(${target_name} PRIVATE CURL::libcurl)
+        # -rdynamic names the editor's own frames in the crash backtrace, at about 10 MB of
+        # symbol table. A Release build stays lean and is resolved with addr2line instead.
+        if(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+            set_target_properties(${target_name} PROPERTIES ENABLE_EXPORTS ON)
+        endif()
     endif()
 
     if(X11_FOUND)

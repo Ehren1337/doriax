@@ -13,6 +13,7 @@
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 
+#include "util/CrashHandler.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
 
@@ -2288,6 +2289,12 @@ bool editor::App::isMainThread() const {
 
 void editor::App::initializeSettings() {
     AppSettings::initialize();
+
+    // Next to settings.yaml, where a user can find it to report a crash.
+    const std::filesystem::path logFile = AppSettings::getConfigDirectory() / "editor.log";
+    Out::setLogFile(logFile);
+    CrashHandler::install(logFile);
+
     applyPanelVisibilitySettings();
 }
 

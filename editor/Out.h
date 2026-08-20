@@ -4,6 +4,7 @@
 #pragma once
 
 #include "window/OutputWindow.h"
+#include <filesystem>
 #include <iosfwd>
 #include <string>
 #include <memory>
@@ -43,6 +44,10 @@ namespace doriax::editor {
     public:
         static void setOutputWindow(OutputWindow* outputWindow);
         static OutputWindow* getOutputWindow();
+
+        // Mirrors every message to a file, from any thread. The Output window dies with
+        // the process, this is what is left after a crash.
+        static void setLogFile(const std::filesystem::path& path);
 
         // Recent output-window log as prefixed text (oldest-first). onlyProblems keeps
         // Error/Warning/Build entries. Empty if no output window is attached. Call on
