@@ -887,6 +887,12 @@ std::string MeshSystem::getAsyncModelLoadKey(const std::string& filename) const{
     return getAsyncModelLoadKey(scene, filename);
 }
 
+bool MeshSystem::isAsyncModelLoadPending(const std::string& filename) const{
+    const std::string key = getAsyncModelLoadKey(filename);
+    std::lock_guard<std::mutex> lock(getAsyncModelMutex());
+    return getPendingModelLoads().count(key) > 0;
+}
+
 bool MeshSystem::hasPendingAsyncModelLoads() const{
     const std::string scenePrefix = getAsyncModelLoadScenePrefix(scene);
     std::lock_guard<std::mutex> lock(getAsyncModelMutex());
@@ -3414,6 +3420,8 @@ void MeshSystem::createTorus(MeshComponent& mesh, float radius, float ringRadius
 bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform){
     const std::string poolKey = getModelFilenameKey(filename);
 
+    failedModelLoads.erase(filename); // an explicit load is a new attempt
+
     // If parsed data is already cached, skip the async background-thread entirely.
     if (asyncLoad && ModelPool::getGLTF(poolKey)){
         asyncLoad = false;
@@ -4623,6 +4631,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLoad){
     const std::string poolKey = getModelFilenameKey(filename);
 
+    failedModelLoads.erase(filename); // an explicit load is a new attempt
+
     // If parsed data is already cached, skip the async background-thread entirely.
     if (asyncLoad && ModelPool::getObj(poolKey)){
         asyncLoad = false;
@@ -4931,7 +4941,8 @@ bool MeshSystem::hasInstancedMesh(Entity entity) const{
 void MeshSystem::clearBoneMapping(ModelComponent& model){
     if (model.nodesIdMapping.empty()) {
         for (auto const& bone : model.bonesIdMapping){
-            scene->destroyEntity(bone.second);
+            if (scene->isEntityCreated(bone.second))
+                scene->destroyEntity(bone.second);
         }
     }
     model.bonesIdMapping.clear();
@@ -4942,7 +4953,8 @@ void MeshSystem::clearBoneMapping(ModelComponent& model){
 
 void MeshSystem::clearAnimationMapping(ModelComponent& model){
     for (int i = 0; i < model.animations.size(); i++){
-        scene->destroyEntity(model.animations[i]);
+        if (scene->isEntityCreated(model.animations[i]))
+            scene->destroyEntity(model.animations[i]);
     }
     model.animations.clear();
 }
@@ -4950,7 +4962,8 @@ void MeshSystem::clearAnimationMapping(ModelComponent& model){
 void MeshSystem::clearMeshNodeMapping(ModelComponent& model){
     if (model.nodesIdMapping.empty()) {
         for (auto const& node : model.meshNodesMapping){
-            scene->destroyEntity(node.second);
+            if (scene->isEntityCreated(node.second))
+                scene->destroyEntity(node.second);
         }
     } else {
         for (const auto& node : model.nodesIdMapping) {
@@ -5137,6 +5150,12 @@ bool MeshSystem::createOrUpdateModel(Entity entity, ModelComponent& model, MeshC
                 return true;
             }
 
+            // Retrying a file that cannot be read re-parses it every frame, forever.
+            if (failedModelLoads.count(model.filename)){
+                model.needUpdateModel = false;
+                return false;
+            }
+
             std::string ext = FileData::getFilePathExtension(model.filename);
             bool skipEntities = !model.filename.empty() && (!model.bonesIdMapping.empty() || !model.animations.empty() || !model.meshNodesMapping.empty());
             bool asyncLoading = Engine::isAsyncLoading();
@@ -5150,6 +5169,12 @@ bool MeshSystem::createOrUpdateModel(Entity entity, ModelComponent& model, MeshC
             if (ret){
                 model.needUpdateModel = false;
             }else{
+                // A load still running also returns false, its key stays in the pending map.
+                if (!asyncLoading || !isAsyncModelLoadPending(model.filename)){
+                    Log::error("Model load failed, not retrying: %s", model.filename.c_str());
+                    failedModelLoads.insert(model.filename);
+                    model.needUpdateModel = false;
+                }
                 return false;
             }
         }else{

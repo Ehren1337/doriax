@@ -20,6 +20,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -39,6 +40,9 @@ namespace doriax{
 
         static std::mutex& getAsyncModelMutex();
         static async_model_loads_t& getPendingModelLoads();
+
+        // Files that already failed to load, so createOrUpdateModel stops retrying them.
+        std::set<std::string> failedModelLoads;
 
         static void decodeGLTFImage(tinygltf::Image& image, size_t index, int maxDimension);
         template<typename Fn>
@@ -66,6 +70,7 @@ namespace doriax{
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
         std::shared_ptr<AsyncModelLoadResult> pollOrStartAsyncModelLoad(const std::string& filename, bool obj);
+        bool isAsyncModelLoadPending(const std::string& filename) const;
         static std::shared_ptr<AsyncModelLoadResult> loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId);
         template<typename T>
         static bool isValidGLTFIndex(int index, const std::vector<T>& values) {
