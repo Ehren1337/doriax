@@ -173,14 +173,10 @@ void MeshSystem::applyDefaultGLTFMaterial(Material& material) {
 
 void MeshSystem::applyDefaultObjMaterial(Submesh& submesh) {
     submesh.attributes.clear();
-    submesh.material.baseColorFactor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-    submesh.material.emissiveFactor = Vector3(0.0f, 0.0f, 0.0f);
+    submesh.material = Material();
     submesh.material.metallicFactor = 0.0f;
-    submesh.material.roughnessFactor = 1.0f;
-    submesh.material.baseColorTexture = Texture();
-    submesh.material.normalTexture = Texture();
-    submesh.material.emissiveTexture = Texture();
-    submesh.material.occlusionTexture = Texture();
+    submesh.material.alphaMode = MaterialAlphaMode::ALPHA_OPAQUE;
+    submesh.textureShadow = false;
 }
 
 // Where each of a model's meshes starts in the primitive numbering a merged load produces. The
@@ -4742,13 +4738,11 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
         }
 
         mesh.submeshes[i].overrideFields = 0;
+        applyDefaultObjMaterial(mesh.submeshes[i]);
 
         if (!hasMaterials) {
-            applyDefaultObjMaterial(mesh.submeshes[i]);
             continue;
         }
-
-        mesh.submeshes[i].attributes.clear();
 
         // Convert the blinn-phong model to the pbr metallic-roughness model
         // Based on https://github.com/CesiumGS/obj2gltf
@@ -4768,7 +4762,13 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
 
         // ------ End convertion
 
-        mesh.submeshes[i].material.baseColorFactor = Vector4(objMaterial.diffuse[0], objMaterial.diffuse[1], objMaterial.diffuse[2], 1.0);
+        const float dissolve = std::min(std::max(objMaterial.dissolve, 0.0f), 1.0f);
+        // d 0 plus a diffuse map is a common OBJ export of "alpha is in the
+        // texture", not an invisible mesh. Keep factor alpha at 1 in that case.
+        const float factorAlpha = (dissolve <= 0.0f && !objMaterial.diffuse_texname.empty())
+            ? 1.0f : dissolve;
+
+        mesh.submeshes[i].material.baseColorFactor = Vector4(objMaterial.diffuse[0], objMaterial.diffuse[1], objMaterial.diffuse[2], factorAlpha);
         mesh.submeshes[i].material.emissiveFactor = Vector3(objMaterial.emission[0], objMaterial.emission[1], objMaterial.emission[2]);
         mesh.submeshes[i].material.metallicFactor = metallicFactor;
         mesh.submeshes[i].material.roughnessFactor = roughnessFactor;
@@ -4785,9 +4785,18 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
         //TODO: occlusionFactor (Ka)
         //TODO: metallicroughnessTexture (map_Ks + map_Ns)
 
-        if (objMaterial.dissolve < 1){
+        // OBJ has no glTF alphaMode: dissolve < 1 is translucency; a diffuse
+        // map is a cutout (window holes, foliage), not blended transparency.
+        if (dissolve < 1){
+            mesh.submeshes[i].material.alphaMode = MaterialAlphaMode::BLEND;
             mesh.transparent = true;
+        } else if (!objMaterial.diffuse_texname.empty()){
+            mesh.submeshes[i].material.alphaMode = MaterialAlphaMode::MASK;
+        } else {
+            mesh.submeshes[i].material.alphaMode = MaterialAlphaMode::ALPHA_OPAQUE;
         }
+        mesh.submeshes[i].textureShadow =
+            mesh.submeshes[i].material.alphaMode == MaterialAlphaMode::MASK;
     }
 
     if (asyncLoad) {
