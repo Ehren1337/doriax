@@ -53,13 +53,20 @@ bool editor::DuplicateEntityCmd::execute(){
         return Stream::encodeEntity(e, scene, isBundleMember ? nullptr : project, isBundleMember ? nullptr : sceneProject);
     };
 
+    // A model's animation and track entities have no Transform, so the encoder never reaches
+    // them. Copied with the roots, the same set DeleteEntityCmd removes with them.
+    std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(scene, topLevel);
+
+    std::vector<Entity> encodedRoots = topLevel;
+    encodedRoots.insert(encodedRoots.end(), virtualChildren.begin(), virtualChildren.end());
+
     YAML::Node encoded;
-    if (topLevel.size() == 1) {
-        encoded = encodeEntityLocal(topLevel[0]);
+    if (encodedRoots.size() == 1) {
+        encoded = encodeEntityLocal(encodedRoots[0]);
     } else {
         encoded["type"] = "EntityBundle";
         YAML::Node membersNode(YAML::NodeType::Sequence);
-        for (Entity entity : topLevel) {
+        for (Entity entity : encodedRoots) {
             membersNode.push_back(encodeEntityLocal(entity));
         }
         encoded["members"] = membersNode;
@@ -86,12 +93,13 @@ bool editor::DuplicateEntityCmd::execute(){
     // bind framebuffers of duplicated camera-linked textures
     CameraTextureLink::resolve(scene);
 
-    // Identify top-level duplicates (decoded with no parent)
+    // The remap pairs each source root with its copy: a parentless scan cannot, now that
+    // transform-less virtual children are copied too.
     std::vector<Entity> createdTopLevel;
-    for (Entity e : createdEntities) {
-        Transform* t = scene->findComponent<Transform>(e);
-        if (!t || t->parent == NULL_ENTITY)
-            createdTopLevel.push_back(e);
+    for (Entity source : topLevel) {
+        auto it = entityRemap.find(source);
+        if (it != entityRemap.end())
+            createdTopLevel.push_back(it->second);
     }
 
     lastSelected = project->getSelectedEntities(sceneId);
