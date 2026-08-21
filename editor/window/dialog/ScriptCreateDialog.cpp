@@ -5,13 +5,33 @@
 #include "external/IconsFontAwesome6.h"
 #include "Scene.h"
 #include "Factory.h"
+#include "Theme.h"
+#include "util/FileDialogs.h"
 #include "util/ProjectUtils.h"
+#include "util/ScriptParser.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
+#include <algorithm>
 #include <fstream>
+#include <initializer_list>
 
 namespace doriax {
 namespace editor {
+
+namespace {
+
+fs::path findCompanion(const fs::path& path, std::initializer_list<const char*> extensions) {
+    std::error_code ec;
+    for (const char* extension : extensions) {
+        fs::path companion = path;
+        companion.replace_extension(extension);
+        ec.clear();
+        if (fs::is_regular_file(companion, ec)) return companion;
+    }
+    return {};
+}
+
+}
 
 // ImGui input filter: while typing, restrict the class/base name to characters
 // that are legal in a C++ identifier - any other character (space, punctuation,
@@ -43,7 +63,12 @@ void ScriptCreateDialog::open(Scene* scene,
     m_projectPath = projectPath;
     m_luaPath = luaPath;
     m_selectedPath = projectPath.string();
-    m_scriptType = ScriptType::SUBCLASS;
+    m_creationKind = CreationKind::CPP_SUBCLASS;
+    m_existingScriptType = ScriptType::CPP;
+    m_attachExisting = false;
+    m_existingHeaderPath.clear();
+    m_existingSourcePath.clear();
+    m_attachError.clear();
     m_onCreate = onCreate;
     m_onCancel = onCancel;
     std::string base = defaultBaseName.empty() ? "NewScript" : sanitizeClassName(defaultBaseName);
@@ -58,6 +83,16 @@ std::string ScriptCreateDialog::sanitizeClassName(const std::string& in) const {
     // strips leading/trailing underscores, ensures a valid identifier start and
     // avoids C++ keywords - so the class name always compiles.
     return Factory::toIdentifier(in);
+}
+
+std::string ScriptCreateDialog::inferClassName(const fs::path& headerPath,
+                                               const std::string& fallback) const {
+    if (!headerPath.empty()) {
+        if (const auto className = ScriptParser::findScriptClassName(headerPath)) {
+            return *className;
+        }
+    }
+    return fallback;
 }
 
 fs::path ScriptCreateDialog::makeHeaderPath(const std::string& className) const {
@@ -75,10 +110,10 @@ fs::path ScriptCreateDialog::makeLuaPath(const std::string& moduleName) const {
 void ScriptCreateDialog::writeFiles(const fs::path& headerPath,
                                       const fs::path& sourcePath,
                                       const std::string& classOrModuleName,
-                                      ScriptType type) {
-    bool isCppSubclass = (type == ScriptType::SUBCLASS);
-    bool isCppScriptBase = (type == ScriptType::SCRIPT_CLASS);
-    bool isLua = (type == ScriptType::SCRIPT_LUA);
+                                      CreationKind kind) {
+    bool isCppSubclass = kind == CreationKind::CPP_SUBCLASS;
+    bool isCppScriptBase = kind == CreationKind::CPP_SCRIPT_CLASS;
+    bool isLua = kind == CreationKind::LUA;
 
     if (isCppSubclass || isCppScriptBase) {
         fs::create_directories(headerPath.parent_path());
@@ -249,47 +284,128 @@ void ScriptCreateDialog::writeFiles(const fs::path& headerPath,
 void ScriptCreateDialog::finalizeCreation(const fs::path& headerPath,
                                           const fs::path& sourcePath,
                                           const std::string& name) {
-    fs::path useHeader, useSource;
-    bool isCpp = (m_scriptType == ScriptType::SUBCLASS || m_scriptType == ScriptType::SCRIPT_CLASS);
-    bool isLua = (m_scriptType == ScriptType::SCRIPT_LUA);
+    const bool isLua = m_creationKind == CreationKind::LUA;
+    const ScriptType type = isLua ? ScriptType::LUA : ScriptType::CPP;
 
-    if (isCpp) {
-        useHeader = headerPath;
-        useSource = sourcePath;
-    }
-    if (isLua) {
-        useSource = sourcePath;
-    }
-
-    writeFiles(useHeader, useSource, name, m_scriptType);
+    writeFiles(headerPath, sourcePath, name, m_creationKind);
 
     if (m_onCreate) {
         // Lua entries resolve through "lua://", C++ sources stay project-relative
-        const fs::path sourceRoot = (m_scriptType == ScriptType::SCRIPT_LUA) ? m_luaPath : m_projectPath;
+        const fs::path sourceRoot = isLua ? m_luaPath : m_projectPath;
 
         fs::path relHeader, relSource;
-        if (!useHeader.empty()) relHeader = fs::relative(useHeader, m_projectPath);
-        if (!useSource.empty()) relSource = fs::relative(useSource, sourceRoot);
+        if (!headerPath.empty()) relHeader = fs::relative(headerPath, m_projectPath);
+        if (!sourcePath.empty()) relSource = fs::relative(sourcePath, sourceRoot);
 
-        m_onCreate(relHeader, relSource, name, m_scriptType);
+        m_onCreate(relHeader, relSource, name, type);
     }
 
     m_isOpen = false;
 }
 
+bool ScriptCreateDialog::finalizeAttachment(const fs::path& headerPath,
+                                            const fs::path& sourcePath,
+                                            const std::string& name,
+                                            ScriptType type) {
+    if (m_onCreate) {
+        const fs::path sourceRoot = type == ScriptType::LUA ? m_luaPath : m_projectPath;
+        std::error_code ec;
+        fs::path relHeader;
+        fs::path relSource;
+
+        if (!headerPath.empty()) {
+            relHeader = fs::relative(headerPath, m_projectPath, ec);
+            if (ec) {
+                m_attachError = "Could not resolve the header path: " + ec.message();
+                return false;
+            }
+        }
+        ec.clear();
+        relSource = fs::relative(sourcePath, sourceRoot, ec);
+        if (ec) {
+            m_attachError = "Could not resolve the script path: " + ec.message();
+            return false;
+        }
+
+        m_onCreate(relHeader, relSource, name, type);
+    }
+
+    m_isOpen = false;
+    return true;
+}
+
+void ScriptCreateDialog::selectExistingFile(bool selectHeader) {
+    fs::path currentPath = selectHeader ? m_existingHeaderPath : m_existingSourcePath;
+    const std::string startDirectory = currentPath.empty()
+        ? m_projectPath.string()
+        : currentPath.parent_path().string();
+    const std::string selected = FileDialogs::openFileDialog(startDirectory, FILE_DIALOG_SCRIPT);
+    if (selected.empty()) return;
+
+    const fs::path selectedPath = fs::path(selected).lexically_normal();
+    if (Util::isLuaFile(selectedPath.string())) {
+        if (selectHeader) {
+            m_attachError = "Select a C++ header (.h, .hh, .hpp, or .hxx).";
+            return;
+        }
+        if (!Util::isInsidePath(selectedPath, m_luaPath)) {
+            m_attachError = "Lua scripts must be inside the configured Lua directory.";
+            return;
+        }
+        m_existingScriptType = ScriptType::LUA;
+        m_existingSourcePath = selectedPath;
+        m_existingHeaderPath.clear();
+    } else if (Util::isHeaderFile(selectedPath.string())) {
+        if (!Util::isInsidePath(selectedPath, m_projectPath)) {
+            m_attachError = "C++ scripts must be inside the project directory.";
+            return;
+        }
+        m_existingScriptType = ScriptType::CPP;
+        m_existingHeaderPath = selectedPath;
+        m_existingSourcePath = findCompanion(selectedPath, {".cpp", ".cc", ".cxx"});
+    } else if (Util::isSourceFile(selectedPath.string())) {
+        if (selectHeader) {
+            m_attachError = "Select a C++ header (.h, .hh, .hpp, or .hxx).";
+            return;
+        }
+        if (!Util::isInsidePath(selectedPath, m_projectPath)) {
+            m_attachError = "C++ scripts must be inside the project directory.";
+            return;
+        }
+        m_existingScriptType = ScriptType::CPP;
+        m_existingSourcePath = selectedPath;
+        m_existingHeaderPath = findCompanion(selectedPath, {".h", ".hpp", ".hh", ".hxx"});
+    } else {
+        m_attachError = "Select a Lua or C++ script file.";
+        return;
+    }
+
+    std::string inferredName = sanitizeClassName(selectedPath.stem().string());
+    if (m_existingScriptType == ScriptType::CPP && !m_existingHeaderPath.empty()) {
+        inferredName = inferClassName(m_existingHeaderPath, inferredName);
+    }
+    strncpy(m_baseNameBuffer, inferredName.c_str(), sizeof(m_baseNameBuffer) - 1);
+    m_baseNameBuffer[sizeof(m_baseNameBuffer) - 1] = '\0';
+    m_attachError.clear();
+}
+
 void ScriptCreateDialog::show() {
     if (!m_isOpen) return;
 
-    ImGui::OpenPopup("Create Script##CreateScriptModal");
+    const char* popupName = "Create Script##CreateScriptModal";
+    ImGui::OpenPopup(popupName);
 
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImVec2 center = viewport->GetWorkCenter();
+    const float dialogWidth = std::min(Theme::dpi(360.0f), viewport->WorkSize.x * 0.9f);
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(dialogWidth, 0.0f), ImGuiCond_Always);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize |
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    bool popupOpen = ImGui::BeginPopupModal("Create Script##CreateScriptModal", nullptr, flags);
+    bool popupOpen = ImGui::BeginPopupModal(popupName, nullptr, flags);
     if (!popupOpen) {
         if (m_isOpen) {
             m_isOpen = false;
@@ -298,59 +414,134 @@ void ScriptCreateDialog::show() {
         return;
     }
 
-    // Script Type Selection
-    ImGui::Text("Script Type:");
+    if (ImGui::RadioButton("Create new", !m_attachExisting)) {
+        m_attachExisting = false;
+        m_attachError.clear();
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Attach existing", m_attachExisting)) {
+        m_attachExisting = true;
+        m_attachError.clear();
+    }
 
-    // C++ Subclass
-    if (ImGui::RadioButton("C++ Subclass", (int*)&m_scriptType, (int)ScriptType::SUBCLASS)) {}
+    if (!m_attachExisting) {
+        ImGui::Spacing();
+        ImGui::TextUnformatted("Template:");
+        if (ImGui::RadioButton("C++ Subclass", (int*)&m_creationKind, (int)CreationKind::CPP_SUBCLASS)) {}
+        if (ImGui::RadioButton("C++ Script Class", (int*)&m_creationKind, (int)CreationKind::CPP_SCRIPT_CLASS)) {}
+        if (ImGui::RadioButton("Lua Script", (int*)&m_creationKind, (int)CreationKind::LUA)) {}
+    }
 
-    if (ImGui::RadioButton("C++ Script Class", (int*)&m_scriptType, (int)ScriptType::SCRIPT_CLASS)) {}
-
-    if (ImGui::RadioButton("Lua Script", (int*)&m_scriptType, (int)ScriptType::SCRIPT_LUA)) {}
+    bool isLua = m_attachExisting
+        ? m_existingScriptType == ScriptType::LUA
+        : m_creationKind == CreationKind::LUA;
+    bool isCpp = !isLua;
 
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
-    // Browsing is limited to the root the new script is stored relative to: a folder
-    // above it would be saved as an unresolvable "../" path.
-    const fs::path rootPath = (m_scriptType == ScriptType::SCRIPT_LUA) ? m_luaPath : m_projectPath;
-    if (!Util::isInsidePath(fs::path(m_selectedPath), rootPath)) {
-        m_selectedPath = rootPath.string();
-    }
+    fs::path rootPath = isLua ? m_luaPath : m_projectPath;
 
-    if (ImGui::BeginChild("DirBrowser", ImVec2(300, 200), true)) {
-        if (ImGui::BeginTable("DirTree", 1, ImGuiTableFlags_Resizable)) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
+    if (m_attachExisting) {
+        ImGui::TextWrapped("Choose an existing script to attach. Its files will not be changed.");
+        ImGui::Spacing();
 
-            bool rootOpen = true;
-            ImGui::SetNextItemOpen(rootOpen, ImGuiCond_Always);
-            bool isRootSelected = (m_selectedPath == rootPath.string());
-
-            if (ImGui::TreeNodeEx("##root",
-                ImGuiTreeNodeFlags_OpenOnArrow |
-                ImGuiTreeNodeFlags_SpanFullWidth |
-                (isRootSelected ? ImGuiTreeNodeFlags_Selected : 0))) {
-
-                ImGui::SameLine(0, 0);
-                ImGui::TextColored(ImVec4(1.f, 0.8f, 0.f, 1.f), "%s", ICON_FA_FOLDER_OPEN);
-                ImGui::SameLine();
-                ImGui::Text("%s", rootPath == m_projectPath ? "Project Root" : rootPath.filename().string().c_str());
-                if (ImGui::IsItemClicked() ||
-                    (ImGui::IsMouseClicked(0) && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
-                    m_selectedPath = rootPath.string();
-                }
-
-                UIUtils::directoryTreeBrowser(rootPath, m_selectedPath);
-                ImGui::TreePop();
-            }
-            ImGui::EndTable();
+        ImGui::TextUnformatted("Script File:");
+        if (ImGui::Button(ICON_FA_FOLDER_OPEN " Browse Script...##existing_source")) {
+            selectExistingFile(false);
+            isLua = m_existingScriptType == ScriptType::LUA;
+            isCpp = !isLua;
+            rootPath = isLua ? m_luaPath : m_projectPath;
         }
-    }
-    ImGui::EndChild();
+        ImGui::SameLine();
+        if (m_existingSourcePath.empty()) {
+            ImGui::TextDisabled("No file selected");
+        } else {
+            std::error_code ec;
+            const fs::path relative = fs::relative(m_existingSourcePath, rootPath, ec);
+            const std::string label = ec ? m_existingSourcePath.string() : relative.generic_string();
+            ImGui::TextUnformatted(label.c_str());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", m_existingSourcePath.string().c_str());
+        }
 
-    ImGui::Text("Class / Base Name:");
+        if (isCpp && (!m_existingSourcePath.empty() || !m_existingHeaderPath.empty())) {
+            ImGui::TextUnformatted("Header File:");
+            if (ImGui::Button(ICON_FA_FOLDER_OPEN " Browse Header...##existing_header"))
+                selectExistingFile(true);
+            ImGui::SameLine();
+            if (m_existingHeaderPath.empty()) {
+                ImGui::TextDisabled("No file selected");
+            } else {
+                std::error_code ec;
+                const fs::path relative = fs::relative(m_existingHeaderPath, m_projectPath, ec);
+                const std::string label = ec ? m_existingHeaderPath.string() : relative.generic_string();
+                ImGui::TextUnformatted(label.c_str());
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", m_existingHeaderPath.string().c_str());
+            }
+        }
+
+        if (!m_attachError.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.5f, 0.f, 1.f));
+            ImGui::TextWrapped("%s", m_attachError.c_str());
+            ImGui::PopStyleColor();
+        } else if (isCpp && (!m_existingSourcePath.empty() || !m_existingHeaderPath.empty()) &&
+                   (m_existingSourcePath.empty() || m_existingHeaderPath.empty())) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextWrapped("Choose both files. A same-named companion is selected automatically when found.");
+            ImGui::PopStyleColor();
+        }
+
+        if (!m_existingSourcePath.empty() || !m_existingHeaderPath.empty()) {
+            const char* detectedType = m_existingScriptType == ScriptType::LUA
+                ? "Lua Script"
+                : "C++ Script";
+            ImGui::TextDisabled("Detected type: %s", detectedType);
+        }
+    } else {
+        // Browsing is limited to the root the new script is stored relative to: a folder
+        // above it would be saved as an unresolvable "../" path.
+        if (!Util::isInsidePath(fs::path(m_selectedPath), rootPath)) {
+            m_selectedPath = rootPath.string();
+        }
+
+        if (ImGui::BeginChild("DirBrowser", ImVec2(0.0f, Theme::dpi(200.0f)), true)) {
+            if (ImGui::BeginTable("DirTree", 1, ImGuiTableFlags_Resizable)) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+
+                ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+                bool isRootSelected = fs::path(m_selectedPath).lexically_normal() == rootPath.lexically_normal();
+
+                if (ImGui::TreeNodeEx("##root",
+                    ImGuiTreeNodeFlags_OpenOnArrow |
+                    ImGuiTreeNodeFlags_SpanFullWidth |
+                    (isRootSelected ? ImGuiTreeNodeFlags_Selected : 0))) {
+
+                    ImGui::SameLine(0, 0);
+                    ImGui::TextColored(ImVec4(1.f, 0.8f, 0.f, 1.f), "%s", ICON_FA_FOLDER_OPEN);
+                    ImGui::SameLine();
+                    ImGui::Text("%s", rootPath == m_projectPath ? "Project Root" : rootPath.filename().string().c_str());
+                    if (ImGui::IsItemClicked() ||
+                        (ImGui::IsMouseClicked(0) && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
+                        m_selectedPath = rootPath.string();
+                    }
+
+                    UIUtils::directoryTreeBrowser(rootPath, m_selectedPath);
+                    ImGui::TreePop();
+                }
+                ImGui::EndTable();
+            }
+        }
+        ImGui::EndChild();
+    }
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted(m_attachExisting
+        ? "Class / Module Name:"
+        : (isLua ? "Module Name:" : "Class Name:"));
     ImGui::SetNextItemWidth(-1);
 
     bool enterPressed = ImGui::InputText(
@@ -374,113 +565,151 @@ void ScriptCreateDialog::show() {
 
     std::string baseName = m_baseNameBuffer;
     bool hasBase = !baseName.empty();
-
     std::string name = sanitizeClassName(baseName);
 
-    // Compute possible paths
     fs::path headerPath;
     fs::path sourcePath;
-
-    bool isCpp = (m_scriptType == ScriptType::SUBCLASS ||
-                  m_scriptType == ScriptType::SCRIPT_CLASS);
-    bool isLua = (m_scriptType == ScriptType::SCRIPT_LUA);
-
     if (isCpp) {
         headerPath = makeHeaderPath(name);
         sourcePath = makeSourcePath(name);
-    }
-
-    if (isLua) {
+    } else if (isLua) {
         sourcePath = makeLuaPath(name);
     }
 
-    // If Enter was pressed inside the input, try to create (same logic as Create button)
-    if (enterPressed && hasBase) {
-        bool headerExists = isCpp && fs::exists(headerPath);
-        bool sourceExists = isCpp && fs::exists(sourcePath);
-        bool luaExists    = isLua && fs::exists(sourcePath);
+    std::error_code existsEc;
+    const bool headerExists = isCpp && fs::is_regular_file(headerPath, existsEc);
+    existsEc.clear();
+    const bool sourceExists = fs::is_regular_file(sourcePath, existsEc);
+    const bool anyCreateFileExists = headerExists || sourceExists;
+    const bool allCreateFilesExist = sourceExists && (!isCpp || headerExists);
 
-        if (headerExists || sourceExists || luaExists) {
-            ImGui::OpenPopup("Confirm Overwrite");
+    bool attachFilesValid = false;
+    if (m_attachExisting) {
+        std::error_code sourceEc;
+        const bool validSource = fs::is_regular_file(m_existingSourcePath, sourceEc) &&
+            (isLua ? Util::isLuaFile(m_existingSourcePath.string())
+                   : Util::isSourceFile(m_existingSourcePath.string())) &&
+            Util::isInsidePath(m_existingSourcePath, rootPath);
+        std::error_code headerEc;
+        const bool validHeader = !isCpp ||
+            (fs::is_regular_file(m_existingHeaderPath, headerEc) &&
+             Util::isHeaderFile(m_existingHeaderPath.string()) &&
+             Util::isInsidePath(m_existingHeaderPath, m_projectPath));
+        attachFilesValid = validSource && validHeader;
+    } else {
+        if (isCpp) {
+            ImGui::TextWrapped("Will create:\n  %s\n  %s",
+                fs::relative(headerPath, m_projectPath).generic_string().c_str(),
+                fs::relative(sourcePath, m_projectPath).generic_string().c_str());
         } else {
-            finalizeCreation(headerPath, sourcePath, name);
-            ImGui::CloseCurrentPopup(); // Close main modal
+            ImGui::TextWrapped("Will create:\n  %s",
+                fs::relative(sourcePath, rootPath).generic_string().c_str());
         }
-    }
 
-    // Display
-    if (isCpp && isLua) {
-        // (You probably won’t have a type that is both; kept for completeness)
-    } else if (isCpp) {
-        ImGui::TextWrapped("Will create:\n  %s\n  %s",
-            fs::relative(headerPath, m_projectPath).string().c_str(),
-            fs::relative(sourcePath, m_projectPath).string().c_str());
-
-        bool headerExists = fs::exists(headerPath);
-        bool sourceExists = fs::exists(sourcePath);
-        if (headerExists || sourceExists) {
-            ImGui::TextColored(ImVec4(1.f, 0.5f, 0.f, 1.f),
-                "Warning: Existing file(s) will be overwritten.");
-        }
-    } else if (isLua) {
-        ImGui::TextWrapped("Will create:\n  %s",
-            fs::relative(sourcePath, m_projectPath).string().c_str());
-
-        bool luaExists = fs::exists(sourcePath);
-        if (luaExists) {
-            ImGui::TextColored(ImVec4(1.f, 0.5f, 0.f, 1.f),
-                "Warning: Existing file will be overwritten.");
+        if (anyCreateFileExists) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.5f, 0.f, 1.f));
+            if (allCreateFilesExist) {
+                ImGui::TextWrapped(
+                    "Files with this name already exist. Create will ask whether to attach or replace them.");
+            } else {
+                ImGui::TextWrapped(
+                    "Only part of this script exists. Create will ask before replacing existing files.");
+            }
+            ImGui::PopStyleColor();
         }
     }
 
     ImGui::Separator();
 
-    float windowWidth = ImGui::GetWindowSize().x;
-    float buttonsWidth = 250;
-    ImGui::SetCursorPosX((windowWidth - buttonsWidth) * 0.5f);
-
-    ImGui::BeginDisabled(!hasBase);
-    if (ImGui::Button("Create", ImVec2(120, 0))) {
-        bool headerExists = isCpp && fs::exists(headerPath);
-        bool sourceExists = isCpp && fs::exists(sourcePath);
-        bool luaExists = isLua && fs::exists(sourcePath);
-
-        if (headerExists || sourceExists || luaExists) {
-            ImGui::OpenPopup("Confirm Overwrite");
-        } else {
-            finalizeCreation(headerPath, sourcePath, name);
-            ImGui::CloseCurrentPopup();
-        }
-    }
-    ImGui::EndDisabled();
-
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+    const float windowWidth = ImGui::GetWindowSize().x;
+    auto cancelDialog = [this]() {
         m_isOpen = false;
         if (m_onCancel) m_onCancel();
         ImGui::CloseCurrentPopup();
+    };
+
+    const float actionButtonWidth = Theme::dpi(120.0f);
+    const float actionButtonsWidth = actionButtonWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SetCursorPosX((windowWidth - actionButtonsWidth) * 0.5f);
+
+    if (m_attachExisting) {
+        ImGui::BeginDisabled(!hasBase || !attachFilesValid);
+        if (ImGui::Button("Attach", ImVec2(actionButtonWidth, 0)) ||
+                (enterPressed && hasBase && attachFilesValid)) {
+            if (finalizeAttachment(m_existingHeaderPath, m_existingSourcePath, name, m_existingScriptType))
+                ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)))
+            cancelDialog();
+    } else {
+        ImGui::BeginDisabled(!hasBase);
+        if (ImGui::Button("Create", ImVec2(actionButtonWidth, 0)) || (enterPressed && hasBase)) {
+            if (anyCreateFileExists) {
+                m_attachError.clear();
+                ImGui::OpenPopup("Script Files Already Exist");
+            } else {
+                finalizeCreation(headerPath, sourcePath, name);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)))
+            cancelDialog();
     }
 
-    // Overwrite confirmation modal
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Confirm Overwrite", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-    {
-        ImGui::Text("One or more files already exist.\nThis operation will overwrite them.\n\nAre you sure?");
+    ImGui::SetNextWindowSize(ImVec2(dialogWidth, 0.0f), ImGuiCond_Always);
+    ImGuiWindowFlags alertFlags = ImGuiWindowFlags_AlwaysAutoResize |
+                                  ImGuiWindowFlags_NoSavedSettings |
+                                  ImGuiWindowFlags_Modal;
+    if (ImGui::BeginPopupModal("Script Files Already Exist", nullptr, alertFlags)) {
+        if (allCreateFilesExist) {
+            ImGui::TextUnformatted("These script files already exist.\nAttach them unchanged or replace their contents?");
+        } else {
+            ImGui::TextUnformatted("Only part of this script exists.\nReplace the existing files and create the missing files?");
+        }
+        if (!m_attachError.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.5f, 0.f, 1.f));
+            ImGui::TextWrapped("%s", m_attachError.c_str());
+            ImGui::PopStyleColor();
+        }
         ImGui::Separator();
 
-        if (ImGui::Button("Yes", ImVec2(120, 0))) {
-             finalizeCreation(headerPath, sourcePath, name);
-             ImGui::CloseCurrentPopup(); // Close Confirm Overwrite
+        const float alertButtonWidth = Theme::dpi(105.0f);
+        const int alertButtonCount = allCreateFilesExist ? 3 : 2;
+        const float alertButtonsWidth = alertButtonWidth * alertButtonCount +
+            ImGui::GetStyle().ItemSpacing.x * (alertButtonCount - 1);
+        ImGui::SetCursorPosX((ImGui::GetWindowSize().x - alertButtonsWidth) * 0.5f);
+
+        if (allCreateFilesExist) {
+            if (ImGui::Button("Attach Existing", ImVec2(alertButtonWidth, 0))) {
+                const ScriptType type = m_creationKind == CreationKind::LUA
+                    ? ScriptType::LUA
+                    : ScriptType::CPP;
+                const std::string attachName = type == ScriptType::CPP
+                    ? inferClassName(headerPath, name)
+                    : name;
+                if (finalizeAttachment(headerPath, sourcePath, attachName, type))
+                    ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+        }
+
+        if (ImGui::Button("Replace Files", ImVec2(alertButtonWidth, 0))) {
+            finalizeCreation(headerPath, sourcePath, name);
+            ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("No", ImVec2(120, 0))) { 
-            ImGui::CloseCurrentPopup(); 
+        if (ImGui::Button("Cancel", ImVec2(alertButtonWidth, 0))) {
+            ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
 
-    // If creation finished (m_isOpen set to false in finalizeCreation), close the main dialog
-    if (!m_isOpen && ImGui::IsPopupOpen("Create Script##CreateScriptModal")) {
+    if (!m_isOpen && ImGui::IsPopupOpen(popupName)) {
         ImGui::CloseCurrentPopup();
     }
 

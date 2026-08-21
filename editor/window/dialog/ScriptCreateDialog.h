@@ -18,12 +18,23 @@ namespace fs = std::filesystem;
 
 class ScriptCreateDialog {
 private:
+    enum class CreationKind {
+        CPP_SUBCLASS,
+        CPP_SCRIPT_CLASS,
+        LUA,
+    };
+
     bool m_isOpen = false;
     fs::path m_projectPath;
     fs::path m_luaPath;
     std::string m_selectedPath;
     char m_baseNameBuffer[128] = "";
-    ScriptType m_scriptType = ScriptType::SUBCLASS;
+    CreationKind m_creationKind = CreationKind::CPP_SUBCLASS;
+    ScriptType m_existingScriptType = ScriptType::CPP;
+    bool m_attachExisting = false;
+    fs::path m_existingHeaderPath;
+    fs::path m_existingSourcePath;
+    std::string m_attachError;
     Scene* m_scene = nullptr;
     Entity m_entity = NULL_ENTITY;
 
@@ -31,6 +42,7 @@ private:
     std::function<void()> m_onCancel;
 
     std::string sanitizeClassName(const std::string& in) const;
+    std::string inferClassName(const fs::path& headerPath, const std::string& fallback) const;
 
     fs::path makeHeaderPath(const std::string& className) const;
     fs::path makeSourcePath(const std::string& className) const;
@@ -39,11 +51,18 @@ private:
     void writeFiles(const fs::path& headerPath,
                     const fs::path& sourcePath,
                     const std::string& classOrModuleName,
-                    ScriptType type);
+                    CreationKind kind);
 
     void finalizeCreation(const fs::path& headerPath,
                           const fs::path& sourcePath,
                           const std::string& name);
+
+    bool finalizeAttachment(const fs::path& headerPath,
+                            const fs::path& sourcePath,
+                            const std::string& name,
+                            ScriptType type);
+
+    void selectExistingFile(bool selectHeader);
 
 public:
     ScriptCreateDialog() = default;

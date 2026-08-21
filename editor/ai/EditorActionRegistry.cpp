@@ -669,7 +669,7 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"scene_id", integerSchema("Scene id. Omit to use the selected scene")},
                 {"entity_id", integerSchema("Entity id")},
                 {"entity_name", stringSchema("Entity name, used only when entity_id is omitted")},
-                {"type", stringSchema("lua, cpp_subclass, or cpp_script_class")},
+                {"type", stringSchema("lua or cpp")},
                 {"class_name", stringSchema("Class/module name")},
                 {"path", stringSchema("Safe project-relative .lua or .cpp path")},
                 {"header_path", stringSchema("Safe project-relative header path for C++ scripts")}

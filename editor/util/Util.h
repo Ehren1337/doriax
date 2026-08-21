@@ -47,6 +47,10 @@ namespace doriax::editor{
              return "vert,frag";
         }
 
+        inline static std::string getScriptExtensions() {
+             return "lua,cpp,cc,cxx,h,hh,hpp,hxx";
+        }
+
         inline static bool isImageFile(const std::string& path) {
             static const std::unordered_set<std::string> imageExtensions = {
                 ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".psd", ".pic", ".pnm", ".svg"

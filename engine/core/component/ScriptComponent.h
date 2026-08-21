@@ -10,13 +10,12 @@
 namespace doriax{
 
     enum class ScriptType {
-        SUBCLASS,      // C++ subclass of Shape (or EntityHandle)
-        SCRIPT_CLASS,  // C++ ScriptBase
-        SCRIPT_LUA,    // Lua behavior script (Script table with properties + methods)
+        CPP,
+        LUA,
     };
 
     struct DORIAX_API ScriptEntry {
-        ScriptType type;
+        ScriptType type = ScriptType::CPP;
         std::string path;        // .cpp or .lua (for Lua: script file path)
         std::string headerPath;  // for C++; empty for Lua
         std::string className;   // C++ class or Lua module name (file base name)

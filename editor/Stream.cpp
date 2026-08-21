@@ -974,19 +974,23 @@ PivotPreset editor::Stream::stringToPivotPreset(const std::string& str) {
 
 std::string editor::Stream::scriptTypeToString(ScriptType type) {
     switch (type) {
-        case ScriptType::SUBCLASS:     return "subclass";
-        case ScriptType::SCRIPT_CLASS: return "script_class";
-        case ScriptType::SCRIPT_LUA:   return "script_lua";
-        default:                       return "subclass";
+        case ScriptType::CPP: return "cpp";
+        case ScriptType::LUA: return "lua";
+        default:              return "cpp";
     }
 }
 
 ScriptType editor::Stream::stringToScriptType(const std::string& str) {
-    if (str == "subclass")     return ScriptType::SUBCLASS;
-    if (str == "script_class") return ScriptType::SCRIPT_CLASS;
-    if (str == "script_lua")   return ScriptType::SCRIPT_LUA;
+    if (str == "lua") return ScriptType::LUA;
+    if (str == "cpp") return ScriptType::CPP;
 
-    return ScriptType::SUBCLASS;
+    // Backward compatibility: projects saved before ScriptType was reduced to
+    // CPP/LUA used these three values. Remove these branches once support for
+    // scenes written by those editor versions is intentionally dropped.
+    if (str == "script_lua") return ScriptType::LUA;
+    if (str == "subclass" || str == "script_class") return ScriptType::CPP;
+
+    return ScriptType::CPP;
 }
 
 YAML::Node editor::Stream::encodeVector2(const Vector2& vec){

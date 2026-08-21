@@ -379,10 +379,9 @@ std::string editor::Factory::formatCameraType(CameraType type) {
 
 std::string editor::Factory::formatScriptType(ScriptType type) {
     switch (type) {
-        case ScriptType::SUBCLASS: return "ScriptType::SUBCLASS";
-        case ScriptType::SCRIPT_CLASS: return "ScriptType::SCRIPT_CLASS";
-        case ScriptType::SCRIPT_LUA: return "ScriptType::SCRIPT_LUA";
-        default: return "ScriptType::SUBCLASS";
+        case ScriptType::CPP: return "ScriptType::CPP";
+        case ScriptType::LUA: return "ScriptType::LUA";
+        default: return "ScriptType::CPP";
     }
 }
 

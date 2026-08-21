@@ -472,7 +472,7 @@ bool editor::Project::remapScriptPathsInRegistry(EntityRegistry* registry, const
     for (size_t i = 0; i < scriptsArray->size(); ++i) {
         ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
         for (auto& scriptEntry : scriptComponent.scripts) {
-            const bool isLua = scriptEntry.type == ScriptType::SCRIPT_LUA;
+            const bool isLua = scriptEntry.type == ScriptType::LUA;
             changed |= remapScriptEntryPaths(scriptEntry,
                                              isLua ? oldLuaRelative : oldRelative,
                                              isLua ? newLuaRelative : newRelative);
@@ -500,7 +500,7 @@ bool editor::Project::cleanupScriptPathsInRegistry(EntityRegistry* registry, con
         scriptComponent.scripts.erase(
             std::remove_if(scriptComponent.scripts.begin(), scriptComponent.scripts.end(),
                 [&deletedRelative, &deletedLuaRelative](const ScriptEntry& scriptEntry) {
-                    if (scriptEntry.type == ScriptType::SCRIPT_LUA) {
+                    if (scriptEntry.type == ScriptType::LUA) {
                         return matchesRelativeString(deletedLuaRelative, scriptEntry.path);
                     }
                     return matchesRelativeString(deletedRelative, scriptEntry.path) ||
@@ -706,7 +706,7 @@ bool editor::Project::visitLuaPathsInRegistry(EntityRegistry* registry, const st
     for (size_t i = 0; i < scriptsArray->size(); i++) {
         ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
         for (auto& scriptEntry : scriptComponent.scripts) {
-            if (scriptEntry.type != ScriptType::SCRIPT_LUA) {
+            if (scriptEntry.type != ScriptType::LUA) {
                 continue;
             }
             changed |= transform(scriptEntry.path);
@@ -2421,7 +2421,7 @@ void editor::Project::updateSceneCppScripts(SceneProject* sceneProject) {
         for (const auto& scriptEntry : scriptComponent.scripts) {
             if (!scriptEntry.enabled)
                 continue;
-            if (scriptEntry.type == ScriptType::SCRIPT_LUA)
+            if (scriptEntry.type == ScriptType::LUA)
                 continue;
             if (scriptEntry.path.empty())
                 continue;
@@ -5078,8 +5078,7 @@ bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity 
     // Update properties for each script in the component
     for (auto& scriptEntry : scripts) {
         // C++ scripts: keep existing behavior
-        if (scriptEntry.type == ScriptType::SUBCLASS ||
-            scriptEntry.type == ScriptType::SCRIPT_CLASS) {
+        if (scriptEntry.type == ScriptType::CPP) {
 
             if (scriptEntry.headerPath.empty()) continue;
 
@@ -5101,7 +5100,7 @@ bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity 
         }
 
         // Lua scripts: load properties from Lua file
-        if (scriptEntry.type == ScriptType::SCRIPT_LUA) {
+        if (scriptEntry.type == ScriptType::LUA) {
             if (scriptEntry.path.empty()) continue;
 
             fs::path fullPath = resolveLuaPath(scriptEntry.path);

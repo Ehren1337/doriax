@@ -3,6 +3,7 @@
 
 #include "ScriptParser.h"
 #include "Out.h"
+#include <cctype>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -11,6 +12,46 @@
 
 using namespace doriax;
 
+namespace {
+
+bool isCppIdentifier(const std::string& value) {
+    return !value.empty() &&
+        (std::isalpha(static_cast<unsigned char>(value.front())) || value.front() == '_') &&
+        std::all_of(value.begin() + 1, value.end(), [](unsigned char c) {
+            return std::isalnum(c) || c == '_';
+        });
+}
+
+bool isEnumClass(const std::string& content, size_t classPosition) {
+    size_t end = classPosition;
+    while (end > 0 && std::isspace(static_cast<unsigned char>(content[end - 1]))) end--;
+    size_t begin = end;
+    while (begin > 0) {
+        const unsigned char c = static_cast<unsigned char>(content[begin - 1]);
+        if (!std::isalnum(c) && c != '_') break;
+        begin--;
+    }
+    return content.compare(begin, end - begin, "enum") == 0;
+}
+
+std::optional<std::string> findClassBaseClause(const std::string& content,
+                                               const std::string& className) {
+    if (!isCppIdentifier(className)) return std::nullopt;
+
+    const std::string pattern =
+        R"(\b(?:class|struct)\s+(?:[A-Za-z_][A-Za-z0-9_]*\s+)*\b)" + className +
+        R"(\b\s*(?:final\s*)?:\s*([^{};]*)\{)";
+    const std::regex definitionPattern(pattern);
+    for (std::sregex_iterator it(content.begin(), content.end(), definitionPattern), end;
+            it != end; ++it) {
+        if (!isEnumClass(content, static_cast<size_t>(it->position()))) {
+            return (*it)[1].str();
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
 
 ScriptPropertyType editor::ScriptParser::inferTypeFromCppType(const std::string& cppType, std::string& ptrTypeName) {
     // Remove const, &, and whitespace for comparison
@@ -182,6 +223,53 @@ std::string editor::ScriptParser::removeComments(const std::string& content) {
     }
 
     return result;
+}
+
+std::optional<bool> editor::ScriptParser::inheritsScriptBase(const std::filesystem::path& scriptPath,
+                                                             const std::string& className) {
+    std::ifstream file(scriptPath);
+    if (!file) return std::nullopt;
+    const std::string content((std::istreambuf_iterator<char>(file)),
+                              std::istreambuf_iterator<char>());
+    return inheritsScriptBaseFromString(content, className);
+}
+
+std::optional<bool> editor::ScriptParser::inheritsScriptBaseFromString(const std::string& sourceContent,
+                                                                       const std::string& className) {
+    const std::string content = removeComments(sourceContent);
+    const std::optional<std::string> baseClause = findClassBaseClause(content, className);
+    if (!baseClause) return std::nullopt;
+
+    static const std::regex scriptBasePattern(R"(\b(?:doriax::)?ScriptBase\b)");
+    return std::regex_search(*baseClause, scriptBasePattern);
+}
+
+std::optional<std::string> editor::ScriptParser::findScriptClassName(
+        const std::filesystem::path& scriptPath) {
+    std::ifstream file(scriptPath);
+    if (!file) return std::nullopt;
+    const std::string content((std::istreambuf_iterator<char>(file)),
+                              std::istreambuf_iterator<char>());
+    return findScriptClassNameFromString(content);
+}
+
+std::optional<std::string> editor::ScriptParser::findScriptClassNameFromString(
+        const std::string& sourceContent) {
+    const std::string content = removeComments(sourceContent);
+    static const std::regex definitionPattern(
+        R"(\b(?:class|struct)\s+(?:[A-Za-z_][A-Za-z0-9_]*\s+)*?([A-Za-z_][A-Za-z0-9_]*)\s*(?:final\s*)?:\s*[^{};]*\{)");
+
+    std::optional<std::string> candidate;
+    for (std::sregex_iterator it(content.begin(), content.end(), definitionPattern), end;
+            it != end; ++it) {
+        if (!isEnumClass(content, static_cast<size_t>(it->position()))) {
+            const std::string className = (*it)[1].str();
+            if (candidate && *candidate != className) return std::nullopt;
+            candidate = className;
+        }
+    }
+
+    return candidate;
 }
 
 std::vector<ScriptProperty> editor::ScriptParser::parseScriptProperties(const std::filesystem::path& scriptPath) {

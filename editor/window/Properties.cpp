@@ -7939,7 +7939,7 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
             ScriptComponent& sc = sceneProject->scene->getComponent<ScriptComponent>(entity);
             std::vector<ScriptEntry> newScripts = sc.scripts;
             ScriptEntry entry;
-            entry.type = ScriptType::SCRIPT_CLASS;
+            entry.type = ScriptType::CPP;
             entry.enabled = true;
             newScripts.push_back(entry);
             multiCmd->addPropertyCmd<std::vector<ScriptEntry>>(project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", newScripts);
@@ -7967,11 +7967,9 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
 
         std::string scriptLabel = script.className.empty() ? "Unnamed Script" : script.className;
         std::string typeLabel;
-        if (script.type == ScriptType::SUBCLASS) {
-            typeLabel = " [Subclass]";
-        } else if (script.type == ScriptType::SCRIPT_CLASS) {
+        if (script.type == ScriptType::CPP) {
             typeLabel = " [C++]";
-        } else if (script.type == ScriptType::SCRIPT_LUA) {
+        } else if (script.type == ScriptType::LUA) {
             typeLabel = " [Lua]";
         }
 
@@ -8175,7 +8173,7 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
                 float btnSpacing = ImGui::GetStyle().ItemSpacing.x;
 
                 // Header Path
-                if (script.type != ScriptType::SCRIPT_LUA) {
+                if (script.type != ScriptType::LUA) {
                     propertyHeader("Header File", secondColSize);
                     ImGui::SetNextItemWidth(secondColSize - openBtnWidth - clearBtnWidth - btnSpacing * 2.0f);
 
@@ -8188,19 +8186,31 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
 
                     ImGui::SameLine();
                     if (ImGui::Button(ICON_FA_FOLDER_OPEN "##header_btn")) {
-                        fs::path fullHdrPath(script.headerPath);
-                        if (fullHdrPath.is_relative()) fullHdrPath = projectPath / fullHdrPath;
-                        std::string selected = FileDialogs::openFileDialog(fullHdrPath.parent_path().string());
+                        fs::path startDirectory = projectPath;
+                        if (!script.headerPath.empty()) {
+                            fs::path fullHdrPath(script.headerPath);
+                            if (fullHdrPath.is_relative()) fullHdrPath = projectPath / fullHdrPath;
+                            startDirectory = fullHdrPath.parent_path();
+                        }
+                        std::string selected = FileDialogs::openFileDialog(
+                            startDirectory.string(), FILE_DIALOG_SCRIPT);
                         if (!selected.empty()) {
                             std::filesystem::path p(selected);
-                            std::error_code ec;
-                            std::filesystem::path rel = std::filesystem::relative(p, projectPath, ec);
-                            if (!ec && rel.string().find("..") == std::string::npos) {
-                                hdrPath = rel;
-                                strncpy(headerBuffer, rel.filename().string().c_str(), sizeof(headerBuffer) - 1);
-                                changed = true;
-                            } else {
+                            if (!Util::isHeaderFile(p.string())) {
+                                Backend::getApp().registerAlert("Error", "Select a C++ header file.");
+                            } else if (!Util::isInsidePath(p, projectPath)) {
                                 Backend::getApp().registerAlert("Error", "File must be inside project directory.");
+                            } else {
+                                std::error_code ec;
+                                std::filesystem::path rel = std::filesystem::relative(p, projectPath, ec);
+                                if (!ec) {
+                                    hdrPath = rel;
+                                    strncpy(headerBuffer, rel.filename().string().c_str(), sizeof(headerBuffer) - 1);
+                                    headerBuffer[sizeof(headerBuffer) - 1] = '\0';
+                                    changed = true;
+                                } else {
+                                    Backend::getApp().registerAlert("Error", "File must be inside project directory.");
+                                }
                             }
                         }
                     }
@@ -8227,22 +8237,43 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
 
                 ImGui::SameLine();
                 if (ImGui::Button(ICON_FA_FOLDER_OPEN "##source_btn")) {
-                    fs::path fullSrcPath = (script.type == ScriptType::SCRIPT_LUA)
-                        ? project->resolveLuaPath(script.path) : projectPath / fs::path(script.path);
-                    std::string selected = FileDialogs::openFileDialog(fullSrcPath.parent_path().string());
+                    const fs::path sourceRoot = script.type == ScriptType::LUA
+                        ? project->getLuaPath() : projectPath;
+                    fs::path startDirectory = sourceRoot;
+                    if (!script.path.empty()) {
+                        fs::path fullSrcPath = script.type == ScriptType::LUA
+                            ? project->resolveLuaPath(script.path) : projectPath / fs::path(script.path);
+                        startDirectory = fullSrcPath.parent_path();
+                    }
+                    std::string selected = FileDialogs::openFileDialog(
+                        startDirectory.string(), FILE_DIALOG_SCRIPT);
                     if (!selected.empty()) {
                         std::filesystem::path p(selected);
-                        std::error_code ec;
-                        // Lua sources are stored relative to the Lua root ("lua://")
-                        const std::filesystem::path sourceRoot = (script.type == ScriptType::SCRIPT_LUA)
-                            ? project->getLuaPath() : projectPath;
-                        std::filesystem::path rel = std::filesystem::relative(p, sourceRoot, ec);
-                        if (!ec && rel.string().find("..") == std::string::npos) {
-                            srcPath = rel;
-                            strncpy(sourceBuffer, rel.filename().string().c_str(), sizeof(sourceBuffer) - 1);
-                            changed = true;
+                        const bool validType = script.type == ScriptType::LUA
+                            ? Util::isLuaFile(p.string())
+                            : Util::isSourceFile(p.string());
+                        if (!validType) {
+                            Backend::getApp().registerAlert("Error", script.type == ScriptType::LUA
+                                ? "Select a Lua script file."
+                                : "Select a C++ source file.");
                         } else {
-                            Backend::getApp().registerAlert("Error", "File must be inside project directory.");
+                            // Lua sources are stored relative to the Lua root ("lua://")
+                            if (!Util::isInsidePath(p, sourceRoot)) {
+                                Backend::getApp().registerAlert("Error", script.type == ScriptType::LUA
+                                    ? "File must be inside the Lua directory."
+                                    : "File must be inside project directory.");
+                            } else {
+                                std::error_code ec;
+                                std::filesystem::path rel = std::filesystem::relative(p, sourceRoot, ec);
+                                if (!ec) {
+                                    srcPath = rel;
+                                    strncpy(sourceBuffer, rel.filename().string().c_str(), sizeof(sourceBuffer) - 1);
+                                    sourceBuffer[sizeof(sourceBuffer) - 1] = '\0';
+                                    changed = true;
+                                } else {
+                                    Backend::getApp().registerAlert("Error", "File must be inside project directory.");
+                                }
+                            }
                         }
                     }
                 }
@@ -8282,7 +8313,7 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
                         if (scriptIdx < newScripts.size()) {
                             newScripts[scriptIdx].className = newName;
                             newScripts[scriptIdx].path = newSource;
-                            if (script.type != ScriptType::SCRIPT_LUA) {
+                            if (script.type != ScriptType::LUA) {
                                 newScripts[scriptIdx].headerPath = newHeader;
                                 if (newHeader.empty()) {
                                     newScripts[scriptIdx].properties.clear();
@@ -12720,11 +12751,11 @@ void editor::Properties::show(){
                         entry.type = type;
                         entry.enabled = true;
 
-                        if (type == ScriptType::SUBCLASS || type == ScriptType::SCRIPT_CLASS) {
+                        if (type == ScriptType::CPP) {
                             entry.headerPath = headerPath.string();
                             entry.path = sourcePath.string();
                             entry.className = name;
-                        } else if (type == ScriptType::SCRIPT_LUA) {
+                        } else if (type == ScriptType::LUA) {
                             entry.headerPath.clear();
                             entry.path = sourcePath.string();
                             entry.className = name; // module (file base) name

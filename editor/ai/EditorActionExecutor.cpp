@@ -16,6 +16,7 @@
 #include "Stream.h"
 #include "util/ProjectUtils.h"
 #include "util/FileUtils.h"
+#include "util/ScriptParser.h"
 #include "component/Body2DComponent.h"
 #include "component/Body3DComponent.h"
 #include "component/MeshComponent.h"
@@ -935,30 +936,46 @@ bool parseShaderOutputFormat(const std::string& value, ShaderOutputFormat& out) 
 bool parseScriptType(const std::string& value, ScriptType& out) {
     const std::string token = lower(value);
     if (token == "lua" || token == "script_lua") {
-        out = ScriptType::SCRIPT_LUA;
+        out = ScriptType::LUA;
+        return true;
+    }
+    if (token == "cpp" || token == "cpp_subclass" || token == "subclass" ||
+            token == "cpp_script_class" || token == "script_class") {
+        out = ScriptType::CPP;
+        return true;
+    }
+    return false;
+}
+
+bool parseScriptCreationType(const std::string& value, ScriptType& out, bool& cppSubclass) {
+    const std::string token = lower(value);
+    if (token == "lua" || token == "script_lua") {
+        out = ScriptType::LUA;
+        cppSubclass = false;
         return true;
     }
     if (token == "cpp_subclass" || token == "subclass") {
-        out = ScriptType::SUBCLASS;
+        out = ScriptType::CPP;
+        cppSubclass = true;
         return true;
     }
-    if (token == "cpp_script_class" || token == "script_class" || token == "cpp") {
-        out = ScriptType::SCRIPT_CLASS;
+    if (token == "cpp_script_class" || token == "script_class") {
+        out = ScriptType::CPP;
+        cppSubclass = false;
         return true;
     }
     return false;
 }
 
 std::string scriptTypeExtension(ScriptType type, bool header) {
-    if (type == ScriptType::SCRIPT_LUA) return ".lua";
+    if (type == ScriptType::LUA) return ".lua";
     return header ? ".h" : ".cpp";
 }
 
 std::string scriptTypeName(ScriptType type) {
     switch (type) {
-        case ScriptType::SCRIPT_LUA: return "lua";
-        case ScriptType::SUBCLASS: return "cpp_subclass";
-        case ScriptType::SCRIPT_CLASS: return "cpp_script_class";
+        case ScriptType::LUA: return "lua";
+        case ScriptType::CPP: return "cpp";
     }
     return "unknown";
 }
@@ -1005,13 +1022,13 @@ std::string doriaxLuaScriptGuide(const std::string& className) {
            "(e.g. core/script/binding/CoreClassesLua.cpp, ObjectClassesLua.cpp). Confirm exact names there before writing them; if a symbol is not in that source it does not exist, so never invent APIs or borrow them from other engines.";
 }
 
-std::string doriaxCppScriptGuide(ScriptType type, const std::string& parentClass) {
+std::string doriaxCppScriptGuide(bool cppSubclass, const std::string& parentClass) {
     std::ostringstream guide;
     guide << "Doriax C++ scripts compile against flat engine API headers copied to .doriax/engine-api. "
           << "Use quoted includes such as \"Mesh.h\", \"ScriptBase.h\", \"Engine.h\", and \"ScriptProperty.h\". "
           << "Never use #include <core/...> or #include \"core/...\". "
           << "A Doriax script class needs no class-declaration or reflection macro (no D_OBJECT/GDCLASS/GENERATED_BODY/Q_OBJECT): just inherit the base class and declare a (doriax::Scene*, doriax::Entity) constructor. Prefer editing the class skeleton create_script already generated rather than rewriting it from scratch. ";
-    if (type == ScriptType::SCRIPT_CLASS) {
+    if (!cppSubclass) {
         guide << "cpp_script_class inherits doriax::ScriptBase for general entity logic. "
               << "Use REGISTER_ENGINE_EVENT(onUpdate) and void onUpdate() for variable-frame logic, or "
               << "REGISTER_ENGINE_EVENT(onFixedUpdate) and void onFixedUpdate() for physics-step logic; "
@@ -1310,7 +1327,7 @@ std::string optionalString(const Json& args, const char* key, const char* fallba
 
 // Lua entries are stored relative to the Lua root, so they resolve through it first
 std::string scriptPathToAi(Project* project, const ScriptEntry& entry) {
-    if (entry.path.empty() || entry.type != ScriptType::SCRIPT_LUA) {
+    if (entry.path.empty() || entry.type != ScriptType::LUA) {
         return entry.path;
     }
     return project->normalizeToProjectRelative(project->resolveLuaPath(entry.path)).generic_string();
@@ -1331,12 +1348,26 @@ std::string normalizeScriptPath(Project* project, const std::string& value) {
 Json scriptEntriesJson(Project* project, const std::vector<ScriptEntry>& scripts) {
     Json entries = Json::array();
     for (size_t i = 0; i < scripts.size(); i++) {
-        entries.push_back({{"index", i},
-                           {"type", scriptTypeName(scripts[i].type)},
-                           {"class_name", scripts[i].className},
-                           {"path", scriptPathToAi(project, scripts[i])},
-                           {"header_path", scripts[i].headerPath},
-                           {"enabled", scripts[i].enabled}});
+        const ScriptEntry& script = scripts[i];
+        Json entry = {{"index", i},
+                      {"type", scriptTypeName(script.type)},
+                      {"class_name", script.className},
+                      {"path", scriptPathToAi(project, script)},
+                      {"header_path", script.headerPath},
+                      {"enabled", script.enabled}};
+        if (script.type == ScriptType::CPP && !script.headerPath.empty() &&
+                !script.className.empty()) {
+            fs::path headerPath = script.headerPath;
+            if (headerPath.is_relative()) headerPath = project->getProjectPath() / headerPath;
+            const std::optional<bool> inheritsScriptBase =
+                ScriptParser::inheritsScriptBase(headerPath, script.className);
+            if (inheritsScriptBase) {
+                entry["inferred_cpp_kind"] = *inheritsScriptBase
+                    ? "cpp_script_class"
+                    : "cpp_subclass";
+            }
+        }
+        entries.push_back(std::move(entry));
     }
     return entries;
 }
@@ -3336,7 +3367,8 @@ ActionResult EditorActionExecutor::addTerrainCollision(const Json& arguments) {
 
 ActionResult EditorActionExecutor::createScript(const Json& arguments) {
     ScriptType type;
-    if (!parseScriptType(arguments.value("type", ""), type)) {
+    bool cppSubclass = false;
+    if (!parseScriptCreationType(arguments.value("type", ""), type, cppSubclass)) {
         return failResult("Unsupported script type. Use lua, cpp_subclass, or cpp_script_class.");
     }
 
@@ -3356,21 +3388,21 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
 
     fs::path sourceFull = PathUtils::uniqueChildPath(targetFull, className, scriptTypeExtension(type, false));
     fs::path headerFull;
-    if (type != ScriptType::SCRIPT_LUA) {
+    if (type != ScriptType::LUA) {
         headerFull = PathUtils::uniqueChildPath(targetFull, className, scriptTypeExtension(type, true));
     }
 
     std::string parentClass = "EntityHandle";
     bool parentDerivesMesh = false;
-    if (type == ScriptType::SUBCLASS) {
+    if (cppSubclass) {
         ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(sceneProject->scene, entity);
         parentClass = parentInfo.name;
         parentDerivesMesh = parentInfo.derivesMesh;
-    } else if (type != ScriptType::SCRIPT_LUA) {
+    } else if (type != ScriptType::LUA) {
         parentClass = "ScriptBase";
     }
 
-    if (type == ScriptType::SCRIPT_LUA) {
+    if (type == ScriptType::LUA) {
         std::ofstream f(sourceFull, std::ios::trunc);
         if (!f) return failResult("Failed to create Lua script file.");
         f << "-- " << className << ".lua\n\n";
@@ -3392,7 +3424,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         std::ofstream c(sourceFull, std::ios::trunc);
         if (!h || !c) return failResult("Failed to create C++ script files.");
         h << "#pragma once\n\n";
-        if (type == ScriptType::SUBCLASS) {
+        if (cppSubclass) {
             h << "#include \"Shape.h\"\n";
             h << "#include \"" << parentClass << ".h\"\n";
         } else {
@@ -3437,7 +3469,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         {"class_name", className},
         {"type", arguments.value("type", "")}
     };
-    if (type == ScriptType::SCRIPT_LUA) {
+    if (type == ScriptType::LUA) {
         data["lua_script_guide"] = doriaxLuaScriptGuide(className);
         data["lua_startup_method"] = "init";
         data["lua_runtime_context"] = Json{{"scene", "self.scene"}, {"entity", "self.entity"}};
@@ -3447,7 +3479,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
         data["next_step"] =
             "If the user asked for behavior, call search_engine_api for required runtime wrappers/methods, then update_script_file with complete Lua contents.";
     } else {
-        data["cpp_script_guide"] = doriaxCppScriptGuide(type, parentClass);
+        data["cpp_script_guide"] = doriaxCppScriptGuide(cppSubclass, parentClass);
         data["cpp_startup_method"] =
             "Use onUpdate for variable-frame non-physics logic or onFixedUpdate for physics-step logic, "
             "with matching REGISTER_ENGINE_EVENT/UNREGISTER_ENGINE_EVENT calls";
@@ -3473,7 +3505,7 @@ ActionResult EditorActionExecutor::createScript(const Json& arguments) {
 ActionResult EditorActionExecutor::attachScript(const Json& arguments) {
     ScriptType type;
     if (!parseScriptType(arguments.value("type", ""), type)) {
-        return failResult("Unsupported script type. Use lua, cpp_subclass, or cpp_script_class.");
+        return failResult("Unsupported script type. Use lua or cpp.");
     }
 
     uint32_t sceneId = resolveSceneId(project, arguments);
@@ -3486,7 +3518,7 @@ ActionResult EditorActionExecutor::attachScript(const Json& arguments) {
     fs::path sourceRel;
     if (!safeRelativePath(project, arguments, "path", sourceRel, error, true)) return failResult(error);
     fs::path headerRel;
-    if (type != ScriptType::SCRIPT_LUA) {
+    if (type != ScriptType::LUA) {
         if (!safeRelativePath(project, arguments, "header_path", headerRel, error, true)) return failResult(error);
     }
 
@@ -3494,7 +3526,7 @@ ActionResult EditorActionExecutor::attachScript(const Json& arguments) {
     entry.type = type;
     entry.enabled = true;
     // Lua entries resolve through "lua://", C++ entries are project-relative build inputs
-    entry.path = (type == ScriptType::SCRIPT_LUA)
+    entry.path = (type == ScriptType::LUA)
         ? project->normalizeToLuaRelative(project->getProjectPath() / sourceRel).generic_string()
         : sourceRel.generic_string();
     entry.headerPath = headerRel.empty() ? "" : headerRel.generic_string();
@@ -3567,15 +3599,15 @@ ActionResult EditorActionExecutor::updateScriptEntry(const Json& arguments) {
     if (arguments.contains("new_path")) {
         fs::path sourceRel;
         if (!safeRelativePath(project, arguments, "new_path", sourceRel, error, true)) return failResult(error);
-        const bool validSource = (entry.type == ScriptType::SCRIPT_LUA)
+        const bool validSource = (entry.type == ScriptType::LUA)
             ? Util::isLuaFile(sourceRel.string()) : Util::isSourceFile(sourceRel.string());
         if (!validSource) return failResult("new_path must be a .lua file for Lua entries and a .cpp file for C++ entries.");
-        entry.path = (entry.type == ScriptType::SCRIPT_LUA)
+        entry.path = (entry.type == ScriptType::LUA)
             ? project->normalizeToLuaRelative(project->getProjectPath() / sourceRel).generic_string()
             : sourceRel.generic_string();
     }
     if (arguments.contains("new_header_path")) {
-        if (entry.type == ScriptType::SCRIPT_LUA) return failResult("Lua script entries have no header file.");
+        if (entry.type == ScriptType::LUA) return failResult("Lua script entries have no header file.");
         fs::path headerRel;
         if (!safeRelativePath(project, arguments, "new_header_path", headerRel, error, true)) return failResult(error);
         if (!Util::isHeaderFile(headerRel.string())) return failResult("new_header_path must be a header file.");

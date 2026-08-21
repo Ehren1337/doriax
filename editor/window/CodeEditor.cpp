@@ -6,6 +6,7 @@
 #include "Backend.h"
 #include "AppSettings.h"
 #include "util/ProjectUtils.h"
+#include "util/ScriptParser.h"
 #include "command/type/PropertyCmd.h"
 #include "Out.h"
 #include "external/IconsFontAwesome6.h"
@@ -449,10 +450,9 @@ void editor::CodeEditor::checkExternalScriptChanges() {
         for (size_t i = 0; i < scriptsArray->size(); i++) {
             const ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
             for (const auto& scriptEntry : scriptComponent.scripts) {
-                if ((scriptEntry.type == ScriptType::SUBCLASS || scriptEntry.type == ScriptType::SCRIPT_CLASS) &&
-                    !scriptEntry.headerPath.empty()) {
+                if (scriptEntry.type == ScriptType::CPP && !scriptEntry.headerPath.empty()) {
                     referenced.insert(scriptEntry.headerPath);
-                } else if (scriptEntry.type == ScriptType::SCRIPT_LUA && !scriptEntry.path.empty()) {
+                } else if (scriptEntry.type == ScriptType::LUA && !scriptEntry.path.empty()) {
                     // Stored relative to the Lua root; the watch list is project-relative.
                     referenced.insert(toRelativePath(project->resolveLuaPath(scriptEntry.path).string()));
                 }
@@ -602,12 +602,9 @@ void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepa
 
             // Check all scripts in the component
             for (const auto& scriptEntry : scriptComponent->scripts) {
-                bool isCppScript =
-                    (scriptEntry.type == ScriptType::SUBCLASS ||
-                    scriptEntry.type == ScriptType::SCRIPT_CLASS);
+                bool isCppScript = scriptEntry.type == ScriptType::CPP;
 
-                bool isLuaScript =
-                    (scriptEntry.type == ScriptType::SCRIPT_LUA);
+                bool isLuaScript = scriptEntry.type == ScriptType::LUA;
 
                 // For C++ scripts we compare headerPath, for Lua we compare .lua path
                 // relFilepath is already project-relative
@@ -754,7 +751,7 @@ void editor::CodeEditor::insertLuaEntityProperty(EditorInstance& instance, Entit
     ScriptComponent* entityScriptComp = scene->findComponent<ScriptComponent>(entity);
     if (entityScriptComp) {
         for (const auto& se : entityScriptComp->scripts) {
-            if (se.type == ScriptType::SCRIPT_LUA && se.enabled && !se.className.empty()) {
+            if (se.type == ScriptType::LUA && se.enabled && !se.className.empty()) {
                 entityType = se.className;
                 break;
             }
@@ -849,7 +846,7 @@ void editor::CodeEditor::insertLuaEntityProperty(EditorInstance& instance, Entit
 
         for (size_t si = 0; si < scriptComp->scripts.size(); si++) {
             auto& scriptEntry = scriptComp->scripts[si];
-            if (scriptEntry.type != ScriptType::SCRIPT_LUA) continue;
+            if (scriptEntry.type != ScriptType::LUA) continue;
             if (project->resolveLuaPath(scriptEntry.path) != resolveFilepath(instance.filepath)) continue;
 
             // Find the newly added property by name
@@ -884,13 +881,27 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
     // Get entity info
     std::string entityType = editor::ProjectUtils::getEntityTypeName(scene, entity);
 
-    // Check if the entity has a C++ SUBCLASS script — use its class name as a more specific type
+    // A C++ script that does not inherit ScriptBase is an entity subclass. Use
+    // its class as the more specific entity-reference type.
     bool isSubclassType = false;
     std::string subclassHeaderFile;
     ScriptComponent* entityScriptComp = scene->findComponent<ScriptComponent>(entity);
     if (entityScriptComp) {
         for (const auto& se : entityScriptComp->scripts) {
-            if (se.type == ScriptType::SUBCLASS && !se.className.empty()) {
+            if (se.type != ScriptType::CPP || se.className.empty() || se.headerPath.empty())
+                continue;
+
+            std::optional<bool> inheritsScriptBase;
+            auto openHeader = editors.find(toRelativePath(se.headerPath));
+            if (openHeader != editors.end()) {
+                inheritsScriptBase = ScriptParser::inheritsScriptBaseFromString(
+                    openHeader->second.editor->GetText(), se.className);
+            } else {
+                inheritsScriptBase = ScriptParser::inheritsScriptBase(
+                    resolveFilepath(se.headerPath), se.className);
+            }
+
+            if (inheritsScriptBase && !*inheritsScriptBase) {
                 entityType = se.className;
                 isSubclassType = true;
                 if (!se.headerPath.empty()) {
@@ -1089,7 +1100,7 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
 
             for (size_t si = 0; si < scriptComp->scripts.size(); si++) {
                 auto& scriptEntry = scriptComp->scripts[si];
-                if (scriptEntry.type != ScriptType::SUBCLASS && scriptEntry.type != ScriptType::SCRIPT_CLASS) continue;
+                if (scriptEntry.type != ScriptType::CPP) continue;
                 if (scriptEntry.headerPath != headerPath.string()) continue;
 
                 // Update properties from the modified header

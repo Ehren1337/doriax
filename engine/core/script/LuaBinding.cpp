@@ -595,7 +595,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
 
         for (auto& scriptEntry : scriptComp.scripts) {
             if (!scriptEntry.enabled) continue;
-            if (scriptEntry.type != ScriptType::SCRIPT_LUA) continue;
+            if (scriptEntry.type != ScriptType::LUA) continue;
 
             std::string luaFile = std::string("lua://") + scriptEntry.path;
             Data filedata;
@@ -686,7 +686,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
         ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);
 
         for (auto& scriptEntry : scriptComp.scripts) {
-            if (scriptEntry.type != ScriptType::SCRIPT_LUA || !scriptEntry.enabled) continue;
+            if (scriptEntry.type != ScriptType::LUA || !scriptEntry.enabled) continue;
             // PASS 1 skips missing or broken files: indexing a nil instance panics Lua
             if (!scriptEntry.instance) continue;
 
@@ -716,7 +716,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
                         if (targetScriptComp) {
                             if (!prop.ptrTypeName.empty()) {
                                 for (auto& targetScript : targetScriptComp->scripts) {
-                                    if (targetScript.type == ScriptType::SCRIPT_LUA &&
+                                    if (targetScript.type == ScriptType::LUA &&
                                         targetScript.className == prop.ptrTypeName &&
                                         targetScript.enabled && targetScript.instance) {
                                         int targetRef = static_cast<int>(reinterpret_cast<intptr_t>(targetScript.instance));
@@ -729,7 +729,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
                                     foundScript = pushEntityHandleByType(L, targetScene, targetEntity, prop.ptrTypeName);
                             } else {
                                 for (auto& targetScript : targetScriptComp->scripts) {
-                                    if (targetScript.type == ScriptType::SCRIPT_LUA &&
+                                    if (targetScript.type == ScriptType::LUA &&
                                         targetScript.enabled && targetScript.instance) {
                                         int targetRef = static_cast<int>(reinterpret_cast<intptr_t>(targetScript.instance));
                                         lua_rawgeti(L, LUA_REGISTRYINDEX, targetRef);
@@ -758,7 +758,7 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
     for (size_t i = 0; i < scriptsArray->size(); i++) {
         ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);
         for (auto& scriptEntry : scriptComp.scripts) {
-            if (scriptEntry.type != ScriptType::SCRIPT_LUA || !scriptEntry.enabled) continue;
+            if (scriptEntry.type != ScriptType::LUA || !scriptEntry.enabled) continue;
             if (!scriptEntry.instance) continue;
 
             int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
@@ -786,7 +786,7 @@ void LuaBinding::cleanupLuaScripts(Scene* scene) {
     for (size_t i = 0; i < scriptsArray->size(); i++) {
         ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);
         for (auto& scriptEntry : scriptComp.scripts) {
-            if (scriptEntry.type != ScriptType::SCRIPT_LUA) continue;
+            if (scriptEntry.type != ScriptType::LUA) continue;
             if (scriptEntry.instance) {
                 int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
                 removeScriptSubscriptions(scene, ref);

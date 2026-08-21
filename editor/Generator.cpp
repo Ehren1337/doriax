@@ -540,7 +540,7 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "        doriax::ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);\n";
         sourceContent += "        doriax::Entity entity = scriptsArray->getEntity(i);\n";
         sourceContent += "        for (auto& scriptEntry : scriptComp.scripts) {\n";
-        sourceContent += "            if (scriptEntry.type == ScriptType::SCRIPT_LUA) \n";
+        sourceContent += "            if (scriptEntry.type == ScriptType::LUA) \n";
         sourceContent += "                continue; \n";
         sourceContent += "\n";
 
@@ -556,7 +556,7 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
         sourceContent += "        doriax::ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);\n";
         sourceContent += "        for (auto& scriptEntry : scriptComp.scripts) {\n";
-        sourceContent += "            if (scriptEntry.type == ScriptType::SCRIPT_LUA) \n";
+        sourceContent += "            if (scriptEntry.type == ScriptType::LUA) \n";
         sourceContent += "                continue; \n";
         sourceContent += "\n";
 
@@ -593,7 +593,7 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
                     sourceContent += "                                doriax::ScriptComponent* targetScriptComp = targetScene->findComponent<doriax::ScriptComponent>(targetEntity);\n";
                     sourceContent += "                                if (targetScriptComp) {\n";
                     sourceContent += "                                    for (auto& targetScript : targetScriptComp->scripts) {\n";
-                    sourceContent += "                                        if (targetScript.type != ScriptType::SCRIPT_LUA) {\n";
+                    sourceContent += "                                        if (targetScript.type != ScriptType::LUA) {\n";
                     sourceContent += "                                            if (targetScript.className == \"" + prop.ptrTypeName + "\" && targetScript.instance) {\n";
                     sourceContent += "                                                instancePtr = targetScript.instance;\n";
                     sourceContent += "                                                #ifdef DORIAX_EDITOR_PLUGIN\n";
@@ -659,7 +659,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
         sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
         sourceContent += "        doriax::ScriptComponent& scriptComp = scriptsArray->getComponentFromIndex(i);\n";
         sourceContent += "        for (auto& scriptEntry : scriptComp.scripts) {\n";
-        sourceContent += "            if (scriptEntry.type == ScriptType::SCRIPT_LUA) continue;\n";
+        sourceContent += "            if (scriptEntry.type == ScriptType::LUA) continue;\n";
         sourceContent += "\n";
         sourceContent += "            if (scriptEntry.instance) {\n";
         for (const auto& s : scriptFiles) {
