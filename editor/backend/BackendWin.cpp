@@ -296,9 +296,19 @@ void applyRelativeMouseData() {
     backend->virtualMouseX += backend->rawMouseX;
     backend->virtualMouseY += backend->rawMouseY;
     backend->rawMouseX = backend->rawMouseY = 0;
-    ImGui::GetIO().AddMousePosEvent(
+
+    // WM_MOUSEMOVE still queues the physical cursor position while raw input is
+    // active. If a key event follows it, ImGui's input trickling can defer the
+    // virtual position below until the next frame and expose the physical one
+    // as a large look delta. Override MousePos now and make UpdateInputEvents
+    // discard every queued absolute position for this frame. NavUpdate clears
+    // WantSetMousePos before the next platform frame, so the Win32 backend does
+    // not warp the OS cursor in response to this flag.
+    ImGuiIO& io = ImGui::GetIO();
+    io.MousePos = ImVec2(
         static_cast<float>(backend->virtualMouseX),
         static_cast<float>(backend->virtualMouseY));
+    io.WantSetMousePos = true;
 }
 
 void pollGamepads() {
