@@ -128,7 +128,7 @@ bool WinInputRouter::handleMessage(HWND window, UINT message, WPARAM wParam,
 
         case WM_CHAR:
         case WM_SYSCHAR: {
-            const unsigned int codepoint = static_cast<unsigned int>(wParam);
+            const wchar_t codepoint = static_cast<wchar_t>(wParam);
             // Other control characters would show up as boxes
             if (codepoint >= 32 || codepoint == '\t' || codepoint == '\b' ||
                 codepoint == '\r' || codepoint == 0x1b)
