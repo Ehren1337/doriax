@@ -118,7 +118,10 @@ namespace doriax {
         // and forgets the saved position along with it.
         static void handleFocusLost();
 
-        // Reads one WM_INPUT message. False when it carries no mouse motion.
+        // Drops the baseline used to convert absolute raw input to motion.
+        static void resetRawMouseDelta();
+        // Reads motion from one WM_INPUT message, including absolute devices.
+        // Returns false when the message does not produce a usable delta.
         static bool readRawMouseDelta(HRAWINPUT handle, LONG& deltaX, LONG& deltaY);
     };
 

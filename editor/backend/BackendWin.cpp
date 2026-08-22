@@ -361,10 +361,20 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 WindowWin::updateCursorClip();
                 backend->redrawRequested = true;
                 break;
-            case WM_KILLFOCUS:
-                WindowWin::releaseCursorClip();
+            case WM_KILLFOCUS: {
+                HWND focused = reinterpret_cast<HWND>(wParam);
+                DWORD processId = 0;
+                if (focused) GetWindowThreadProcessId(focused, &processId);
+                if (processId == GetCurrentProcessId()) {
+                    WindowWin::releaseCursorClip();
+                    WindowWin::resetRawMouseDelta();
+                } else {
+                    WindowWin::handleFocusLost();
+                }
+                backend->rawMouseX = backend->rawMouseY = 0;
                 backend->redrawRequested = true;
                 break;
+            }
             case WM_MOVE:
             case WM_DISPLAYCHANGE:
                 WindowWin::updateCursorClip();

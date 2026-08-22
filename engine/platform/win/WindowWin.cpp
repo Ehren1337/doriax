@@ -4,7 +4,9 @@
 #include "WindowWin.h"
 
 #include <algorithm>
+#include <climits>
 #include <cstdio>
+#include <unordered_map>
 #include <vector>
 
 using namespace doriax;
@@ -26,6 +28,18 @@ namespace {
     bool gCursorConfined = false;
     POINT gSavedCursorPosition{};
     bool gHasSavedCursorPosition = false;
+
+    struct AbsoluteMousePosition {
+        LONG pixelX = 0;
+        LONG pixelY = 0;
+        int desktopWidth = 0;
+        int desktopHeight = 0;
+        bool virtualDesktop = false;
+    };
+
+    // Absolute raw input is a normalized desktop position, not a delta.
+    // Keep the last pixel position for each device.
+    std::unordered_map<HANDLE, AbsoluteMousePosition> gAbsoluteMousePositions;
 
     // Windowed placement kept across a fullscreen round trip
     WINDOWPLACEMENT gSavedPlacement{};
@@ -185,6 +199,7 @@ void WindowWin::destroy() {
     gClientWidth = gClientHeight = 0;
     gCursorHidden = gRelativeMouse = gCursorConfined = false;
     gHasSavedCursorPosition = false;
+    resetRawMouseDelta();
     gFullscreen = false;
 }
 
@@ -416,6 +431,7 @@ void WindowWin::setRelativeMouse(bool enabled, bool restorePosition) {
         if (enabled) updateCursorClip();
         return;
     }
+    resetRawMouseDelta();
 
     if (enabled) {
         gHasSavedCursorPosition = GetCursorPos(&gSavedCursorPosition) != FALSE;
@@ -464,6 +480,11 @@ void WindowWin::releaseCursorClip() {
 void WindowWin::handleFocusLost() {
     releaseCursorClip();
     gHasSavedCursorPosition = false;
+    resetRawMouseDelta();
+}
+
+void WindowWin::resetRawMouseDelta() {
+    gAbsoluteMousePositions.clear();
 }
 
 bool WindowWin::readRawMouseDelta(HRAWINPUT handle, LONG& deltaX, LONG& deltaY) {
@@ -477,9 +498,41 @@ bool WindowWin::readRawMouseDelta(HRAWINPUT handle, LONG& deltaX, LONG& deltaY) 
         return false;
     const RAWINPUT* input = reinterpret_cast<const RAWINPUT*>(storage.data());
     if (input->header.dwType != RIM_TYPEMOUSE) return false;
-    if (input->data.mouse.lLastX == 0 && input->data.mouse.lLastY == 0) return false;
 
-    deltaX = input->data.mouse.lLastX;
-    deltaY = input->data.mouse.lLastY;
-    return true;
+    const RAWMOUSE& mouse = input->data.mouse;
+    if (mouse.usFlags & MOUSE_MOVE_ABSOLUTE) {
+        const bool virtualDesktop = (mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
+        const int desktopWidth = GetSystemMetrics(
+            virtualDesktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
+        const int desktopHeight = GetSystemMetrics(
+            virtualDesktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
+        if (desktopWidth <= 0 || desktopHeight <= 0) return false;
+        const LONG pixelX = MulDiv(mouse.lLastX, desktopWidth, USHRT_MAX);
+        const LONG pixelY = MulDiv(mouse.lLastY, desktopHeight, USHRT_MAX);
+
+        auto previous = gAbsoluteMousePositions.find(input->header.hDevice);
+        if (previous == gAbsoluteMousePositions.end() ||
+                previous->second.virtualDesktop != virtualDesktop ||
+                previous->second.desktopWidth != desktopWidth ||
+                previous->second.desktopHeight != desktopHeight) {
+            gAbsoluteMousePositions[input->header.hDevice] = {
+                pixelX, pixelY, desktopWidth, desktopHeight,
+                virtualDesktop};
+            return false;
+        }
+
+        // Convert before subtracting so rounding does not discard slow motion.
+        deltaX = pixelX - previous->second.pixelX;
+        deltaY = pixelY - previous->second.pixelY;
+        previous->second.pixelX = pixelX;
+        previous->second.pixelY = pixelY;
+    } else {
+        // Seed again if a driver switches this device between packet modes.
+        if (!gAbsoluteMousePositions.empty())
+            gAbsoluteMousePositions.erase(input->header.hDevice);
+        deltaX = mouse.lLastX;
+        deltaY = mouse.lLastY;
+    }
+
+    return deltaX != 0 || deltaY != 0;
 }
