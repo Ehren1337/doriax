@@ -974,7 +974,6 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
     }
 
     JPH::Shape* mutableShape = const_cast<JPH::Shape*>(shapeData.shape.GetPtr());
-    mutableShape->SetEmbedded();
     mutableShape->SetUserData(index);
 
     if (shapeData.shape->GetType() == JPH::EShapeType::Convex){
@@ -1323,7 +1322,6 @@ int PhysicsSystem::loadShape3D(Body3DComponent& body, const Vector3& position, c
     JPH::ShapeSettings::ShapeResult shape_result = shapeSettings->Create();
     if (shape_result.IsValid()){
         JPH::Shape* shape = shape_result.Get();
-        shape->SetEmbedded();
         shape->SetUserData(body.numShapes);
 
         body.shapes[body.numShapes].shape = shape;
@@ -1341,11 +1339,8 @@ int PhysicsSystem::loadShape3D(Body3DComponent& body, const Vector3& position, c
 }
 
 void PhysicsSystem::destroyShape3D(Body3DComponent& body, size_t index){
-    if (body.shapes[index].shape){
-        body.shapes[index].shape->Release();
-
-        body.shapes[index].shape = NULL;
-    }
+    // ShapeRefC::operator= releases the owned reference; do not call Shape::Release manually.
+    body.shapes[index].shape = nullptr;
 }
 
 bool PhysicsSystem::loadDistanceJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchorA, Vector2 anchorB, bool autoAnchors, bool rope){
