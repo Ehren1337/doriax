@@ -81,6 +81,8 @@ namespace doriax::editor {
         bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth, int canvasHeight);
         void snapCameraToDirection(Camera* camera, const Vector3& direction);
         void focusSceneWindow(const SceneProject& sceneProject) const;
+        void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
+        void drawParentSceneButton(const SceneProject& sceneProject);
         std::string getWindowTitle(const SceneProject& sceneProject) const;
         Entity resolveStructureSelection(uint32_t sceneId, Entity entity) const;
         Entity findSelectableObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId = nullptr);

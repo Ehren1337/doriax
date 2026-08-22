@@ -23,6 +23,7 @@
 #include "Stream.h"
 #include "Out.h"
 #include "App.h"
+#include "EditorHost.h"
 #include "Theme.h"
 #include "Widgets.h"
 
@@ -239,6 +240,90 @@ void editor::SceneWindow::stopViewingCamera(uint32_t sceneId) {
 
 void editor::SceneWindow::focusSceneWindow(const SceneProject& sceneProject) const {
     ImGui::SetWindowFocus(("###Scene" + std::to_string(sceneProject.id)).c_str());
+}
+
+void editor::SceneWindow::requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId) {
+    // Defer until the current viewport image has been submitted.
+    editor::getEditorHost().enqueueMainThreadTask([this, childSceneId, parentSceneId]() {
+        if (project->isAnyScenePlaying()) {
+            Out::warning("Cannot open a new scene while a scene is playing.");
+            return;
+        }
+        if (!project->getScene(childSceneId) || !project->getScene(parentSceneId)) {
+            return;
+        }
+
+        project->checkUnsavedAndExecute(childSceneId, [this, childSceneId, parentSceneId]() {
+            if (project->isAnyScenePlaying()) {
+                Out::warning("Cannot open a new scene while a scene is playing.");
+                return;
+            }
+
+            SceneProject* parentScene = project->getScene(parentSceneId);
+            if (!parentScene) {
+                return;
+            }
+
+            const fs::path parentPath = parentScene->filepath;
+            project->closeScene(childSceneId, true);
+
+            if (parentPath.empty()) {
+                project->setSelectedSceneId(parentSceneId);
+            } else {
+                project->openScene(parentPath, false);
+            }
+
+            parentScene = project->getScene(parentSceneId);
+            if (parentScene && parentScene->opened) {
+                focusSceneWindow(*parentScene);
+            }
+        });
+    });
+}
+
+void editor::SceneWindow::drawParentSceneButton(const SceneProject& sceneProject) {
+    std::vector<const SceneProject*> parentScenes;
+    for (const SceneProject& possibleParent : project->getScenes()) {
+        if (project->hasChildScene(possibleParent.id, sceneProject.id)) {
+            parentScenes.push_back(&possibleParent);
+        }
+    }
+
+    if (parentScenes.empty()) {
+        return;
+    }
+
+    const std::string popupId = "ParentScenePopup##" + std::to_string(sceneProject.id);
+    const std::string buttonId = std::string(ICON_FA_ARROW_TURN_UP) + " Parent##ParentScene" + std::to_string(sceneProject.id);
+
+    ImGui::SameLine(0, Theme::dpi(10.0f));
+    ImGui::BeginDisabled(project->isAnyScenePlaying());
+    if (ImGui::Button(buttonId.c_str())) {
+        if (parentScenes.size() == 1) {
+            requestOpenParentScene(sceneProject.id, parentScenes.front()->id);
+        } else {
+            ImGui::OpenPopup(popupId.c_str());
+        }
+    }
+
+    if (parentScenes.size() == 1) {
+        const std::string parentName = BidiText::toVisual(parentScenes.front()->name);
+        ImGui::SetItemTooltip("Return to parent scene '%s'", parentName.c_str());
+    } else {
+        ImGui::SetItemTooltip("Choose a parent scene");
+    }
+
+    if (ImGui::BeginPopup(popupId.c_str())) {
+        for (const SceneProject* parentScene : parentScenes) {
+            const std::string label = BidiText::toVisual(parentScene->name)
+                + "##ParentScene" + std::to_string(parentScene->id);
+            if (ImGui::MenuItem(label.c_str())) {
+                requestOpenParentScene(sceneProject.id, parentScene->id);
+            }
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::EndDisabled();
 }
 
 std::string editor::SceneWindow::getWindowTitle(const SceneProject& sceneProject) const {
@@ -2137,6 +2222,8 @@ void editor::SceneWindow::show() {
                 }
                 ImGui::SetItemTooltip("Exit camera preview (Esc)");
             }
+
+            drawParentSceneButton(sceneProject);
 
             ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
 
