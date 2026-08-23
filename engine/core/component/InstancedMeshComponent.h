@@ -6,6 +6,8 @@
 
 #include "math/Rect.h"
 
+#include <vector>
+
 namespace doriax{
 
     struct InstanceData{

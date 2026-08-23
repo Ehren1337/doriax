@@ -4,6 +4,8 @@
 #ifndef POLYGON_COMPONENT_H
 #define POLYGON_COMPONENT_H
 
+#include <vector>
+
 namespace doriax{
 
     struct PolygonPoint{

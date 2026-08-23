@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <string>
 
 #if defined(_WIN32)
     #include <windows.h>

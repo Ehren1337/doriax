@@ -7,6 +7,7 @@
 #include "render/Render.h"
 #include "io/Data.h"
 
+#include <array>
 #include <string>
 
 namespace doriax {

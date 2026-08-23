@@ -8,6 +8,8 @@
 #include "math/Vector4.h"
 #include "component/PolygonComponent.h"
 
+#include <vector>
+
 namespace doriax{
 
     struct DORIAX_API MeshPolygonComponent{
