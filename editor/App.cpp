@@ -2082,7 +2082,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v21: backend-specific storage-buffer bindings are preserved in reflection data.
     // v22: composite.frag samples the scene color and reflection in destination space
     //      (params.w), so SSR can composite to the swapchain in exported builds.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v22";
+    // v23: explicit SSR LOD sampling prevents D3D11 loop-unrolling failures.
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v23";
 }
 
 void editor::App::pushTabNotificationStyle(){

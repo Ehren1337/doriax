@@ -57,7 +57,8 @@ void main(){
 
             float w = exp(-r2 * 2.0); // gaussian over the normalized disc
             vec2 offset = unit * radius * texel; // spread scales with radius
-            vec4 s = texture(sampler2D(u_ssrTexture, u_ssr_smp), v_texcoord + offset);
+            // Explicit LOD prevents D3D11 from unrolling the blur loops.
+            vec4 s = textureLod(sampler2D(u_ssrTexture, u_ssr_smp), v_texcoord + offset, 0.0);
 
             sumColor += s.rgb * w; // s.rgb is already premultiplied (mask baked in)
             sumMask  += s.a * w;

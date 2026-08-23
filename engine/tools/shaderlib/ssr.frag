@@ -42,7 +42,8 @@ uniform u_fs_ssrParams {
 #include "includes/octahedral.glsl"
 
 float sampleDepth(vec2 uv){
-    return decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), uv));
+    // Explicit LOD keeps the D3D11 ray-march loop dynamic.
+    return decodeDepth(textureLod(sampler2D(u_depthTexture, u_depth_smp), uv, 0.0));
 }
 
 // No per-backend depth range here: the G-buffer packs 0.5*z/w + 0.5 taken before
