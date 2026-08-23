@@ -97,7 +97,7 @@ static bool hasNintendoFaceLayout(GCController* controller) {
 
     int capturedSlot = slot;
     controller.extendedGamepad.valueChangedHandler =
-        ^(GCExtendedGamepad* gamepad, GCControllerElement* element) {
+        ^(GCExtendedGamepad* gamepad, GCControllerElement*) {
             [DoriaxGameController handleState:gamepad slot:capturedSlot];
         };
 
