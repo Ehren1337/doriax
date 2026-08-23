@@ -377,11 +377,29 @@ bool editor::Generator::runCommand(const std::string& command, const fs::path& w
     return commandRunner.run(command, workingDir);
 }
 
-std::string editor::Generator::getPlatformCMakeConfig(const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath) {
+std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath) {
+    // The title crosses two quoting layers: the generated CMake string and the
+    // C string literal passed to the platform backend. Escape both, matching the
+    // exported-project configuration produced by Exporter.
+    std::string title;
+    for (char c : windowSettings.title) {
+        if (c == '\\' || c == '"') title += '\\';
+        title += c;
+    }
+    std::string cmakeTitle;
+    for (char c : title) {
+        if (c == '\\' || c == '"' || c == '$') cmakeTitle += '\\';
+        cmakeTitle += c;
+    }
+
     std::string content;
     content += "if (NOT DORIAX_EDITOR_PLUGIN)\n";
+    content += "    add_definitions(\"-DDORIAX_VSYNC_ENABLED=" + std::string(vsyncEnabled ? "1" : "0") + "\")\n";
     content += "    add_definitions(\"-DDEFAULT_WINDOW_WIDTH=" + std::to_string(windowSettings.width) + "\")\n";
     content += "    add_definitions(\"-DDEFAULT_WINDOW_HEIGHT=" + std::to_string(windowSettings.height) + "\")\n";
+    content += "    add_definitions(\"-DDORIAX_WINDOW_MODE=" + std::to_string(static_cast<int>(windowSettings.mode)) + "\")\n";
+    content += "    add_definitions(\"-DDORIAX_WINDOW_RESIZABLE=" + std::string(windowSettings.resizable ? "1" : "0") + "\")\n";
+    content += "    add_definitions(\"-DDORIAX_WINDOW_TITLE=\\\"" + cmakeTitle + "\\\"\")\n";
     content += "\n";
     content += "    set(COMPILE_ZLIB OFF)\n";
     content += "    set(IS_ARM OFF)\n";
@@ -713,7 +731,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
     return sourceContent;
 }
 
-void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs) {
+void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs) {
     const fs::path exePath = FileUtils::getExecutableDir();
 
     fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
@@ -881,7 +899,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    set(CMAKE_MSVC_RUNTIME_LIBRARY \"" + runtimeLibrary + "\")\n";
     cmakeContent += "endif()\n\n";
 
-    cmakeContent += getPlatformCMakeConfig(windowSettings, assetsPath, luaPath) + "\n";
+    cmakeContent += getPlatformCMakeConfig(vsyncEnabled, windowSettings, assetsPath, luaPath) + "\n";
 
     cmakeContent += scriptSources + "\n";
     cmakeContent += factorySources + "\n";
@@ -1373,7 +1391,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     const fs::path mainFile = generatedPath / "main.cpp";
     FileUtils::writeIfChanged(mainFile, mainContent);
 
-    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, windowSettings, assetsPath, luaPath, scriptDirs);
+    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs);
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {
