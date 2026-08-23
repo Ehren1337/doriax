@@ -111,6 +111,13 @@ set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
 set(DORIAX_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
+# Warnings from vendored code are not ours to fix and only hide our own
+if(MSVC)
+    set(EXTERNAL_WARNING_FLAG /w)
+else()
+    set(EXTERNAL_WARNING_FLAG -w)
+endif()
+
 # Icon and version resource for one binary. Each target needs its own so
 # OriginalFilename matches the file on disk. SignPath wants metadata on every
 # signed binary, so the DLL gets one too: pass an empty icon_name for it.
@@ -288,6 +295,7 @@ if(NATIVE_MENU)
 endif()
 add_definitions("-DWITH_MINIAUDIO") # For SoLoud
 set(NFD_PORTAL ON CACHE BOOL "Use xdg-desktop-portal instead of GTK") # For NFD
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "Enable parse tools" FORCE) # For yaml-cpp
 
 set(SHADERS_DIR "${CMAKE_SOURCE_DIR}/engine/tools/shaderlib")
 set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
@@ -334,16 +342,16 @@ add_custom_command(
 
 include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 
-include_directories (${DORIAX_ROOT}/libs/sokol)
-include_directories (${DORIAX_ROOT}/libs/json)
-include_directories (${DORIAX_ROOT}/libs/lua)
-include_directories (${DORIAX_ROOT}/libs/luabridge3)
-include_directories (${DORIAX_ROOT}/libs/box2d/include)
-include_directories (${DORIAX_ROOT}/libs/joltphysics)
-include_directories (${DORIAX_ROOT}/libs/stb)
-include_directories (${DORIAX_ROOT}/libs/harfbuzz)
-include_directories (${DORIAX_ROOT}/libs/sheenbidi/Headers)
-include_directories (${DORIAX_ROOT}/libs/soloud/include)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/sokol)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/json)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/lua)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/luabridge3)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/box2d/include)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/joltphysics)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/stb)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/harfbuzz)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/sheenbidi/Headers)
+include_directories (SYSTEM ${DORIAX_ROOT}/libs/soloud/include)
 
 include_directories (${DORIAX_ROOT}/core)
 include_directories (${DORIAX_ROOT}/core/action)
@@ -408,6 +416,14 @@ add_subdirectory(${SHADERCOMPILER_ROOT} EXCLUDE_FROM_ALL)
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
 
+foreach(lib IN ITEMS nfd yaml-cpp)
+    target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
+    # Reaches the headers they export to the editor, which ImGui gets below
+    get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
+    set_target_properties(${lib} PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${lib_includes}")
+endforeach()
+
 # Add ImGui source files
 set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui.cpp
@@ -425,6 +441,15 @@ elseif(GRAPHIC_BACKEND STREQUAL "metal")
 else()
     list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
 endif()
+
+# ImGui has no target of its own; only one of these backends builds per platform
+set_property(
+    SOURCE
+        ${IMGUI_SOURCES}
+        ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_osx.mm
+    APPEND PROPERTY COMPILE_OPTIONS ${EXTERNAL_WARNING_FLAG}
+)
 
 include_directories (${EDITOR_DIR})
 
@@ -571,10 +596,13 @@ endif()
 function(configure_doriax_editor_target target_name)
     add_dependencies(${target_name} generate_shaders generate_api_suggestions)
 
-    target_include_directories(${target_name} PRIVATE
+    target_include_directories(${target_name} SYSTEM PRIVATE
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
         ${OPENGL_INCLUDE_DIR}
+    )
+
+    target_include_directories(${target_name} PRIVATE
         ${GENERATED_DIR}
     )
 
