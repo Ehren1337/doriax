@@ -108,7 +108,8 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             build-essential ninja-build pkg-config python3 wget gpg \
-            libx11-dev libxrandr-dev libgl1-mesa-dev libvulkan-dev \
+            libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libgl1-mesa-dev libvulkan-dev \
             libwayland-dev wayland-protocols extra-cmake-modules \
             libdbus-1-dev libcurl4-openssl-dev
           # 22.04 ships CMake 3.22; the vendored glslang requires 3.27 or newer.
