@@ -46,6 +46,10 @@ using namespace doriax;
 namespace {
 
 constexpr wchar_t WINDOW_CLASS_NAME[] = L"DoriaxGameWindow";
+// DefWindowProc runs a modal message loop while the user drags the window, so
+// draw from that loop at a bounded rate until the drag ends.
+constexpr UINT_PTR LIVE_RESIZE_TIMER_ID = 0xD04A;
+constexpr UINT LIVE_RESIZE_INTERVAL_MS = 16;
 
 #if defined(SOKOL_GLCORE)
 // wglCreateContextAttribsARB / wglSwapIntervalEXT, resolved at runtime
@@ -66,6 +70,9 @@ GamepadWin gamepads;
 WinInputRouter inputRouter;
 
 bool shouldClose = false;
+bool inSizeMove = false;
+
+void drawFrame();
 
 #if defined(SOKOL_GLCORE)
 template <typename T>
@@ -95,6 +102,21 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message,
             WindowWin::refreshClientSize();
             WindowWin::updateCursorClip();
             return 0;
+        case WM_ENTERSIZEMOVE:
+            inSizeMove = true;
+            SetTimer(handle, LIVE_RESIZE_TIMER_ID,
+                     LIVE_RESIZE_INTERVAL_MS, nullptr);
+            return 0;
+        case WM_EXITSIZEMOVE:
+            KillTimer(handle, LIVE_RESIZE_TIMER_ID);
+            inSizeMove = false;
+            return 0;
+        case WM_TIMER:
+            if (wParam == LIVE_RESIZE_TIMER_ID && inSizeMove) {
+                drawFrame();
+                return 0;
+            }
+            break;
         case WM_MOVE:
         case WM_DISPLAYCHANGE:
         case WM_SETFOCUS:
@@ -256,6 +278,15 @@ void endFrame() {
 
 #endif
 
+void drawFrame() {
+    if (shouldClose) return;
+
+    gamepads.poll();
+    beginFrame();
+    Engine::systemDraw();
+    endFrame();
+}
+
 }
 
 int DoriaxWin::init(int argc, char **argv) {
@@ -312,12 +343,11 @@ int DoriaxWin::init(int argc, char **argv) {
         if (shouldClose)
             break;
 
-        gamepads.poll();
-
-        beginFrame();
-        Engine::systemDraw();
-        endFrame();
+        drawFrame();
     }
+
+    KillTimer(WindowWin::handle(), LIVE_RESIZE_TIMER_ID);
+    inSizeMove = false;
 
     Engine::systemViewDestroyed();
     Engine::systemShutdown();
