@@ -9,6 +9,7 @@
 #include "Stream.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+#include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
 
@@ -28,6 +29,10 @@
 using namespace doriax;
 
 namespace {
+    constexpr float BUILD_PROGRESS_START = 0.6f;
+    constexpr float BUILD_PROGRESS_END = 0.95f;
+    constexpr float MSBUILD_COMPILE_END = 0.9f;
+
     // Parses make-style "[ 47%]" and ninja-style "[123/456]" build-line prefixes
     // into a 0..1 fraction so the compile step can drive the progress bar.
     bool parseBuildProgress(const std::string& line, float& fraction) {
@@ -510,7 +515,7 @@ bool editor::Exporter::configureBuild() {
 }
 
 bool editor::Exporter::runBuild() {
-    setProgressRaw("Compiling project...", 0.6f);
+    setProgressRaw("Compiling project...", BUILD_PROGRESS_START);
 
     if (isCancelled()) { setError("Export cancelled"); return false; }
 
@@ -532,14 +537,27 @@ bool editor::Exporter::runBuild() {
         cmd = CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) + cmd;
     }
 
+    // Initialization only predicts the work denominator. Do not advance the
+    // bar until MSBuild confirms work by emitting a source filename.
+    MsBuildProgress msBuildProgress(buildDir, config.buildType);
+
     Out::info("Building export with %u parallel jobs...", jobs);
-    bool ok = commandRunner.run(cmd, buildDir, [this](const std::string& line) {
+    bool ok = commandRunner.run(cmd, buildDir, [this, &msBuildProgress](const std::string& line) {
         Out::build("%s", line.c_str());
         float fraction = 0.0f;
-        std::lock_guard<std::mutex> lock(progressMutex);
-        progress.detailLine = line;
-        if (parseBuildProgress(line, fraction)) {
-            progress.overallProgress = 0.6f + 0.35f * fraction;
+        bool hasProgress = parseBuildProgress(line, fraction);
+        float buildEnd = BUILD_PROGRESS_END;
+        if (!hasProgress && msBuildProgress.consumeLine(line, fraction)) {
+            hasProgress = true;
+            buildEnd = MSBUILD_COMPILE_END;
+        }
+        {
+            std::lock_guard<std::mutex> lock(progressMutex);
+            progress.detailLine = line;
+            if (hasProgress) {
+                progress.overallProgress = BUILD_PROGRESS_START
+                    + (buildEnd - BUILD_PROGRESS_START) * fraction;
+            }
         }
     });
 

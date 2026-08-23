@@ -564,6 +564,10 @@ if(APPLE)
     list(APPEND DORIAX_EDITOR_SOURCES ${EDITOR_DIR}/util/ClipboardMac.mm)
 endif()
 
+if(WIN32)
+    list(APPEND DORIAX_EDITOR_SOURCES ${EDITOR_DIR}/util/MsBuildProgress.cpp)
+endif()
+
 function(configure_doriax_editor_target target_name)
     add_dependencies(${target_name} generate_shaders generate_api_suggestions)
 
