@@ -60,9 +60,9 @@ DoriaxApple::~DoriaxApple(){
 sg_environment DoriaxApple::getSokolEnvironment(){
     return (sg_environment) {
         .defaults = {
-            .sample_count = (int)Renderer.view.sampleCount,
             .color_format = SG_PIXELFORMAT_BGRA8,
             .depth_format = SG_PIXELFORMAT_DEPTH_STENCIL,
+            .sample_count = (int)Renderer.view.sampleCount,
         },
         .metal = {
             .device = (__bridge const void*) Renderer.view.device,
