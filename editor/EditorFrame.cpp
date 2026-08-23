@@ -54,12 +54,15 @@ bool EditorFrame::detectActivity(bool& redrawRequested){
         typing = ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
     }
 
+    // Consumed apart from the test below, which short-circuits
+    const bool appRedraw = app->consumeRedrawRequest();
+
     const bool activity =
         io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
         io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
         ImGui::IsAnyMouseDown() || typing || io.WantTextInput ||
         ImGui::IsAnyItemActive() || app->didRenderScene() ||
-        app->hasPendingMainThreadTasks() || redrawRequested;
+        app->hasPendingMainThreadTasks() || redrawRequested || appRedraw;
     redrawRequested = false;
 
     return activity;

@@ -948,12 +948,15 @@ int editor::Backend::init(int argc, char* argv[]) {
                 for (int key = ImGuiKey_Keyboard_BEGIN;
                      !typing && key < ImGuiKey_Keyboard_END; ++key)
                     typing = ImGui::IsKeyDown(static_cast<ImGuiKey>(key));
+                // Consumed apart from the test below, which short-circuits
+                const bool appRedraw = app.consumeRedrawRequest();
                 const bool activity =
                     io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
                     io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
                     ImGui::IsAnyMouseDown() || typing || io.WantTextInput ||
                     ImGui::IsAnyItemActive() || app.didRenderScene() ||
-                    app.hasPendingMainThreadTasks() || backend->redrawRequested;
+                    app.hasPendingMainThreadTasks() ||
+                    backend->redrawRequested || appRedraw;
                 backend->redrawRequested = false;
                 if (activity) lastActivityTime = monotonicSeconds();
 

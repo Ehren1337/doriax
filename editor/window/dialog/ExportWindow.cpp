@@ -890,6 +890,12 @@ void ExportWindow::drawAddShaderDialog() {
 void ExportWindow::drawProgress() {
     ExportProgress progress = m_exporter.getProgress();
 
+    // The export thread is not input: without this the dialog would only advance on
+    // mouse moves, and the finished layout would wait for one.
+    if (!progress.finished && !progress.failed) {
+        Backend::getApp().requestRedraw();
+    }
+
     ImGui::Dummy(ImVec2(0.0f, Theme::dpi(6.0f)));
     ImGui::Text("Exporting project...");
     ImGui::Spacing();

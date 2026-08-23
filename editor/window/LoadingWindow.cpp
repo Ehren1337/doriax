@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LoadingWindow.h"
+#include "Backend.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <vector>
@@ -16,6 +17,11 @@ LoadingWindow::~LoadingWindow() {
 
 void LoadingWindow::show() {
     bool hasBuilds = ResourceProgress::hasActiveBuilds();
+
+    // Build progress comes from worker threads, so nothing else keeps the loop awake
+    if (hasBuilds) {
+        Backend::getApp().requestRedraw();
+    }
 
     bool dragDropActive = ImGui::IsDragDropActive();
 

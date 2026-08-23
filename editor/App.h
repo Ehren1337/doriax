@@ -78,6 +78,8 @@ namespace doriax::editor{
         bool renderedSceneThisFrame = false;
         std::function<void()> wakeCallback;
 
+        bool redrawRequested = false;
+
         // Footer stats, sampled only from consecutive drawn frames (see engineRender).
         bool renderedScenePrevFrame = false;
         float footerFramerate = 0.0f;
@@ -228,6 +230,9 @@ namespace doriax::editor{
 
         bool didRenderScene() const { return renderedSceneThisFrame; }
         bool hasPendingMainThreadTasks();
+        // Main thread only: keeps the loop drawing while a worker thread drives the UI.
+        void requestRedraw();
+        bool consumeRedrawRequest();
         // The AI worker gets its own copy: capturing this static App would dangle.
         void setWakeCallback(std::function<void()> cb);
 

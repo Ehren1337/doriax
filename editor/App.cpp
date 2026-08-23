@@ -1791,6 +1791,18 @@ bool editor::App::hasPendingMainThreadTasks() {
     return !mainThreadTasks.empty();
 }
 
+// Counts as activity, so the loop also keeps drawing for the idle delay past the
+// last request: enough for ImGui to auto-resize a window whose content just grew.
+void editor::App::requestRedraw() {
+    redrawRequested = true;
+}
+
+bool editor::App::consumeRedrawRequest() {
+    const bool requested = redrawRequested;
+    redrawRequested = false;
+    return requested;
+}
+
 void editor::App::setWakeCallback(std::function<void()> cb) {
     wakeCallback = cb;
     // The AI service keeps its own copy, so nothing it holds points back here.
