@@ -16,15 +16,14 @@ env:
   TARGET: doriax-editor
   SIGNPATH_ORGANIZATION_ID: 71ade14e-ea98-448b-b32f-954d41e71ef9
   SIGNPATH_PROJECT_SLUG: doriax
-  # Keep at 3.5.1 or newer: 3.4 segfaults inside glfwTerminate on Wayland when
-  # the last frame swapped without a following poll (glfw/glfw#2744).
-  GLFW_VERSION: 3.5.1
-  SDL2_VERSION: 2.30.11
 
 jobs:
   build:
     name: Build for ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    # Must resolve to null and not "" on the other entries: an empty container
+    # is still a container job, which Windows and macOS runners reject.
+    container: ${{ matrix.config.container || fromJSON('null') }}
     env:
       SIGN_WINDOWS: ${{ matrix.config.cc == 'cl' && secrets.SIGNPATH_API_TOKEN != '' && (github.event_name == 'release' || github.ref == 'refs/heads/test-signing') }}
     strategy:
@@ -47,9 +46,12 @@ jobs:
             cxx: "g++",
             generators: "Ninja"
           }
+        # The container pins the glibc floor to 22.04 instead of the runner
+        # image's, so the artifacts start on older distros too.
         - {
             name: "Ubuntu Latest GCC",
             os: ubuntu-latest,
+            container: "ubuntu:22.04",
             artifact: "doriax_linux",
             cc: "gcc",
             cxx: "g++",
@@ -65,6 +67,15 @@ jobs:
           }
 
     steps:
+      - name: Prepare container
+        if: matrix.config.container
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+          # The workspace is bind-mounted from the host runner's user, so git
+          # refuses to work in it as root until the path is marked safe.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@v6
         with:
           submodules: true
@@ -94,8 +105,19 @@ jobs:
       - name: Install dependencies on Ubuntu
         if: startsWith(matrix.config.os, 'ubuntu')
         run: |
-          sudo apt-get update
-          sudo apt-get install ninja-build cmake libx11-dev libxrandr-dev libvulkan-dev libwayland-dev wayland-protocols extra-cmake-modules libgtk-3-dev libdbus-1-dev libcurl4-openssl-dev
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ninja-build pkg-config python3 wget gpg \
+            libx11-dev libxrandr-dev libgl1-mesa-dev libvulkan-dev \
+            libwayland-dev wayland-protocols extra-cmake-modules \
+            libdbus-1-dev libcurl4-openssl-dev
+          # 22.04 ships CMake 3.22; the vendored glslang requires 3.27 or newer.
+          wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
+            | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ jammy main' \
+            > /etc/apt/sources.list.d/kitware.list
+          apt-get update
+          apt-get install -y --no-install-recommends cmake
           ninja --version
           cmake --version
           gcc --version
@@ -193,6 +215,46 @@ jobs:
           cp signed/* instdir/bin/
           ls -la instdir/bin
 
+      - name: Package the Linux build
+        if: startsWith(matrix.config.os, 'ubuntu')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          # Artifact zips drop the executable bit, the same reason macOS ships a
+          # dmg. Only the tarball carries it through, inside the archive.
+          rm -rf pkg && mkdir -p pkg
+          cp -a instdir pkg/doriax
+          tar -czf "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.tar.gz" -C pkg doriax
+
+          # The AppDir is the same install tree under usr/: $ORIGIN and engine/
+          # already resolve relative to the binary, so nothing moves.
+          rm -rf AppDir && mkdir AppDir
+          cp -a instdir AppDir/usr
+          cp editor/resources/linux/doriax-editor.desktop AppDir/
+          cp editor/resources/icons/linux/doriax-editor-512.png AppDir/doriax-editor.png
+          cat > AppDir/AppRun <<'APPRUN'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/doriax-editor" "$@"
+          APPRUN
+          chmod +x AppDir/AppRun
+
+          # Pinned: "continuous" would put an unreviewed build of a tool that
+          # repackages the editor into the release path.
+          APPIMAGETOOL_VERSION=1.9.1
+          APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+          wget -q -O appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage"
+          echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c -
+          chmod +x appimagetool
+          # ARCH is guessed from ELF files otherwise, and there is no FUSE here.
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool AppDir \
+            "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage"
+
+          ls -la dist
+
       - name: Package the macOS app
         if: startsWith(matrix.config.os, 'macos')
         shell: bash
@@ -229,8 +291,57 @@ jobs:
           ls -la instdir/bin
 
       - name: Upload
+        if: ${{ !startsWith(matrix.config.os, 'ubuntu') }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.config.artifact }}
           path: ./instdir/bin/*
           if-no-files-found: error
+
+      # Separate artifacts so a download is one package, not both of them.
+      - name: Upload Linux AppImage
+        if: startsWith(matrix.config.os, 'ubuntu')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.artifact }}
+          path: ./dist/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload Linux tarball
+        if: startsWith(matrix.config.os, 'ubuntu')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.artifact }}_tarball
+          path: ./dist/*.tar.gz
+          if-no-files-found: error
+
+  # Artifacts are only ever served as zips, so a published release is what gives
+  # a direct download. MinGW is left off: it is the unsigned Windows build.
+  release:
+    name: Attach binaries to the release
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          mkdir release
+          cp artifacts/doriax_linux/*.AppImage "release/Doriax-${VERSION}-linux-x86_64.AppImage"
+          cp artifacts/doriax_linux_tarball/*.tar.gz "release/Doriax-${VERSION}-linux-x86_64.tar.gz"
+          cp artifacts/doriax_macos/Doriax.dmg "release/Doriax-${VERSION}-macos-universal.dmg"
+          # Windows installs as a tree of binaries, so it still needs an archive.
+          (cd artifacts/doriax_windows && zip -qr "$GITHUB_WORKSPACE/release/Doriax-${VERSION}-windows-x64.zip" .)
+          ls -la release
+          # --clobber so re-running the workflow on a release replaces the assets.
+          gh release upload "$VERSION" release/* --clobber --repo "$GITHUB_REPOSITORY"

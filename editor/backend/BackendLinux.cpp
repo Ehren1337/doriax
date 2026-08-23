@@ -19,6 +19,9 @@
 
 #include "nfd.hpp"
 
+#include "doriax_wm_icon.h"
+#include "stb_image.h"
+
 #include <X11/Xatom.h>
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
@@ -178,6 +181,7 @@ struct LinuxBackendData {
     Atom netWmWindowType = None;
     Atom netWmWindowTypeDialog = None;
     Atom netWmWindowOpacity = None;
+    Atom netWmIcon = None;
     Atom motifWmHints = None;
     Atom clipboard = None;
     Atom targets = None;
@@ -197,6 +201,8 @@ struct LinuxBackendData {
 
     Cursor mouseCursors[ImGuiMouseCursor_COUNT]{};
     ImGuiMouseCursor lastCursor = ImGuiMouseCursor_COUNT;
+
+    std::vector<unsigned long> wmIcon;
 
     std::string clipboardText;
     std::string clipboardReadBuffer;
@@ -913,6 +919,38 @@ void configureXdnd(NativeWindow* window) {
                     reinterpret_cast<const unsigned char*>(&version), 1);
 }
 
+// _NET_WM_ICON takes width, height then ARGB per size, widened to long by format 32.
+void loadWmIcon() {
+    for (const DoriaxWmIconPng& png : doriax_wm_icon_pngs) {
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        unsigned char* pixels = stbi_load_from_memory(
+            png.data, static_cast<int>(png.size), &width, &height, &channels, 4);
+        if (!pixels) continue;
+
+        backend->wmIcon.push_back(static_cast<unsigned long>(width));
+        backend->wmIcon.push_back(static_cast<unsigned long>(height));
+        for (int i = 0; i < width * height; i++) {
+            const unsigned char* pixel = pixels + i * 4;
+            backend->wmIcon.push_back((static_cast<unsigned long>(pixel[3]) << 24) |
+                                      (static_cast<unsigned long>(pixel[0]) << 16) |
+                                      (static_cast<unsigned long>(pixel[1]) << 8) |
+                                      static_cast<unsigned long>(pixel[2]));
+        }
+        stbi_image_free(pixels);
+    }
+}
+
+void setWindowIcon(NativeWindow* window) {
+    if (backend->wmIcon.empty()) return;
+
+    XChangeProperty(backend->display, window->handle, backend->netWmIcon,
+                    XA_CARDINAL, 32, PropModeReplace,
+                    reinterpret_cast<const unsigned char*>(backend->wmIcon.data()),
+                    static_cast<int>(backend->wmIcon.size()));
+}
+
 NativeWindow* createNativeWindow(int x, int y, int width, int height,
                                  bool decorated, bool topmost, bool skipTaskbar) {
     auto* result = new NativeWindow();
@@ -949,6 +987,11 @@ NativeWindow* createNativeWindow(int x, int y, int width, int height,
     classHint.res_name = const_cast<char*>("doriax-editor");
     classHint.res_class = const_cast<char*>("DoriaxEditor");
     XSetClassHint(backend->display, result->handle, &classHint);
+
+    // Popups and utility viewports show an icon nowhere, so they skip it.
+    if (!skipTaskbar) {
+        setWindowIcon(result);
+    }
 
     if (topmost || skipTaskbar) {
         Atom states[2];
@@ -2565,6 +2608,7 @@ bool initializeX11(editor::App& app) {
     backend->netWmWindowType = atom("_NET_WM_WINDOW_TYPE");
     backend->netWmWindowTypeDialog = atom("_NET_WM_WINDOW_TYPE_DIALOG");
     backend->netWmWindowOpacity = atom("_NET_WM_WINDOW_OPACITY");
+    backend->netWmIcon = atom("_NET_WM_ICON");
     backend->motifWmHints = atom("_MOTIF_WM_HINTS");
     backend->clipboard = atom("CLIPBOARD");
     backend->targets = atom("TARGETS");
@@ -2581,6 +2625,8 @@ bool initializeX11(editor::App& app) {
     backend->xdndTypeList = atom("XdndTypeList");
     backend->xdndActionCopy = atom("XdndActionCopy");
     backend->uriList = atom("text/uri-list");
+
+    loadWmIcon();
 
     std::setlocale(LC_CTYPE, "");
     XSetLocaleModifiers("");

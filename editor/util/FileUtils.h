@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -104,6 +105,19 @@ public:
         }
 #endif
         return exeDir / "engine";
+    }
+
+    // An AppImage mounts at a fresh path every launch, so anything written into
+    // a file the project keeps must omit it or that file churns on every start.
+    static bool isEngineDirEphemeral() {
+        if (std::getenv("APPIMAGE") != nullptr || std::getenv("APPDIR") != nullptr) {
+            return true;
+        }
+
+        // Fallback when the environment is cleared: both runtimes use $TMPDIR.
+        const std::string engineDir = getEngineDir().generic_string();
+        return engineDir.find("/.mount_") != std::string::npos ||
+               engineDir.find("/appimage_extracted_") != std::string::npos;
     }
 
     // Returns true if the file was written/updated.

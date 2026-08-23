@@ -167,6 +167,39 @@ if(WIN32)
     )
 endif()
 
+# Linux has no .rc or .icns equivalent, so the icon reaches the desktop as theme
+# files (installed at the end of this file) plus the _NET_WM_ICON pixels below.
+set(DORIAX_LINUX_ICON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/icons/linux")
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(wm_icon_header "// Generated from editor/resources/icons/linux. Do not edit.\n")
+    string(APPEND wm_icon_header "#pragma once\n\n")
+    set(wm_icon_entries "")
+
+    # Sizes a window manager or dock actually draws, up to a HiDPI dock's 256.
+    # 512 is left out: on the wire it alone would outweigh the whole set.
+    foreach(icon_size IN ITEMS 16 32 48 64 128 256)
+        set(icon_png "${DORIAX_LINUX_ICON_DIR}/doriax-editor-${icon_size}.png")
+        file(READ "${icon_png}" icon_hex HEX)
+        string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," icon_bytes "${icon_hex}")
+        string(APPEND wm_icon_header "static const unsigned char doriax_wm_icon_${icon_size}[] = {${icon_bytes}};\n\n")
+        string(APPEND wm_icon_entries "    { doriax_wm_icon_${icon_size}, sizeof(doriax_wm_icon_${icon_size}) },\n")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${icon_png}")
+    endforeach()
+
+    string(APPEND wm_icon_header "struct DoriaxWmIconPng { const unsigned char* data; unsigned int size; };\n\n")
+    string(APPEND wm_icon_header "static const DoriaxWmIconPng doriax_wm_icon_pngs[] = {\n${wm_icon_entries}};\n")
+
+    # Staged through a .in because configure_file only rewrites on a real change.
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/resources/doriax_wm_icon.h.in" "${wm_icon_header}")
+    configure_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/resources/doriax_wm_icon.h.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/resources/doriax_wm_icon.h"
+        COPYONLY
+    )
+    include_directories("${CMAKE_CURRENT_BINARY_DIR}/resources")
+endif()
+
 find_package(Threads REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # The AI HTTP client uses the native WinHTTP backend on Windows (no external
@@ -818,4 +851,21 @@ else()
             DESTINATION bin
             CONFIGURATIONS Release MinSizeRel
     )
+endif()
+
+# Desktop integration: a launcher entry plus the themed icons the launcher,
+# taskbar and alt-tab switcher look up by the "doriax-editor" icon name.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/doriax-editor.desktop
+            DESTINATION share/applications
+            CONFIGURATIONS Release MinSizeRel
+    )
+
+    foreach(icon_size IN ITEMS 16 32 48 64 128 256 512)
+        install(FILES ${DORIAX_LINUX_ICON_DIR}/doriax-editor-${icon_size}.png
+                DESTINATION share/icons/hicolor/${icon_size}x${icon_size}/apps
+                RENAME doriax-editor.png
+                CONFIGURATIONS Release MinSizeRel
+        )
+    endforeach()
 endif()
