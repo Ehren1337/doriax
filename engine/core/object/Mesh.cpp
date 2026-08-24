@@ -251,6 +251,22 @@ bool Mesh::isReceiveLights() const{
     return mesh.receiveLights;
 }
 
+void Mesh::setReceiveIBL(bool receiveIBL){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    if (mesh.receiveIBL != receiveIBL){
+        mesh.receiveIBL = receiveIBL;
+
+        mesh.needReload = true;
+    }
+}
+
+bool Mesh::isReceiveIBL() const{
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    return mesh.receiveIBL;
+}
+
 void Mesh::setCastShadows(bool castShadows){
     MeshComponent& mesh = getComponent<MeshComponent>();
 

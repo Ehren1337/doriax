@@ -68,6 +68,9 @@ namespace doriax{
         void setReceiveLights(bool receiveLights);
         bool isReceiveLights() const;
 
+        void setReceiveIBL(bool receiveIBL);
+        bool isReceiveIBL() const;
+
         void setCastShadows(bool castShadows);
         bool isCastShadows() const;
 
