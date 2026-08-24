@@ -1526,8 +1526,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     MIN_EDITOR_WALK_SPEED / DEFAULT_EDITOR_WALK_SPEED,
                     MAX_EDITOR_WALK_SPEED / DEFAULT_EDITOR_WALK_SPEED);
 
-                // Apply distanceScaleFactor to walking speed
-                float finalSpeed = 0.02 * walkSpeed * distanceScaleFactor;
+                // Speed is per second, with the delta clamped so a stall cannot jump
+                float finalSpeed = 1.2f * walkSpeed * distanceScaleFactor *
+                                   std::min(io.DeltaTime, 0.1f);
 
                 // Shift multiplier for faster movement
                 if (ImGui::IsKeyDown(ImGuiMod_Shift)) {
