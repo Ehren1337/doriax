@@ -861,6 +861,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             CONFIGURATIONS Release MinSizeRel
     )
 
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/org.doriax.editor.metainfo.xml
+            DESTINATION share/metainfo
+            CONFIGURATIONS Release MinSizeRel
+    )
+
     foreach(icon_size IN ITEMS 16 32 48 64 128 256 512)
         install(FILES ${DORIAX_LINUX_ICON_DIR}/doriax-editor-${icon_size}.png
                 DESTINATION share/icons/hicolor/${icon_size}x${icon_size}/apps

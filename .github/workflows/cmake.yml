@@ -252,8 +252,14 @@ jobs:
           echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c -
           chmod +x appimagetool
           # ARCH is guessed from ELF files otherwise, and there is no FUSE here.
+          # -u writes a .zsync so AppImageUpdate and Gear Lever can delta-update
+          # from the release assets.
           ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool AppDir \
+            -u "gh-releases-zsync|doriaxengine|doriax|latest|Doriax-*-x86_64.AppImage.zsync" \
             "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage"
+
+          # -u embeds update info even when zsyncmake is missing, so check it ran.
+          test -s "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage.zsync"
 
           ls -la dist
 
@@ -306,7 +312,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.config.artifact }}
-          path: ./dist/*.AppImage
+          path: |
+            ./dist/*.AppImage
+            ./dist/*.zsync
           if-no-files-found: error
 
       - name: Upload Linux tarball
@@ -339,8 +347,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir release
-          cp artifacts/doriax_linux/*.AppImage "release/Doriax-${VERSION}-linux-x86_64.AppImage"
-          cp artifacts/doriax_linux_tarball/*.tar.gz "release/Doriax-${VERSION}-linux-x86_64.tar.gz"
+          # The .zsync names the AppImage it belongs to, so the Linux packages
+          # keep the filenames they were built with.
+          cp artifacts/doriax_linux/* release/
+          cp artifacts/doriax_linux_tarball/* release/
           cp artifacts/doriax_macos/Doriax.dmg "release/Doriax-${VERSION}-macos-universal.dmg"
           # Windows installs as a tree of binaries, so it still needs an archive.
           (cd artifacts/doriax_windows && zip -qr "$GITHUB_WORKSPACE/release/Doriax-${VERSION}-windows-x64.zip" .)
