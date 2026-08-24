@@ -224,8 +224,8 @@ jobs:
           set -euo pipefail
           mkdir -p dist
 
-          # Artifact zips drop the executable bit, the same reason macOS ships a
-          # dmg. Only the tarball carries it through, inside the archive.
+          # The tarball is the plain tree: bin/ plus the share/ files a system
+          # install needs. The AppImage is the single-file alternative.
           rm -rf pkg && mkdir -p pkg
           cp -a instdir pkg/doriax
           tar -czf "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.tar.gz" -C pkg doriax
