@@ -364,9 +364,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.config.artifact }}_appimage
-          path: |
-            ./dist/*.AppImage
-            ./dist/*.zsync
+          path: ./dist/*.AppImage
+          if-no-files-found: error
+
+      # Only AppImageUpdate and Gear Lever read this, and only off a release, so
+      # it travels separately instead of in the download.
+      - name: Upload Linux zsync
+        if: startsWith(matrix.config.os, 'ubuntu')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.artifact }}_zsync
+          path: ./dist/*.zsync
           if-no-files-found: error
 
   # Artifacts are only ever served as zips, so a published release is what gives
@@ -405,6 +413,7 @@ jobs:
           # The .zsync names the AppImage it belongs to, so the pair keeps the
           # filenames it was built with.
           cp artifacts/doriax_linux_appimage/* release/
+          cp artifacts/doriax_linux_zsync/* release/
           cp artifacts/doriax_macos_dmg/Doriax.dmg "release/Doriax-${VERSION}-macos-universal.dmg"
           ls -la release
           # --clobber so re-running the workflow on a release replaces the assets.
