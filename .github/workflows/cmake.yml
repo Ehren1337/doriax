@@ -230,11 +230,60 @@ jobs:
           cp -a instdir AppDir/usr
           cp editor/resources/linux/doriax-editor.desktop AppDir/
           cp editor/resources/icons/linux/doriax-editor-512.png AppDir/doriax-editor.png
+
+          # 22.04's libstdc++ is newer than older targets carry, and DORIAX_SHARED
+          # rules out -static-libstdc++: the editor and libdoriax.so would each get
+          # their own runtime.
+          mkdir -p AppDir/usr/lib
+          for lib in libstdc++.so.6 libgcc_s.so.1; do
+            cp -L "$(gcc -print-file-name="$lib")" "AppDir/usr/lib/$lib"
+          done
+
+          # glibc cannot ride along the way libstdc++ can, so AppRun turns anything
+          # older than these binaries were linked against away with a message.
+          GLIBC_FLOOR="$(objdump -T AppDir/usr/bin/doriax-editor AppDir/usr/bin/libdoriax.so \
+            | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1)"
+          echo "glibc floor: $GLIBC_FLOOR"
+
           cat > AppDir/AppRun <<'APPRUN'
           #!/bin/sh
           HERE="$(dirname "$(readlink -f "$0")")"
+
+          # Highest GLIBCXX_3.4.N a libstdc++ carries. strings(1) is not a given on a
+          # desktop, grep is.
+          glibcxx_minor() {
+            [ -r "$1" ] || return 1
+            grep -ao 'GLIBCXX_3\.4\.[0-9][0-9]*' "$1" | sed 's/.*\.//' | sort -n | tail -1
+          }
+
+          # Only take over where the host's runtime is older: doing it everywhere would
+          # hand the host's Mesa an older libstdc++ than it was built against. Ask the
+          # loader where that copy is rather than guess at distro layouts.
+          host_lib="$(LD_TRACE_LOADED_OBJECTS=1 "$HERE/usr/bin/doriax-editor" 2>/dev/null \
+            | sed -n 's/.*libstdc++\.so\.6 => \([^ ]*\).*/\1/p')"
+          bundled="$(glibcxx_minor "$HERE/usr/lib/libstdc++.so.6")"
+          host="$(glibcxx_minor "$host_lib")"
+          if [ -n "$bundled" ] && { [ -z "$host" ] || [ "$host" -lt "$bundled" ]; }; then
+            LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            export LD_LIBRARY_PATH
+          fi
+
+          glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $NF}')"
+          if [ -n "$glibc" ] && [ "$glibc" != "@GLIBC_FLOOR@" ] \
+            && [ "$(printf '%s\n%s\n' "$glibc" "@GLIBC_FLOOR@" | sort -V | head -1)" = "$glibc" ]; then
+            msg="Doriax needs glibc @GLIBC_FLOOR@ or newer, and this system has $glibc.
+          Ubuntu 22.04, Debian 12 and RHEL 9 are the oldest releases it runs on; older
+          ones need a build from source."
+            printf '%s\n' "$msg" >&2
+            # Started from a launcher the message has nowhere to go, so it needs a window.
+            [ -t 2 ] || zenity --error --no-wrap --text="$msg" 2>/dev/null \
+              || xmessage -center "$msg" 2>/dev/null
+            exit 1
+          fi
+
           exec "$HERE/usr/bin/doriax-editor" "$@"
           APPRUN
+          sed -i "s/@GLIBC_FLOOR@/$GLIBC_FLOOR/g" AppDir/AppRun
           chmod +x AppDir/AppRun
 
           # Pinned: "continuous" would put an unreviewed build of a tool that
