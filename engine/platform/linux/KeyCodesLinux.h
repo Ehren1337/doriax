@@ -1,14 +1,15 @@
 // (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 // X11 -> engine key translation. The engine's key constants are GLFW's (see
-// core/Input.h), and the unshifted level-0 keysym keeps letters on their
-// printed key regardless of Shift or the active layout. A layout whose first
-// group is not Latin has no such keysym, so XKB names the position instead.
+// core/Input.h). Letters come from the first layout's unshifted keysym, so
+// neither Shift nor the active group moves them, and where that layout is not
+// Latin the XKB name of the position the key sits in answers instead.
 
 #ifndef KeyCodesLinux_h
 #define KeyCodesLinux_h
 
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 #include <X11/keysym.h>
 
 #include "Input.h"
@@ -112,7 +113,6 @@ namespace doriax {
 
     constexpr LinuxKeyPosition LINUX_KEY_POSITIONS[] = {
         {"TLDE", D_KEY_GRAVE_ACCENT}, {"BKSL", D_KEY_BACKSLASH},
-        {"LSGT", D_KEY_WORLD_2},
         {"AE01", D_KEY_1}, {"AE02", D_KEY_2}, {"AE03", D_KEY_3},
         {"AE04", D_KEY_4}, {"AE05", D_KEY_5}, {"AE06", D_KEY_6},
         {"AE07", D_KEY_7}, {"AE08", D_KEY_8}, {"AE09", D_KEY_9},
@@ -132,11 +132,34 @@ namespace doriax {
         {"AB10", D_KEY_SLASH},
     };
 
-    inline int linuxKeyFromName(const char* name) {
-        for (const LinuxKeyPosition& position : LINUX_KEY_POSITIONS) {
-            if (std::strcmp(name, position.name) == 0) return position.key;
+    // Engine key by X keycode, read from the server once
+    inline const int* linuxKeycodeTable(Display* display) {
+        static int keys[256];
+        static bool initialized = false;
+        if (initialized) return keys;
+        initialized = true;
+
+        for (int i = 0; i < 256; ++i) keys[i] = D_KEY_UNKNOWN;
+
+        XkbDescPtr desc = XkbGetMap(display, 0, XkbUseCoreKbd);
+        if (!desc) return keys;
+
+        if (XkbGetNames(display, XkbKeyNamesMask, desc) == Success &&
+            desc->names && desc->names->keys) {
+            for (int code = desc->min_key_code; code <= desc->max_key_code; ++code) {
+                // XKB key names are four characters and are not terminated
+                char name[XkbKeyNameLength + 1] = {};
+                std::memcpy(name, desc->names->keys[code].name, XkbKeyNameLength);
+                for (const LinuxKeyPosition& position : LINUX_KEY_POSITIONS) {
+                    if (std::strcmp(name, position.name) == 0) {
+                        keys[code] = position.key;
+                        break;
+                    }
+                }
+            }
         }
-        return D_KEY_UNKNOWN;
+        XkbFreeKeyboard(desc, 0, True);
+        return keys;
     }
 
     // GLFW-compatible modifier bits from an X event state mask

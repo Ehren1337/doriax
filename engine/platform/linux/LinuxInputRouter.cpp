@@ -10,35 +10,12 @@
 
 // XLookupKeysym and XLookupString are declared here, not in Xlib.h
 #include <X11/Xutil.h>
-#include <X11/XKBlib.h>
-
-#include <cstring>
 
 using namespace doriax;
 
 void LinuxInputRouter::setMousePosition(double x, double y) {
     mousePosX = x;
     mousePosY = y;
-}
-
-void LinuxInputRouter::buildKeyTable() {
-    Display* display = WindowLinux::display();
-    if (!display) return;
-
-    XkbDescPtr desc = XkbGetMap(display, 0, XkbUseCoreKbd);
-    if (!desc) return;
-
-    if (XkbGetNames(display, XkbKeyNamesMask, desc) == Success &&
-        desc->names && desc->names->keys) {
-        for (int code = desc->min_key_code; code <= desc->max_key_code; ++code) {
-            // XKB key names are four characters and are not terminated
-            char name[XkbKeyNameLength + 1] = {};
-            std::memcpy(name, desc->names->keys[code].name, XkbKeyNameLength);
-            const int key = linuxKeyFromName(name);
-            if (key != D_KEY_UNKNOWN) physicalKeys[code] = key;
-        }
-    }
-    XkbFreeKeyboard(desc, 0, True);
 }
 
 void LinuxInputRouter::handleKey(XKeyEvent& event, bool pressed) {
@@ -48,7 +25,7 @@ void LinuxInputRouter::handleKey(XKeyEvent& event, bool pressed) {
     // spells none the position it sits in answers for it
     const KeySym symbol = XLookupKeysym(&event, 0);
     int key = linuxKeyFromSym(symbol);
-    if (key == D_KEY_UNKNOWN && physicalKeys[keycode]) key = physicalKeys[keycode];
+    if (key == D_KEY_UNKNOWN) key = linuxKeycodeTable(event.display)[keycode];
     const int mods = linuxKeyModifiers(event.state);
 
     // handleEvent swallows the release half of a repeat pair, so a press
