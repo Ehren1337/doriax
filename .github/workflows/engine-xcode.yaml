@@ -7,6 +7,8 @@ jobs:
 
     name: Build for ${{ matrix.config.name }}
     runs-on: macOS-latest
+    # -jobs 1 below makes this slow, so the ceiling is generous but finite.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:

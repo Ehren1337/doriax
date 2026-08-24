@@ -3,13 +3,20 @@ name: Editor Desktop
 on:
   push:
     branches:
-      - '*'
+      # '**' and not '*': a single star stops at '/', so fix/x never builds.
+      - '**'
   release:
     types: [published]
 
 permissions:
   contents: read
   actions: read
+
+# One run per branch: a push while the matrix is still going supersedes it.
+# Releases are never cancelled, so a re-run cannot race the asset upload.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 env:
   BUILD_TYPE: Release
@@ -21,11 +28,17 @@ jobs:
   build:
     name: Build for ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    timeout-minutes: 120
+    # MinGW is not part of a release, so it fails on its own: a job marked
+    # continue-on-error does not hold back the jobs that need it.
+    continue-on-error: ${{ matrix.config.artifact == 'doriax_windows_mingw' }}
     # Must resolve to null and not "" on the other entries: an empty container
     # is still a container job, which Windows and macOS runners reject.
     container: ${{ matrix.config.container || fromJSON('null') }}
     env:
-      SIGN_WINDOWS: ${{ matrix.config.cc == 'cl' && secrets.SIGNPATH_API_TOKEN != '' && (github.event_name == 'release' || github.ref == 'refs/heads/test-signing') }}
+      # Do not sign yet
+      #SIGN_WINDOWS: ${{ matrix.config.cc == 'cl' && secrets.SIGNPATH_API_TOKEN != '' && (github.event_name == 'release' || github.ref == 'refs/heads/test-signing') }}
+      SIGN_WINDOWS: false
     strategy:
       fail-fast: false
       matrix:
@@ -383,12 +396,14 @@ jobs:
           if-no-files-found: error
 
   # Artifacts are only ever served as zips, so a published release is what gives
-  # a direct download. MinGW is left off: it is the unsigned Windows build.
+  # a direct download. MinGW is left off: MSVC is the build a release ships, and
+  # while SIGN_WINDOWS is off neither of them is signed.
   release:
     name: Attach binaries to the release
     if: github.event_name == 'release'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
