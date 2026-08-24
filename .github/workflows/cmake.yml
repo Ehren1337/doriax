@@ -258,7 +258,9 @@ jobs:
             -u "gh-releases-zsync|doriaxengine|doriax|latest|Doriax-*-x86_64.AppImage.zsync" \
             "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage"
 
-          # -u embeds update info even when zsyncmake is missing, so check it ran.
+          # appimagetool writes the .zsync in the working directory, not beside the
+          # AppImage, and -u embeds update info even if zsyncmake never ran.
+          mv "Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage.zsync" dist/
           test -s "dist/Doriax-${DORIAX_VERSION}-linux-x86_64.AppImage.zsync"
 
           ls -la dist
