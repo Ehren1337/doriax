@@ -155,6 +155,33 @@ bool syncDrawableSize() {
     return changed;
 }
 
+// Cocoa works in points and the framebuffer scale already carries Retina
+// density, so a DPI scale above 1 would scale fonts and sizes a second time.
+void normalizeMonitorDpiScale() {
+    for (ImGuiPlatformMonitor& monitor : ImGui::GetPlatformIO().Monitors)
+        monitor.DpiScale = 1.0f;
+}
+
+float getWindowDpiScale(ImGuiViewport*) {
+    return 1.0f;
+}
+
+// imgui_impl_metal sizes a detached window's drawable from viewport->DpiScale,
+// which is the UI scale above. The backing store still scales with the screen.
+void setViewportDrawableSize(ImGuiViewport* viewport, ImVec2 size) {
+    void* handle = viewport->PlatformHandleRaw ? viewport->PlatformHandleRaw
+                                               : viewport->PlatformHandle;
+    if (!handle) return;
+    NSWindow* window = (__bridge NSWindow*)handle;
+    CAMetalLayer* layer = static_cast<CAMetalLayer*>(window.contentView.layer);
+    if (!layer) return;
+
+    const CGFloat scale = window.backingScaleFactor;
+    layer.drawableSize = CGSizeMake(
+        std::max<CGFloat>(std::round(size.x * scale), 1.0),
+        std::max<CGFloat>(std::round(size.y * scale), 1.0));
+}
+
 void releaseCapturedCursor(bool restorePosition) {
     if (!backend || !WindowMac::isCursorCaptured()) return;
     WindowMac::setCursorCaptured(false, restorePosition);
@@ -538,6 +565,8 @@ bool renderLiveResizeFrame() {
 
     ImGui_ImplMetal_NewFrame(backend->frameDescriptor);
     ImGui_ImplOSX_NewFrame(backend->view);
+    // A screen-change notification can rebuild the list between frames.
+    normalizeMonitorDpiScale();
     applyRelativeMouseData();
     ImGui::NewFrame();
 
@@ -831,6 +860,11 @@ int editor::Backend::init(int argc, char* argv[]) {
             return -1;
         }
 
+        ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
+        platformIo.Platform_GetWindowDpiScale = getWindowDpiScale;
+        platformIo.Renderer_SetWindowSize = setViewportDrawableSize;
+        normalizeMonitorDpiScale();
+
         NSEventMask eventMask = NSEventMaskMouseMoved |
             NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged |
             NSEventMaskOtherMouseDragged | NSEventMaskLeftMouseDown |
@@ -936,6 +970,8 @@ int editor::Backend::init(int argc, char* argv[]) {
                 backend->frameInProgress = true;
                 ImGui_ImplMetal_NewFrame(backend->frameDescriptor);
                 ImGui_ImplOSX_NewFrame(backend->view);
+                // A screen-change notification can rebuild the list between frames.
+                normalizeMonitorDpiScale();
                 applyRelativeMouseData();
                 ImGui::NewFrame();
 
