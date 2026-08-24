@@ -80,9 +80,9 @@ if(NOT DEFINED NATIVE_MENU)
 endif()
 message(STATUS "Native menu is set to ${NATIVE_MENU}")
 
-if(POLICY CMP0072)
-  cmake_policy(SET CMP0072 NEW) # NEW for GLVND, OLD for legacy OpenGL
-endif()
+# GLVND links libOpenGL.so.0, which lives in libopengl0 and is absent from a stock
+# desktop. libGL.so.1 ships with any driver, and is what the engine already links.
+set(OpenGL_GL_PREFERENCE LEGACY)
 
 if(WIN32)
     enable_language(RC)
