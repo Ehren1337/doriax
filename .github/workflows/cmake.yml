@@ -47,7 +47,7 @@ jobs:
             generators: "Ninja"
           }
         # The container pins the glibc floor to 22.04 instead of the runner
-        # image's, so the artifacts start on older distros too.
+        # image's. Moving it also moves the distros AppRun's refusal names.
         - {
             name: "Ubuntu Latest GCC",
             os: ubuntu-latest,
@@ -242,6 +242,7 @@ jobs:
           # glibc cannot ride along the way libstdc++ can, so AppRun turns anything
           # older than these binaries were linked against away with a message.
           GLIBC_FLOOR="$(objdump -T AppDir/usr/bin/doriax-editor AppDir/usr/bin/libdoriax.so \
+            AppDir/usr/lib/libstdc++.so.6 AppDir/usr/lib/libgcc_s.so.1 \
             | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1)"
           echo "glibc floor: $GLIBC_FLOOR"
 
@@ -272,12 +273,16 @@ jobs:
           if [ -n "$glibc" ] && [ "$glibc" != "@GLIBC_FLOOR@" ] \
             && [ "$(printf '%s\n%s\n' "$glibc" "@GLIBC_FLOOR@" | sort -V | head -1)" = "$glibc" ]; then
             msg="Doriax needs glibc @GLIBC_FLOOR@ or newer, and this system has $glibc.
-          Ubuntu 22.04, Debian 12 and RHEL 9 are the oldest releases it runs on; older
-          ones need a build from source."
+          Ubuntu 22.04 and Debian 12 are the oldest releases it runs on; older ones
+          need a build from source."
             printf '%s\n' "$msg" >&2
-            # Started from a launcher the message has nowhere to go, so it needs a window.
-            [ -t 2 ] || zenity --error --no-wrap --text="$msg" 2>/dev/null \
-              || xmessage -center "$msg" 2>/dev/null
+            # Started from a launcher the message has nowhere to go, so it needs a
+            # window. Closing a zenity dialog exits non-zero, so pick on what exists.
+            if [ ! -t 2 ]; then
+              if command -v zenity >/dev/null 2>&1; then zenity --error --no-wrap --text="$msg" 2>/dev/null
+              elif command -v xmessage >/dev/null 2>&1; then xmessage -center "$msg" 2>/dev/null
+              fi
+            fi
             exit 1
           fi
 
