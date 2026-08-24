@@ -25,12 +25,17 @@ namespace doriax {
         // which reports no motion of its own while captured.
         void setMousePosition(double x, double y);
 
+        // Reads the key positions the keysyms cannot answer for. Needs a display.
+        void buildKeyTable();
+
     private:
         void handleKey(XKeyEvent& event, bool pressed);
 
         // X11 carries no repeat flag, so a press for a key already held is one.
         // Indexed by X keycode, which Xlib bounds to 8..255.
         bool keyHeld[256]{};
+        // Engine key by X keycode, zero where the position has none
+        int physicalKeys[256]{};
         // The engine keeps seeing a continuous position while captured
         double mousePosX = 0.0;
         double mousePosY = 0.0;

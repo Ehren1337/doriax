@@ -1,9 +1,9 @@
 // (c) Eduardo Doria
 // SPDX-License-Identifier: MIT
 // X11 -> engine key translation. The engine's key constants are GLFW's (see
-// core/Input.h), so this maps the keysym of the unshifted level-0 layout,
-// which is how GLFW's X11 backend derives its key codes: it keeps letters on
-// their printed key regardless of Shift or the active layout.
+// core/Input.h), and the unshifted level-0 keysym keeps letters on their
+// printed key regardless of Shift or the active layout. A layout whose first
+// group is not Latin has no such keysym, so XKB names the position instead.
 
 #ifndef KeyCodesLinux_h
 #define KeyCodesLinux_h
@@ -12,6 +12,8 @@
 #include <X11/keysym.h>
 
 #include "Input.h"
+
+#include <cstring>
 
 namespace doriax {
 
@@ -99,6 +101,42 @@ namespace doriax {
 
             default:                return D_KEY_UNKNOWN;
         }
+    }
+
+    // The alphanumeric block is the only part a layout redefines, and XKB names
+    // its keys by the position they sit in
+    struct LinuxKeyPosition {
+        const char* name;
+        int key;
+    };
+
+    constexpr LinuxKeyPosition LINUX_KEY_POSITIONS[] = {
+        {"TLDE", D_KEY_GRAVE_ACCENT}, {"BKSL", D_KEY_BACKSLASH},
+        {"LSGT", D_KEY_WORLD_2},
+        {"AE01", D_KEY_1}, {"AE02", D_KEY_2}, {"AE03", D_KEY_3},
+        {"AE04", D_KEY_4}, {"AE05", D_KEY_5}, {"AE06", D_KEY_6},
+        {"AE07", D_KEY_7}, {"AE08", D_KEY_8}, {"AE09", D_KEY_9},
+        {"AE10", D_KEY_0}, {"AE11", D_KEY_MINUS}, {"AE12", D_KEY_EQUAL},
+        {"AD01", D_KEY_Q}, {"AD02", D_KEY_W}, {"AD03", D_KEY_E},
+        {"AD04", D_KEY_R}, {"AD05", D_KEY_T}, {"AD06", D_KEY_Y},
+        {"AD07", D_KEY_U}, {"AD08", D_KEY_I}, {"AD09", D_KEY_O},
+        {"AD10", D_KEY_P}, {"AD11", D_KEY_LEFT_BRACKET},
+        {"AD12", D_KEY_RIGHT_BRACKET},
+        {"AC01", D_KEY_A}, {"AC02", D_KEY_S}, {"AC03", D_KEY_D},
+        {"AC04", D_KEY_F}, {"AC05", D_KEY_G}, {"AC06", D_KEY_H},
+        {"AC07", D_KEY_J}, {"AC08", D_KEY_K}, {"AC09", D_KEY_L},
+        {"AC10", D_KEY_SEMICOLON}, {"AC11", D_KEY_APOSTROPHE},
+        {"AB01", D_KEY_Z}, {"AB02", D_KEY_X}, {"AB03", D_KEY_C},
+        {"AB04", D_KEY_V}, {"AB05", D_KEY_B}, {"AB06", D_KEY_N},
+        {"AB07", D_KEY_M}, {"AB08", D_KEY_COMMA}, {"AB09", D_KEY_PERIOD},
+        {"AB10", D_KEY_SLASH},
+    };
+
+    inline int linuxKeyFromName(const char* name) {
+        for (const LinuxKeyPosition& position : LINUX_KEY_POSITIONS) {
+            if (std::strcmp(name, position.name) == 0) return position.key;
+        }
+        return D_KEY_UNKNOWN;
     }
 
     // GLFW-compatible modifier bits from an X event state mask

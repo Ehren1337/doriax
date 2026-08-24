@@ -201,6 +201,7 @@ struct LinuxBackendData {
 
     Cursor mouseCursors[ImGuiMouseCursor_COUNT]{};
     ImGuiMouseCursor lastCursor = ImGuiMouseCursor_COUNT;
+    std::array<ImGuiKey, 256> physicalKeys{};
 
     std::vector<unsigned long> wmIcon;
 
@@ -1090,6 +1091,56 @@ ImGuiKey keySymToImGui(KeySym key) {
     }
 }
 
+// A first group with no Latin keysym leaves the alphanumeric block unmapped, and
+// XKB names those keys by the position they sit in.
+struct KeyPosition {
+    const char* name;
+    ImGuiKey key;
+};
+
+constexpr KeyPosition KEY_POSITIONS[] = {
+    {"TLDE", ImGuiKey_GraveAccent}, {"BKSL", ImGuiKey_Backslash},
+    {"LSGT", ImGuiKey_Oem102},
+    {"AE01", ImGuiKey_1}, {"AE02", ImGuiKey_2}, {"AE03", ImGuiKey_3},
+    {"AE04", ImGuiKey_4}, {"AE05", ImGuiKey_5}, {"AE06", ImGuiKey_6},
+    {"AE07", ImGuiKey_7}, {"AE08", ImGuiKey_8}, {"AE09", ImGuiKey_9},
+    {"AE10", ImGuiKey_0}, {"AE11", ImGuiKey_Minus}, {"AE12", ImGuiKey_Equal},
+    {"AD01", ImGuiKey_Q}, {"AD02", ImGuiKey_W}, {"AD03", ImGuiKey_E},
+    {"AD04", ImGuiKey_R}, {"AD05", ImGuiKey_T}, {"AD06", ImGuiKey_Y},
+    {"AD07", ImGuiKey_U}, {"AD08", ImGuiKey_I}, {"AD09", ImGuiKey_O},
+    {"AD10", ImGuiKey_P}, {"AD11", ImGuiKey_LeftBracket},
+    {"AD12", ImGuiKey_RightBracket},
+    {"AC01", ImGuiKey_A}, {"AC02", ImGuiKey_S}, {"AC03", ImGuiKey_D},
+    {"AC04", ImGuiKey_F}, {"AC05", ImGuiKey_G}, {"AC06", ImGuiKey_H},
+    {"AC07", ImGuiKey_J}, {"AC08", ImGuiKey_K}, {"AC09", ImGuiKey_L},
+    {"AC10", ImGuiKey_Semicolon}, {"AC11", ImGuiKey_Apostrophe},
+    {"AB01", ImGuiKey_Z}, {"AB02", ImGuiKey_X}, {"AB03", ImGuiKey_C},
+    {"AB04", ImGuiKey_V}, {"AB05", ImGuiKey_B}, {"AB06", ImGuiKey_N},
+    {"AB07", ImGuiKey_M}, {"AB08", ImGuiKey_Comma}, {"AB09", ImGuiKey_Period},
+    {"AB10", ImGuiKey_Slash},
+};
+
+void buildPhysicalKeyTable() {
+    XkbDescPtr desc = XkbGetMap(backend->display, 0, XkbUseCoreKbd);
+    if (!desc) return;
+
+    if (XkbGetNames(backend->display, XkbKeyNamesMask, desc) == Success &&
+        desc->names && desc->names->keys) {
+        for (int code = desc->min_key_code; code <= desc->max_key_code; ++code) {
+            // XKB key names are four characters and are not terminated
+            char name[XkbKeyNameLength + 1] = {};
+            std::memcpy(name, desc->names->keys[code].name, XkbKeyNameLength);
+            for (const KeyPosition& position : KEY_POSITIONS) {
+                if (std::strcmp(name, position.name) == 0) {
+                    backend->physicalKeys[code] = position.key;
+                    break;
+                }
+            }
+        }
+    }
+    XkbFreeKeyboard(desc, 0, True);
+}
+
 unsigned int modifierMaskForKey(KeySym key) {
     switch (key) {
         case XK_Shift_L: case XK_Shift_R: return ShiftMask;
@@ -1568,7 +1619,9 @@ void handleKeyEvent(NativeWindow* window, XKeyEvent& event, bool pressed) {
     if (keySym == NoSymbol) keySym = XLookupKeysym(&event, 0);
     updateModStateForEvent(io, event, keySym, pressed);
 
-    const ImGuiKey key = keySymToImGui(keySym);
+    ImGuiKey key = keySymToImGui(keySym);
+    if (key == ImGuiKey_None && event.keycode < backend->physicalKeys.size())
+        key = backend->physicalKeys[event.keycode];
     if (key != ImGuiKey_None) {
         io.AddKeyEvent(key, pressed);
         io.SetKeyEventNativeData(key, static_cast<int>(keySym), event.keycode, event.keycode);
@@ -2633,6 +2686,7 @@ bool initializeX11(editor::App& app) {
     backend->inputMethod = XOpenIM(backend->display, nullptr, nullptr, nullptr);
     Bool detectable = False;
     XkbSetDetectableAutoRepeat(backend->display, True, &detectable);
+    buildPhysicalKeyTable();
 
     const float uiScale = desktopUiScale();
     int workWidth = 0;

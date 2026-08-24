@@ -276,6 +276,8 @@ int DoriaxLinux::init(int argc, char **argv) {
     if (!WindowLinux::openDisplay())
         return -1;
 
+    inputRouter.buildKeyTable();
+
     WindowLinuxConfig config;
     config.title = DORIAX_WINDOW_TITLE;
     config.appId = DORIAX_APP_ID;
