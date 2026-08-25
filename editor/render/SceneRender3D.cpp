@@ -45,15 +45,20 @@ void editor::SceneRender3D::pushUniqueHullPoint(std::vector<Vector3>& points, st
 void editor::SceneRender3D::reduceToExtremes(std::vector<Vector3>& points) {
     if (points.size() <= SceneRender3D::kMaxHullInputPoints) return;
 
-    static const Vector3 directions[] = {
-        {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1},
-        {1, 1, 0}, {1, -1, 0}, {-1, 1, 0}, {-1, -1, 0},
-        {1, 0, 1}, {1, 0, -1}, {-1, 0, 1}, {-1, 0, -1},
-        {0, 1, 1}, {0, 1, -1}, {0, -1, 1}, {0, -1, -1},
-        {1, 1, 1}, {1, 1, -1}, {1, -1, 1}, {1, -1, -1},
-        {-1, 1, 1}, {-1, 1, -1}, {-1, -1, 1}, {-1, -1, -1},
-    };
-    constexpr int dirCount = sizeof(directions) / sizeof(directions[0]);
+    // A 5^3 lattice of directions, dense enough that the drawn hull stays close to
+    // the one Jolt builds from the same vertices.
+    static const std::vector<Vector3> directions = [](){
+        std::vector<Vector3> dirs;
+        for (int x = -2; x <= 2; x++){
+            for (int y = -2; y <= 2; y++){
+                for (int z = -2; z <= 2; z++){
+                    if (x != 0 || y != 0 || z != 0) dirs.push_back(Vector3(x, y, z));
+                }
+            }
+        }
+        return dirs;
+    }();
+    const int dirCount = int(directions.size());
 
     std::vector<int> bestIndex(dirCount, 0);
     std::vector<float> bestDot(dirCount, -std::numeric_limits<float>::infinity());
@@ -934,94 +939,170 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
         }
     };
 
-    auto resolveNamedBuffer = [](const std::map<std::string, Buffer*>& buffers, const std::string& bufferName, Buffer* fallback) {
-        if (!bufferName.empty()) {
-            auto it = buffers.find(bufferName);
-            if (it != buffers.end()) {
-                return it->second;
-            }
+    // An empty name keeps the buffer already in view; an unknown one returns null so the
+    // attribute is dropped, since its offset only means anything against its own buffer.
+    auto resolveNamedBuffer = [](const std::map<std::string, Buffer*>& buffers, const std::string& bufferName, Buffer* current) -> Buffer* {
+        if (bufferName.empty()) {
+            return current;
         }
 
-        return fallback;
+        auto it = buffers.find(bufferName);
+        return it != buffers.end() ? it->second : nullptr;
     };
 
-    auto forEachEntityMeshSubmesh = [&](const Shape3D& shapeData, auto&& callback) {
+    // A multi-node glTF root holds no geometry of its own, so a shape sourced from it
+    // reads the model's mesh-node children instead.
+    auto shapeSourceEntities = [&](const Shape3D& shapeData) {
+        std::vector<Entity> sources;
         Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
+
         MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
-        Transform* sourceTransform = scene->findComponent<Transform>(meshEntity);
-
-        if (!mesh || !sourceTransform) {
-            return false;
+        if (mesh && mesh->numSubmeshes > 0) {
+            sources.push_back(meshEntity);
+            return sources;
         }
 
-        std::map<std::string, Buffer*> buffers;
-        if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
-        if (mesh->indices.getSize() > 0) buffers["indices"] = &mesh->indices;
-        for (int bufferIndex = 0; bufferIndex < mesh->numExternalBuffers; bufferIndex++) {
-            buffers[mesh->eBuffers[bufferIndex].getName()] = &mesh->eBuffers[bufferIndex];
-        }
-
-        Buffer* defaultIndexBuffer = nullptr;
-        Attribute defaultIndexAttr;
-        Buffer* defaultVertexBuffer = nullptr;
-        Attribute defaultVertexAttr;
-
-        for (auto const& buf : buffers) {
-            if (buf.second->getAttribute(AttributeType::INDEX)) {
-                defaultIndexBuffer = buf.second;
-                defaultIndexAttr = *buf.second->getAttribute(AttributeType::INDEX);
-            }
-            if (buf.second->getAttribute(AttributeType::POSITION)) {
-                defaultVertexBuffer = buf.second;
-                defaultVertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
-            }
-        }
-
-        Vector3 sourceScale = sourceTransform->worldScale;
-
-        for (size_t submeshIndex = 0; submeshIndex < mesh->numSubmeshes; submeshIndex++) {
-            Buffer* submeshIndexBuffer = defaultIndexBuffer;
-            Attribute submeshIndexAttr = defaultIndexAttr;
-            Buffer* submeshVertexBuffer = defaultVertexBuffer;
-            Attribute submeshVertexAttr = defaultVertexAttr;
-
-            for (auto const& attr : mesh->submeshes[submeshIndex].attributes) {
-                if (attr.first == AttributeType::INDEX) {
-                    submeshIndexBuffer = resolveNamedBuffer(buffers, attr.second.getBufferName(), submeshIndexBuffer);
-                    submeshIndexAttr = attr.second;
-                }
-                if (attr.first == AttributeType::POSITION) {
-                    submeshVertexBuffer = resolveNamedBuffer(buffers, attr.second.getBufferName(), submeshVertexBuffer);
-                    submeshVertexAttr = attr.second;
+        if (ModelComponent* model = scene->findComponent<ModelComponent>(meshEntity)) {
+            for (auto const& node : model->meshNodesMapping) {
+                MeshComponent* nodeMesh = scene->findComponent<MeshComponent>(node.second);
+                if (nodeMesh && nodeMesh->numSubmeshes > 0) {
+                    sources.push_back(node.second);
                 }
             }
-
-            callback(submeshVertexBuffer, submeshVertexAttr, submeshIndexBuffer, submeshIndexAttr, sourceScale);
         }
 
-        return true;
+        return sources;
     };
 
-    auto collectMeshHullPoints = [&](const Shape3D& shapeData, std::vector<Vector3>& hullPoints) {
-        std::unordered_set<uint64_t> seen;
-        bool resolved = forEachEntityMeshSubmesh(shapeData, [&](Buffer* vbuf, Attribute vattr, Buffer*, Attribute, const Vector3& sourceScale) {
-            if (!vbuf) return;
-            int count = int(vattr.getCount());
-            for (int v = 0; v < count; v++) {
-                pushUniqueHullPoint(hullPoints, seen, vbuf->getVector3(&vattr, v) * sourceScale);
+    // Source geometry through its world matrix and back into the body's local
+    // (rotation-free, world-scaled) space, the same mapping PhysicsSystem applies.
+    auto sourceToBodyMatrix = [&](Entity sourceEntity) -> Matrix4 {
+        Transform* sourceTransform = scene->findComponent<Transform>(sourceEntity);
+        if (sourceEntity == entity || !sourceTransform) {
+            return Matrix4::scaleMatrix(sourceTransform ? sourceTransform->worldScale : Vector3::UNIT_SCALE);
+        }
+
+        return transform.worldRotation.inverse().getRotationMatrix() *
+               Matrix4::translateMatrix(-transform.worldPosition) *
+               sourceTransform->modelMatrix;
+    };
+
+    auto forEachSourceSubmesh = [&](const std::vector<Entity>& sources, auto&& callback) {
+        for (Entity sourceEntity : sources) {
+            MeshComponent* mesh = scene->findComponent<MeshComponent>(sourceEntity);
+            if (!mesh) continue;
+
+            std::map<std::string, Buffer*> buffers;
+            if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
+            if (mesh->indices.getSize() > 0) buffers["indices"] = &mesh->indices;
+            for (int bufferIndex = 0; bufferIndex < mesh->numExternalBuffers; bufferIndex++) {
+                buffers[mesh->eBuffers[bufferIndex].getName()] = &mesh->eBuffers[bufferIndex];
             }
-        });
-        return resolved && !hullPoints.empty();
+
+            Buffer* indexBuffer = nullptr;
+            Attribute indexAttr;
+            Buffer* vertexBuffer = nullptr;
+            Attribute vertexAttr;
+
+            for (auto const& buf : buffers) {
+                if (buf.second->getAttribute(AttributeType::INDEX)) {
+                    indexBuffer = buf.second;
+                    indexAttr = *buf.second->getAttribute(AttributeType::INDEX);
+                }
+                if (buf.second->getAttribute(AttributeType::POSITION)) {
+                    vertexBuffer = buf.second;
+                    vertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
+                }
+            }
+
+            const Matrix4 toBody = sourceToBodyMatrix(sourceEntity);
+
+            for (size_t submeshIndex = 0; submeshIndex < mesh->numSubmeshes; submeshIndex++) {
+                for (auto const& attr : mesh->submeshes[submeshIndex].attributes) {
+                    if (attr.first == AttributeType::INDEX) {
+                        if (Buffer* resolved = resolveNamedBuffer(buffers, attr.second.getBufferName(), indexBuffer)) {
+                            indexBuffer = resolved;
+                            indexAttr = attr.second;
+                        }
+                    }
+                    if (attr.first == AttributeType::POSITION) {
+                        if (Buffer* resolved = resolveNamedBuffer(buffers, attr.second.getBufferName(), vertexBuffer)) {
+                            vertexBuffer = resolved;
+                            vertexAttr = attr.second;
+                        }
+                    }
+                }
+
+                callback(vertexBuffer, vertexAttr, indexBuffer, indexAttr, toBody);
+            }
+        }
     };
 
-    auto drawConvexHull = [&](const Matrix4& shapeMatrix, const std::vector<Vector3>& sourcePoints) {
-        if (sourcePoints.size() < 2) return false;
-        bool drew = false;
-        buildConvexHullEdges(sourcePoints, [&](const Vector3& a, const Vector3& b) {
-            addTransformedLine(shapeMatrix, a, b);
-            drew = true;
+    // Placement comes from the local chain up to the body, not from the mapping matrix:
+    // the two agree, but the matrix jitters in its low bits when the body itself moves.
+    auto sourceSignature = [&](const Shape3D& shapeData, const std::vector<Entity>& sources) {
+        uint64_t hash = 1469598103934665603ull;
+        auto mix = [&hash](const void* data, size_t size) {
+            const unsigned char* bytes = static_cast<const unsigned char*>(data);
+            for (size_t byteIndex = 0; byteIndex < size; byteIndex++) {
+                hash ^= bytes[byteIndex];
+                hash *= 1099511628211ull;
+            }
+        };
+
+        // One slot serves every shape type at this index
+        int shapeType = int(shapeData.type);
+        int shapeSource = int(shapeData.source);
+        mix(&shapeType, sizeof(shapeType));
+        mix(&shapeSource, sizeof(shapeSource));
+        mix(&transform.worldScale, sizeof(Vector3));
+
+        for (Entity sourceEntity : sources) {
+            Entity current = sourceEntity;
+            size_t hops = 0;
+
+            while (current != NULL_ENTITY && current != entity && hops <= kMaxSourceParentHops) {
+                Transform* sourceTransform = scene->findComponent<Transform>(current);
+                if (!sourceTransform) break;
+
+                mix(&sourceTransform->position, sizeof(Vector3));
+                mix(&sourceTransform->rotation, sizeof(Quaternion));
+                mix(&sourceTransform->scale, sizeof(Vector3));
+
+                current = sourceTransform->parent;
+                hops++;
+            }
+
+            // Outside the body's subtree there is no chain to walk, so quantize instead
+            if (current != entity) {
+                const Matrix4 toBody = sourceToBodyMatrix(sourceEntity);
+                for (int element = 0; element < 16; element++) {
+                    int64_t quantized = std::llround(double(static_cast<const float*>(toBody)[element]) * kHullQuantizeScale);
+                    mix(&quantized, sizeof(quantized));
+                }
+            }
+        }
+
+        forEachSourceSubmesh(sources, [&](Buffer* vbuf, Attribute vattr, Buffer* ibuf, Attribute iattr, const Matrix4&) {
+            const void* vdata = vbuf ? static_cast<const void*>(vbuf->getData()) : nullptr;
+            const void* idata = ibuf ? static_cast<const void*>(ibuf->getData()) : nullptr;
+            size_t vertexCount = vbuf ? vattr.getCount() : 0;
+            size_t indexCount = ibuf ? iattr.getCount() : 0;
+
+            mix(&vdata, sizeof(vdata));
+            mix(&idata, sizeof(idata));
+            mix(&vertexCount, sizeof(vertexCount));
+            mix(&indexCount, sizeof(indexCount));
         });
-        return drew;
+
+        return hash;
+    };
+
+    auto shapeEdgeCache = [&](size_t shapeIndex) -> BodyObjects::ShapeEdgeCache& {
+        if (bo.shapeEdgeCaches.size() != body.numShapes) {
+            bo.shapeEdgeCaches.assign(body.numShapes, BodyObjects::ShapeEdgeCache{});
+        }
+        return bo.shapeEdgeCaches[shapeIndex];
     };
 
     for (size_t i = 0; i < body.numShapes; i++) {
@@ -1071,109 +1152,107 @@ void editor::SceneRender3D::createOrUpdateBodyLines(Entity entity, const Transfo
             addCylinderRings(shapeMatrix, halfHeight, radius);
         } else if (shapeData.type == Shape3DType::CONVEX_HULL) {
             if (shapeData.source == Shape3DSource::ENTITY_MESH) {
-                std::vector<Vector3> hullPoints;
-                if (!collectMeshHullPoints(shapeData, hullPoints) || !drawConvexHull(shapeMatrix, hullPoints)) {
-                    continue;
+                // Walking every source vertex and rebuilding the hull is far too heavy
+                // to repeat per frame
+                BodyObjects::ShapeEdgeCache& cache = shapeEdgeCache(i);
+                std::vector<Entity> sources = shapeSourceEntities(shapeData);
+                uint64_t signature = sourceSignature(shapeData, sources);
+
+                if (!cache.valid || cache.signature != signature) {
+                    cache.valid = true;
+                    cache.signature = signature;
+                    cache.edges.clear();
+
+                    std::vector<Vector3> hullPoints;
+                    std::unordered_set<uint64_t> seen;
+                    forEachSourceSubmesh(sources, [&](Buffer* vbuf, Attribute vattr, Buffer*, Attribute, const Matrix4& toBody) {
+                        if (!vbuf) return;
+                        int count = int(vattr.getCount());
+                        for (int v = 0; v < count; v++) {
+                            pushUniqueHullPoint(hullPoints, seen, toBody * vbuf->getVector3(&vattr, v));
+                        }
+                    });
+
+                    buildConvexHullEdges(hullPoints, [&](const Vector3& a, const Vector3& b) {
+                        cache.edges.emplace_back(a, b);
+                    });
+                }
+
+                for (const auto& e : cache.edges) {
+                    addTransformedLine(shapeMatrix, e.first, e.second);
                 }
             } else if (shapeData.numVertices >= 2) {
+                // Raw vertices are inspector-editable and bounded, so build them inline.
                 std::vector<Vector3> hullPoints;
                 std::unordered_set<uint64_t> seen;
                 hullPoints.reserve(shapeData.numVertices);
                 for (size_t vertexIndex = 0; vertexIndex < shapeData.numVertices; vertexIndex++) {
                     pushUniqueHullPoint(hullPoints, seen, shapeData.vertices[vertexIndex] * entityScale);
                 }
-                if (!drawConvexHull(shapeMatrix, hullPoints)) {
-                    continue;
-                }
+
+                buildConvexHullEdges(hullPoints, [&](const Vector3& a, const Vector3& b) {
+                    addTransformedLine(shapeMatrix, a, b);
+                });
             }
         } else if (shapeData.type == Shape3DType::MESH) {
             if (shapeData.source == Shape3DSource::ENTITY_MESH) {
-                // Cache unique mesh edges in local space (pre-scaled by the source
-                // transform scale). Per-frame work is then just two matrix transforms
-                // + addLine per unique edge, so a 100k-tri mesh costs ~150k addLine
-                // calls instead of 300k, and we no longer re-read the vertex buffer
-                // and re-dedup edges every frame.
-                if (bo.meshEdgeCaches.size() != body.numShapes) {
-                    bo.meshEdgeCaches.assign(body.numShapes, BodyObjects::MeshEdgeCache{});
-                }
-                BodyObjects::MeshEdgeCache& cache = bo.meshEdgeCaches[i];
+                // Cached in body-local space, so a frame only costs two matrix
+                // transforms + addLine per edge
+                BodyObjects::ShapeEdgeCache& cache = shapeEdgeCache(i);
+                std::vector<Entity> sources = shapeSourceEntities(shapeData);
+                uint64_t signature = sourceSignature(shapeData, sources);
 
-                Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-                MeshComponent* sourceMesh = scene->findComponent<MeshComponent>(meshEntity);
-                Transform* sourceTransform = scene->findComponent<Transform>(meshEntity);
+                if (!cache.valid || cache.signature != signature) {
+                    cache.valid = true;
+                    cache.signature = signature;
+                    cache.edges.clear();
 
-                if (sourceMesh && sourceTransform) {
-                    const void* vbufPtr = static_cast<const void*>(&sourceMesh->buffer);
-                    const void* ibufPtr = sourceMesh->indices.getSize() > 0 ? static_cast<const void*>(&sourceMesh->indices) : nullptr;
-                    size_t vertexCount = sourceMesh->buffer.getCount();
-                    size_t indexCount = sourceMesh->indices.getCount();
-                    Vector3 sourceScale = sourceTransform->worldScale;
+                    // Interior edges belong to 2 triangles, so deduping by index pair
+                    // halves the lines. Per submesh: indices are local to their own.
+                    std::unordered_set<uint64_t> seenEdges;
+                    forEachSourceSubmesh(sources, [&](Buffer* vbuf, Attribute vattr, Buffer* ibuf, Attribute iattr, const Matrix4& toBody) {
+                        seenEdges.clear();
+                        if (!vbuf) return;
+                        uint32_t vcount = uint32_t(vattr.getCount());
+                        auto pushEdge = [&](uint32_t a, uint32_t b) {
+                            if (a == b || a >= vcount || b >= vcount) return;
+                            uint32_t lo = std::min(a, b);
+                            uint32_t hi = std::max(a, b);
+                            uint64_t key = (uint64_t(lo) << 32) | hi;
+                            if (!seenEdges.insert(key).second) return;
+                            cache.edges.emplace_back(toBody * vbuf->getVector3(&vattr, lo), toBody * vbuf->getVector3(&vattr, hi));
+                        };
 
-                    bool cacheValid = cache.sourceEntity == meshEntity
-                        && cache.vbufPtr == vbufPtr
-                        && cache.ibufPtr == ibufPtr
-                        && cache.vertexCount == vertexCount
-                        && cache.indexCount == indexCount
-                        && cache.sourceScale == sourceScale;
-
-                    if (!cacheValid) {
-                        cache.edges.clear();
-                        cache.sourceEntity = meshEntity;
-                        cache.vbufPtr = vbufPtr;
-                        cache.ibufPtr = ibufPtr;
-                        cache.vertexCount = vertexCount;
-                        cache.indexCount = indexCount;
-                        cache.sourceScale = sourceScale;
-
-                        // Each interior edge is shared by 2 triangles, so dedup
-                        // by index pair roughly halves the line count vs. drawing
-                        // 3 edges per triangle.
-                        std::unordered_set<uint64_t> seenEdges;
-                        forEachEntityMeshSubmesh(shapeData, [&](Buffer* vbuf, Attribute vattr, Buffer* ibuf, Attribute iattr, const Vector3& submeshScale) {
-                            if (!vbuf) return;
-                            uint32_t vcount = uint32_t(vattr.getCount());
-                            auto pushEdge = [&](uint32_t a, uint32_t b) {
-                                if (a == b || a >= vcount || b >= vcount) return;
-                                uint32_t lo = std::min(a, b);
-                                uint32_t hi = std::max(a, b);
-                                uint64_t key = (uint64_t(lo) << 32) | hi;
-                                if (!seenEdges.insert(key).second) return;
-                                Vector3 p0 = vbuf->getVector3(&vattr, lo) * submeshScale;
-                                Vector3 p1 = vbuf->getVector3(&vattr, hi) * submeshScale;
-                                cache.edges.emplace_back(p0, p1);
-                            };
-
-                            if (!ibuf) {
-                                uint32_t triCount = vcount / 3;
-                                for (uint32_t t = 0; t < triCount; t++) {
-                                    uint32_t a = t * 3, b = a + 1, c = a + 2;
-                                    pushEdge(a, b);
-                                    pushEdge(b, c);
-                                    pushEdge(c, a);
-                                }
-                                return;
-                            }
-                            uint32_t triCount = uint32_t(iattr.getCount() / 3);
-                            auto readIndex = [&](uint32_t idx) -> uint32_t {
-                                if (iattr.getDataType() == AttributeDataType::UNSIGNED_INT) return ibuf->getUInt32(&iattr, idx);
-                                if (iattr.getDataType() == AttributeDataType::UNSIGNED_SHORT) return ibuf->getUInt16(&iattr, idx);
-                                return UINT32_MAX;
-                            };
+                        if (!ibuf) {
+                            uint32_t triCount = vcount / 3;
                             for (uint32_t t = 0; t < triCount; t++) {
-                                uint32_t i0 = readIndex(t * 3);
-                                uint32_t i1 = readIndex(t * 3 + 1);
-                                uint32_t i2 = readIndex(t * 3 + 2);
-                                if (i0 == UINT32_MAX || i1 == UINT32_MAX || i2 == UINT32_MAX) continue;
-                                pushEdge(i0, i1);
-                                pushEdge(i1, i2);
-                                pushEdge(i2, i0);
+                                uint32_t a = t * 3, b = a + 1, c = a + 2;
+                                pushEdge(a, b);
+                                pushEdge(b, c);
+                                pushEdge(c, a);
                             }
-                        });
-                    }
+                            return;
+                        }
+                        uint32_t triCount = uint32_t(iattr.getCount() / 3);
+                        auto readIndex = [&](uint32_t idx) -> uint32_t {
+                            if (iattr.getDataType() == AttributeDataType::UNSIGNED_INT) return ibuf->getUInt32(&iattr, idx);
+                            if (iattr.getDataType() == AttributeDataType::UNSIGNED_SHORT) return ibuf->getUInt16(&iattr, idx);
+                            return UINT32_MAX;
+                        };
+                        for (uint32_t t = 0; t < triCount; t++) {
+                            uint32_t i0 = readIndex(t * 3);
+                            uint32_t i1 = readIndex(t * 3 + 1);
+                            uint32_t i2 = readIndex(t * 3 + 2);
+                            if (i0 == UINT32_MAX || i1 == UINT32_MAX || i2 == UINT32_MAX) continue;
+                            pushEdge(i0, i1);
+                            pushEdge(i1, i2);
+                            pushEdge(i2, i0);
+                        }
+                    });
+                }
 
-                    for (const auto& e : cache.edges) {
-                        addTransformedLine(shapeMatrix, e.first, e.second);
-                    }
+                for (const auto& e : cache.edges) {
+                    addTransformedLine(shapeMatrix, e.first, e.second);
                 }
             } else if (shapeData.numVertices >= 3 && shapeData.numIndices >= 3) {
                 int triangles = int(shapeData.numIndices / 3);

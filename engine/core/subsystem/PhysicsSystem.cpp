@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
+#include <tuple>
 
 
 using namespace doriax;
@@ -60,6 +62,112 @@ namespace {
         static JPH::JobSystemThreadPool* instance =
             new JPH::JobSystemThreadPool(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workers);
         return *instance;
+    }
+
+    // POSITION/INDEX buffers one submesh reads: component-level first, overridden by
+    // any per-submesh attribute.
+    struct MeshSourceView{
+        Buffer* vertexBuffer = NULL;
+        Attribute vertexAttr;
+        Buffer* indexBuffer = NULL;
+        Attribute indexAttr;
+    };
+
+    // Submeshes commonly share one POSITION buffer and differ only in their indices,
+    // so a range is added once and its vertices reused.
+    typedef std::tuple<const void*, size_t, size_t> VertexRange;
+
+    VertexRange vertexRange(const MeshSourceView& view){
+        return VertexRange(view.vertexBuffer->getData(), view.vertexAttr.getOffset(), view.vertexAttr.getCount());
+    }
+
+    std::vector<MeshSourceView> collectMeshSourceViews(MeshComponent* mesh){
+        std::vector<MeshSourceView> views;
+        if (!mesh) return views;
+
+        std::map<std::string, Buffer*> buffers;
+        if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
+        if (mesh->indices.getSize() > 0) buffers["indices"] = &mesh->indices;
+        for (int i = 0; i < mesh->numExternalBuffers; i++) buffers[mesh->eBuffers[i].getName()] = &mesh->eBuffers[i];
+
+        MeshSourceView view;
+        for (auto const& buf : buffers){
+            if (buf.second->getAttribute(AttributeType::POSITION)){
+                view.vertexBuffer = buf.second;
+                view.vertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
+            }
+            if (buf.second->getAttribute(AttributeType::INDEX)){
+                view.indexBuffer = buf.second;
+                view.indexAttr = *buf.second->getAttribute(AttributeType::INDEX);
+            }
+        }
+
+        // An empty name keeps the buffer already in view; an unknown one drops the
+        // attribute, whose offset only means anything against its own buffer.
+        auto resolveNamedBuffer = [&buffers](const std::string& bufferName, Buffer* current) -> Buffer* {
+            if (bufferName.empty()) return current;
+            auto named = buffers.find(bufferName);
+            return named != buffers.end() ? named->second : NULL;
+        };
+
+        for (size_t i = 0; i < mesh->numSubmeshes; i++){
+            for (auto const& attr : mesh->submeshes[i].attributes){
+                if (attr.first == AttributeType::POSITION){
+                    if (Buffer* resolved = resolveNamedBuffer(attr.second.getBufferName(), view.vertexBuffer)){
+                        view.vertexBuffer = resolved;
+                        view.vertexAttr = attr.second;
+                    }
+                }
+                if (attr.first == AttributeType::INDEX){
+                    if (Buffer* resolved = resolveNamedBuffer(attr.second.getBufferName(), view.indexBuffer)){
+                        view.indexBuffer = resolved;
+                        view.indexAttr = attr.second;
+                    }
+                }
+            }
+
+            if (view.vertexBuffer) views.push_back(view);
+        }
+
+        return views;
+    }
+
+    // A multi-node glTF root is only a hierarchy container, with the geometry living in
+    // its mesh-node children, so a shape sourced from it falls back to those nodes.
+    std::vector<Entity> meshSourceEntities(Scene* scene, Entity meshEntity){
+        std::vector<Entity> sources;
+
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
+        if (mesh && mesh->numSubmeshes > 0){
+            sources.push_back(meshEntity);
+            return sources;
+        }
+
+        if (ModelComponent* model = scene->findComponent<ModelComponent>(meshEntity)){
+            for (auto const& node : model->meshNodesMapping){
+                MeshComponent* nodeMesh = scene->findComponent<MeshComponent>(node.second);
+                if (nodeMesh && nodeMesh->numSubmeshes > 0){
+                    sources.push_back(node.second);
+                }
+            }
+        }
+
+        return sources;
+    }
+
+    // Source vertices are in their own entity's space, which is the body's only when one
+    // entity owns both. Brings them into body-local (rotation-free, world-scaled) space.
+    Matrix4 meshToBodyMatrix(Scene* scene, Entity bodyEntity, Entity meshEntity){
+        Transform* meshTransform = scene->findComponent<Transform>(meshEntity);
+        Transform* bodyTransform = scene->findComponent<Transform>(bodyEntity);
+
+        if (meshEntity == bodyEntity || !meshTransform || !bodyTransform){
+            return Matrix4::scaleMatrix(entityWorldScale(scene, meshEntity));
+        }
+
+        return bodyTransform->worldRotation.inverse().getRotationMatrix() *
+               Matrix4::translateMatrix(-bodyTransform->worldPosition) *
+               meshTransform->modelMatrix;
     }
 
 }
@@ -760,41 +868,24 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
             }
         }else if (shapeData.source == Shape3DSource::ENTITY_MESH){
             Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-            MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
-            Transform* transform = scene->findComponent<Transform>(meshEntity);
-            if (!mesh || !transform){
-                Log::error("Cannot create convex hull shape: mesh or transform not found for entity %u", meshEntity);
+            std::vector<Entity> sourceEntities = meshSourceEntities(scene, meshEntity);
+            if (sourceEntities.empty()){
+                Log::error("Cannot create convex hull shape: no mesh geometry found for entity %u", meshEntity);
                 return false;
             }
 
-            const Vector3 meshScale = entityWorldScale(scene, meshEntity);
+            for (Entity sourceEntity : sourceEntities){
+                const Matrix4 toBody = meshToBodyMatrix(scene, entity, sourceEntity);
+                std::set<VertexRange> addedRanges;
 
-            std::map<std::string, Buffer*> buffers;
-            if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
-            for (int i = 0; i < mesh->numExternalBuffers; i++) buffers[mesh->eBuffers[i].getName()] = &mesh->eBuffers[i];
+                for (MeshSourceView& view : collectMeshSourceViews(scene->findComponent<MeshComponent>(sourceEntity))){
+                    if (!addedRanges.insert(vertexRange(view)).second) continue;
 
-            Buffer* vertexBuffer = NULL;
-            Attribute vertexAttr;
-
-            for (auto const& buf : buffers){
-                if (buf.second->getAttribute(AttributeType::POSITION)) {
-                    vertexBuffer = buf.second;
-                    vertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
-                }
-            }
-
-            for (size_t i = 0; i < mesh->numSubmeshes; i++) {
-                for (auto const& attr : mesh->submeshes[i].attributes){
-                    if (attr.first == AttributeType::POSITION){
-                        vertexBuffer = buffers[attr.second.getBufferName()];
-                        vertexAttr = attr.second;
+                    int verticesize = int(view.vertexAttr.getCount());
+                    for (int i = 0; i < verticesize; i++){
+                        Vector3 vertice = toBody * view.vertexBuffer->getVector3(&view.vertexAttr, i);
+                        jvertices.push_back(JPH::Vec3(vertice.x, vertice.y, vertice.z));
                     }
-                }
-
-                int verticesize = int(vertexAttr.getCount());
-                for (int i = 0; i < verticesize; i++){
-                    Vector3 vertice = vertexBuffer->getVector3(&vertexAttr, i) * meshScale;
-                    jvertices.push_back(JPH::Vec3(vertice.x, vertice.y, vertice.z));
                 }
             }
         }
@@ -836,67 +927,54 @@ bool PhysicsSystem::createShape3DForIndex(Entity entity, Body3DComponent& body, 
             }
         }else if (shapeData.source == Shape3DSource::ENTITY_MESH){
             Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-            MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
-            Transform* transform = scene->findComponent<Transform>(meshEntity);
-            if (!mesh || !transform){
-                Log::error("Cannot create mesh shape: mesh or transform not found for entity %u", meshEntity);
+            std::vector<Entity> sourceEntities = meshSourceEntities(scene, meshEntity);
+            if (sourceEntities.empty()){
+                Log::error("Cannot create mesh shape: no mesh geometry found for entity %u", meshEntity);
                 return false;
             }
 
-            const Vector3 meshScale = entityWorldScale(scene, meshEntity);
+            for (Entity sourceEntity : sourceEntities){
+                const Matrix4 toBody = meshToBodyMatrix(scene, entity, sourceEntity);
+                std::map<VertexRange, JPH::uint32> vertexBases;
 
-            std::map<std::string, Buffer*> buffers;
-            if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
-            if (mesh->indices.getSize() > 0) buffers["indices"] = &mesh->indices;
-            for (int i = 0; i < mesh->numExternalBuffers; i++) buffers[mesh->eBuffers[i].getName()] = &mesh->eBuffers[i];
+                for (MeshSourceView& view : collectMeshSourceViews(scene->findComponent<MeshComponent>(sourceEntity))){
+                    const VertexRange range = vertexRange(view);
+                    const int verticesize = int(view.vertexAttr.getCount());
 
-            Buffer* indexBuffer = NULL;
-            Attribute indexAttr;
-            Buffer* vertexBuffer = NULL;
-            Attribute vertexAttr;
-
-            for (auto const& buf : buffers){
-                if (buf.second->getAttribute(AttributeType::INDEX)){
-                    indexBuffer = buf.second;
-                    indexAttr = *buf.second->getAttribute(AttributeType::INDEX);
-                }
-                if (buf.second->getAttribute(AttributeType::POSITION)) {
-                    vertexBuffer = buf.second;
-                    vertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
-                }
-            }
-
-            for (size_t i = 0; i < mesh->numSubmeshes; i++) {
-                for (auto const& attr : mesh->submeshes[i].attributes){
-                    if (attr.first == AttributeType::INDEX){
-                        indexBuffer = buffers[attr.second.getBufferName()];
-                        indexAttr = attr.second;
-                    }
-                    if (attr.first == AttributeType::POSITION){
-                        vertexBuffer = buffers[attr.second.getBufferName()];
-                        vertexAttr = attr.second;
-                    }
-                }
-
-                int numIdxTriangles = int(indexAttr.getCount() / 3);
-                for (int i = 0; i < numIdxTriangles; i++){
-                    JPH::uint32 it[3];
-                    for (int j = 0; j < 3; j++){
-                        uint32_t indice = 0;
-                        if (indexAttr.getDataType() == AttributeDataType::UNSIGNED_INT){
-                            indice = indexBuffer->getUInt32(&indexAttr, (3 * i) + j);
-                        }else if (indexAttr.getDataType() == AttributeDataType::UNSIGNED_SHORT){
-                            indice = indexBuffer->getUInt16(&indexAttr, (3 * i) + j);
+                    auto base = vertexBases.find(range);
+                    if (base == vertexBases.end()){
+                        base = vertexBases.emplace(range, (JPH::uint32)jvertices.size()).first;
+                        for (int i = 0; i < verticesize; i++){
+                            Vector3 vertice = toBody * view.vertexBuffer->getVector3(&view.vertexAttr, i);
+                            jvertices.push_back(JPH::Float3(vertice.x, vertice.y, vertice.z));
                         }
-                        it[j] = indice;
                     }
-                    jindices.push_back(JPH::IndexedTriangle(it[0], it[1], it[2]));
-                }
 
-                int verticesize = int(vertexAttr.getCount());
-                for (int i = 0; i < verticesize; i++){
-                    Vector3 vertice = vertexBuffer->getVector3(&vertexAttr, i) * meshScale;
-                    jvertices.push_back(JPH::Float3(vertice.x, vertice.y, vertice.z));
+                    // Indices are local to their submesh, rebase onto its vertices
+                    const JPH::uint32 vertexBase = base->second;
+
+                    if (!view.indexBuffer){
+                        // No index buffer means a plain triangle list
+                        for (int i = 0; i + 2 < verticesize; i += 3){
+                            jindices.push_back(JPH::IndexedTriangle(vertexBase + i, vertexBase + i + 1, vertexBase + i + 2));
+                        }
+                        continue;
+                    }
+
+                    int numIdxTriangles = int(view.indexAttr.getCount() / 3);
+                    for (int i = 0; i < numIdxTriangles; i++){
+                        JPH::uint32 it[3];
+                        for (int j = 0; j < 3; j++){
+                            uint32_t indice = 0;
+                            if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_INT){
+                                indice = view.indexBuffer->getUInt32(&view.indexAttr, (3 * i) + j);
+                            }else if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_SHORT){
+                                indice = view.indexBuffer->getUInt16(&view.indexAttr, (3 * i) + j);
+                            }
+                            it[j] = vertexBase + indice;
+                        }
+                        jindices.push_back(JPH::IndexedTriangle(it[0], it[1], it[2]));
+                    }
                 }
             }
         }

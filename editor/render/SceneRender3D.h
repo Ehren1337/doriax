@@ -32,25 +32,24 @@ namespace doriax::editor{
     struct BodyObjects{
         Lines* lines = nullptr;
 
-        struct MeshEdgeCache {
-            Entity sourceEntity = NULL_ENTITY;
-            const void* vbufPtr = nullptr;
-            const void* ibufPtr = nullptr;
-            size_t vertexCount = 0;
-            size_t indexCount = 0;
-            Vector3 sourceScale = Vector3::ZERO;
-            // Unique mesh edges in local space, already pre-multiplied by sourceScale
-            // so per-frame work is just two matrix transforms + addLine per edge.
-            std::vector<std::pair<Vector3, Vector3>> edges;
+        // Mesh and hull shapes walk their whole source buffer to build these, so they
+        // are kept until the signature of what feeds them changes.
+        struct ShapeEdgeCache {
+            bool valid = false;
+            uint64_t signature = 0;
+            std::vector<std::pair<Vector3, Vector3>> edges; // body-local space
         };
-        std::vector<MeshEdgeCache> meshEdgeCaches;
+        std::vector<ShapeEdgeCache> shapeEdgeCaches;
     };
 
     class SceneRender3D: public SceneRender{
     private:
 
         static constexpr float kHullQuantizeScale = 4096.0f;
-        static constexpr size_t kMaxHullInputPoints = 96;
+        // Above this the cloud is reduced to its extremes first. Matches
+        // ConvexHullShape::cMaxPointsInHull, the cap Jolt applies to the same shape.
+        static constexpr size_t kMaxHullInputPoints = 256;
+        static constexpr size_t kMaxSourceParentHops = 64;
 
         Lines* lines;
 
