@@ -4810,7 +4810,7 @@ bool editor::Project::isTempProject() const{
         return false;
     }
 
-    return relPath.string().find("..") == std::string::npos;
+    return *relPath.begin() != "..";
 }
 
 bool editor::Project::isTempUnsavedProject() const{

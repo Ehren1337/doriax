@@ -51,8 +51,9 @@ bool editor::DeleteFileCmd::execute(){
                 const bool isDirectory = fs::is_directory(file.originalFile);
                 deletedShaderSource |= isDirectory || Util::isShaderFile(file.originalFile.string());
                 // Check if file is inside .trash directory or is .trash directory
-                if (file.originalFile == trash || 
-                    fs::relative(file.originalFile, trash).string().find("..") == std::string::npos) {
+                const fs::path relToTrash = fs::relative(file.originalFile, trash);
+                if (file.originalFile == trash ||
+                    (!relToTrash.empty() && *relToTrash.begin() != "..")) {
                     if (fs::is_directory(file.originalFile)) {
                         fs::remove_all(file.originalFile);
                     } else {

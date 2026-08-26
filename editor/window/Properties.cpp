@@ -1163,7 +1163,7 @@ void editor::Properties::drawFontSlot(ComponentType cpType, const std::string& i
 
             // References are stored relative to the assets root
             auto relative = std::filesystem::relative(filePath, assetsPath, ec);
-            if (ec || relative.string().find("..") != std::string::npos) {
+            if (ec || relative.empty() || *relative.begin() == "..") {
                 ImGui::OpenPopup("File Import Error");
             }else{
                 setFontSlot(cpType, id, slot, relative.string(), sceneProject, entities, onValueChanged);
@@ -3674,7 +3674,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                 // References are stored relative to the assets root
                 std::error_code ec;
                 auto relative = std::filesystem::relative(filePath, assetsPath, ec);
-                if (ec || relative.string().find("..") != std::string::npos) {
+                if (ec || relative.empty() || *relative.begin() == "..") {
                     ImGui::OpenPopup("File Import Error");
                 }else{
                     Texture texture(relative.string());
@@ -3888,7 +3888,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
 
                     std::error_code ec;
                     auto relative = std::filesystem::relative(filePath, assetsPath, ec);
-                    if (ec || relative.string().find("..") != std::string::npos) {
+                    if (ec || relative.empty() || *relative.begin() == "..") {
                         ImGui::OpenPopup("File Import Error##cube");
                     }else{
                         Texture texture = newValue;
@@ -4003,7 +4003,7 @@ bool editor::Properties::propertyRow(RowPropertyType type, ComponentType cpType,
                         // References are stored relative to the assets root
                         std::error_code ec;
                         auto relative = std::filesystem::relative(filePath, assetsPath, ec);
-                        if (ec || relative.string().find("..") != std::string::npos) {
+                        if (ec || relative.empty() || *relative.begin() == "..") {
                             ImGui::OpenPopup("File Import Error##cube");
                         }else{
                             Texture texture = newValue;
@@ -5175,10 +5175,12 @@ void editor::Properties::drawShaderRowContents(ShaderType shaderType, const std:
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
             std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
             if (!receivedStrings.empty() && Util::isShaderFile(receivedStrings[0])) {
-                std::string rel = std::filesystem::relative(receivedStrings[0], projectPath).generic_string();
+                std::error_code ec;
+                std::filesystem::path relPath = std::filesystem::relative(receivedStrings[0], projectPath, ec);
                 // store the base path without the .vert/.frag extension
-                std::filesystem::path relPath(rel);
-                useExistingBase((relPath.parent_path() / relPath.stem()).generic_string());
+                if (!ec && !relPath.empty() && *relPath.begin() != "..") {
+                    useExistingBase((relPath.parent_path() / relPath.stem()).generic_string());
+                }
             }
         }
         ImGui::EndDragDropTarget();
@@ -5235,7 +5237,7 @@ void editor::Properties::drawShaderFilesPopup(const std::string& popupName, cons
         }
         std::error_code ec;
         std::filesystem::path rel = std::filesystem::relative(selected, projectPath, ec);
-        if (ec || rel.string().find("..") != std::string::npos) {
+        if (ec || rel.empty() || *rel.begin() == "..") {
             Backend::getApp().registerAlert("Error", "Shader file must be inside the project directory.");
             return;
         }
@@ -5758,7 +5760,7 @@ void editor::Properties::drawModelComponent(ComponentType cpType, SceneProject* 
 
                 std::error_code ec;
                 auto relative = std::filesystem::relative(filePath, assetsPath, ec);
-                if (ec || relative.string().find("..") != std::string::npos) {
+                if (ec || relative.empty() || *relative.begin() == "..") {
                     ImGui::OpenPopup("Model Import Error");
                 }else{
                     CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new ModelLoadCmd(project, sceneProject->id, entity, relative.string()));
@@ -6762,7 +6764,7 @@ void editor::Properties::drawAudioComponent(ComponentType cpType, SceneProject* 
             std::error_code errorCode;
             std::filesystem::path relative = std::filesystem::relative(filePath, assetsPath, errorCode);
             std::string relativePath = relative.generic_string();
-            if (errorCode || relativePath == ".." || relativePath.rfind("../", 0) == 0) {
+            if (errorCode || relative.empty() || *relative.begin() == "..") {
                 ImGui::OpenPopup("Sound Import Error");
                 return false;
             }
