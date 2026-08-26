@@ -4805,7 +4805,8 @@ bool editor::Project::isTempProject() const{
     std::error_code ec;
     auto relPath = std::filesystem::relative(projectPath, std::filesystem::temp_directory_path(), ec);
 
-    if (ec) {
+    // relative() returns empty across different roots, like a project on D: while temp is on C:
+    if (ec || relPath.empty()) {
         return false;
     }
 
