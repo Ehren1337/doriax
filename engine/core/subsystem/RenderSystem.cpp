@@ -6058,7 +6058,10 @@ void RenderSystem::update(double dt){
     for (int i = 0; i < cameras->size(); i++){
         CameraComponent& camera = cameras->getComponentFromIndex(i);
         Entity cameraEntity = cameras->getEntity(i);
-        Transform& cameraTransform = scene->getComponent<Transform>(cameraEntity);
+        Transform* cameraTransformPtr = scene->findComponent<Transform>(cameraEntity);
+        if (!cameraTransformPtr)
+            continue;
+        Transform& cameraTransform = *cameraTransformPtr;
 
         if (camera.renderToTexture){
             // sync authored framebuffer settings (editor/serialized) into the live
@@ -6135,8 +6138,14 @@ void RenderSystem::update(double dt){
     // so fetch mainCamera/mainCameraTransform references AFTER it returns.
     updateMirrors(mainCameraEntity);
 
-    CameraComponent& mainCamera =  scene->getComponent<CameraComponent>(mainCameraEntity);
-    Transform& mainCameraTransform =  scene->getComponent<Transform>(mainCameraEntity);
+    // the rest of the frame is built from the main camera view
+    CameraComponent* mainCameraPtr = scene->findComponent<CameraComponent>(mainCameraEntity);
+    Transform* mainCameraTransformPtr = scene->findComponent<Transform>(mainCameraEntity);
+    if (!mainCameraPtr || !mainCameraTransformPtr)
+        return;
+
+    CameraComponent& mainCamera = *mainCameraPtr;
+    Transform& mainCameraTransform = *mainCameraTransformPtr;
 
     // while extra cameras render, draw() rewrites the shared MVP and sky matrices
     // per camera; removing the last of them (a mirror, a reflection probe) would
@@ -6767,7 +6776,10 @@ void RenderSystem::draw(){
     for (int i = 0; i < cameras->size(); i++){
         Entity cameraEntity = cameras->getEntity(i);
         CameraComponent& camera = cameras->getComponentFromIndex(i);
-        Transform& cameraTransform = scene->getComponent<Transform>(cameraEntity);
+        Transform* cameraTransformPtr = scene->findComponent<Transform>(cameraEntity);
+        if (!cameraTransformPtr)
+            continue;
+        Transform& cameraTransform = *cameraTransformPtr;
 
         bool isMainCamera = (cameraEntity == scene->getCamera());
 

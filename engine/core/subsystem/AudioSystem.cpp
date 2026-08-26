@@ -226,12 +226,17 @@ void AudioSystem::update(double dt){
     }
 
     auto audios = scene->getComponentArray<SoundComponent>();
+
+    // 3D sources are placed against the main camera, so without one they play in 2D
+    bool hasListener = scene->findComponent<CameraComponent>(scene->getCamera()) &&
+                       scene->findComponent<Transform>(scene->getCamera());
+
     for (int i = 0; i < audios->size(); i++){
 		SoundComponent& audio = audios->getComponentFromIndex(i);
 
         Entity entity = audios->getEntity(i);
         Signature signature = scene->getSignature(entity);
-        bool use3DAudio = signature.test(scene->getComponentId<Transform>());
+        bool use3DAudio = hasListener && signature.test(scene->getComponentId<Transform>());
 
         Vector3 worldPosition = Vector3(0, 0, 0);
         if (use3DAudio){
