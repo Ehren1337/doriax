@@ -123,7 +123,9 @@ bool editor::ImportEntityBundleCmd::execute(){
     // Select the root entity
     project->setSelectedEntity(sceneId, rootEntity);
 
-    ImGui::SetWindowFocus(("###Scene" + std::to_string(sceneId)).c_str());
+    if (ImGui::GetCurrentContext()){
+        ImGui::SetWindowFocus(("###Scene" + std::to_string(sceneId)).c_str());
+    }
 
     editor::Out::info("Imported entity bundle from '%s' to scene '%s'", filepath.string().c_str(), sceneProject->name.c_str());
 

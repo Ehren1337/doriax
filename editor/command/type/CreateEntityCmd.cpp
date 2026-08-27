@@ -682,7 +682,9 @@ bool editor::CreateEntityCmd::execute(){
         }
     }
 
-    ImGui::SetWindowFocus(("###Scene" + std::to_string(sceneId)).c_str());
+    if (ImGui::GetCurrentContext()){
+        ImGui::SetWindowFocus(("###Scene" + std::to_string(sceneId)).c_str());
+    }
 
     editor::Out::info("Created entity '%s' at scene '%s'", entityName.c_str(), sceneProject->name.c_str());
 
