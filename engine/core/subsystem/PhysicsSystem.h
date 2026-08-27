@@ -68,7 +68,7 @@ namespace doriax{
 		bool isShapeSourceLoading(Entity entity, const Shape3D& shapeData) const;
 		bool createShape3DForIndex(Entity entity, Body3DComponent& body, size_t index);
 
-		void createGenericJoltBody(Entity entity, Body3DComponent& body, const JPH::ShapeRefC shape);
+		bool createGenericJoltBody(Entity entity, Body3DComponent& body, const JPH::ShapeRefC shape);
 
 		static Vector3 absScale(const Vector3& scale);
 		static Vector2 absScale2D(const Vector2& scale);

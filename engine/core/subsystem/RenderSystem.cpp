@@ -4832,14 +4832,17 @@ void RenderSystem::updateTransform(Transform& transform){
 
     transform.localMatrix = translateMatrix * rotationMatrix * scaleMatrix;
 
+    Transform* transformParent = NULL;
     if (transform.parent != NULL_ENTITY){
-        Transform& transformParent = scene->getComponent<Transform>(transform.parent);
+        transformParent = scene->findComponent<Transform>(transform.parent);
+    }
 
-        transform.modelMatrix = transformParent.modelMatrix * transform.localMatrix;
+    if (transformParent){
+        transform.modelMatrix = transformParent->modelMatrix * transform.localMatrix;
 
-        transform.worldPosition = transformParent.modelMatrix * transform.position;
-        transform.worldScale = transformParent.worldScale * transform.scale;
-        transform.worldRotation = transformParent.worldRotation * transform.rotation;
+        transform.worldPosition = transformParent->modelMatrix * transform.position;
+        transform.worldScale = transformParent->worldScale * transform.scale;
+        transform.worldRotation = transformParent->worldRotation * transform.rotation;
     }else{
         transform.modelMatrix = transform.localMatrix;
 
@@ -5909,8 +5912,10 @@ void RenderSystem::updateMVP(size_t index, Transform& transform, CameraComponent
                 transform.rotation.fromRotationMatrix(m1);
                 transform.rotation = transform.rotation * transform.billboardRotation;
                 if (transform.parent != NULL_ENTITY){
-                    auto transformParent = scene->getComponent<Transform>(transform.parent);
-                    transform.rotation = transformParent.worldRotation.inverse() * transform.rotation;
+                    Transform* transformParent = scene->findComponent<Transform>(transform.parent);
+                    if (transformParent){
+                        transform.rotation = transformParent->worldRotation.inverse() * transform.rotation;
+                    }
                 }
             }
 
@@ -5992,15 +5997,16 @@ void RenderSystem::update(double dt){
         Transform& transform = transforms->getComponentFromIndex(i);
 
         if (transform.parent != NULL_ENTITY){
-            Transform& transformParent = scene->getComponent<Transform>(transform.parent);
+            Transform* transformParent = scene->findComponent<Transform>(transform.parent);
+            if (transformParent){
+                if (transformParent->needUpdate){
+                    transform.needUpdate = true;
+                }
 
-            if (transformParent.needUpdate){
-                transform.needUpdate = true;
-            }
-
-            if (transformParent.needUpdateChildVisibility){
-                transform.visible = transformParent.visible;
-                transform.needUpdateChildVisibility = true;
+                if (transformParent->needUpdateChildVisibility){
+                    transform.visible = transformParent->visible;
+                    transform.needUpdateChildVisibility = true;
+                }
             }
         }
 

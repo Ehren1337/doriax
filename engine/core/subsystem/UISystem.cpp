@@ -1471,8 +1471,10 @@ Rect UISystem::getAnchorReferenceRect(const UILayoutComponent& layout, const Tra
     if (layoutParent == NULL_ENTITY){
         Rect boxRect = canvasRect();
         if (worldPosition && transform.parent != NULL_ENTITY) {
-            const Transform& parentTransform = scene->getComponent<Transform>(transform.parent);
-            boxRect = transformRectToWorldAxisAligned(boxRect, parentTransform.modelMatrix);
+            const Transform* parentTransform = scene->findComponent<Transform>(transform.parent);
+            if (parentTransform){
+                boxRect = transformRectToWorldAxisAligned(boxRect, parentTransform->modelMatrix);
+            }
         }
         return boxRect;
     }

@@ -431,11 +431,14 @@ void PhysicsSystem::updateTransformFromBody3D(Entity entity, Vector3 position, Q
     transform->worldPosition = position;
     transform->worldRotation = rotation;
 
+    Transform* transformParent = NULL;
     if (transform->parent != NULL_ENTITY){
-        Transform& transformParent = scene->getComponent<Transform>(transform->parent);
+        transformParent = scene->findComponent<Transform>(transform->parent);
+    }
 
-        transform->position = transformParent.modelMatrix.inverse() * position;
-        transform->rotation = transformParent.worldRotation.inverse() * rotation;
+    if (transformParent){
+        transform->position = transformParent->modelMatrix.inverse() * position;
+        transform->rotation = transformParent->worldRotation.inverse() * rotation;
     }else{
         transform->position = position;
         transform->rotation = rotation;
@@ -1132,7 +1135,7 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
             return false;
         }
 
-        createGenericJoltBody(entity, body, shape_result.Get());
+        if (!createGenericJoltBody(entity, body, shape_result.Get())) return false;
     }else{
         Shape3D& shapeData = body.shapes[0];
         if (shapeData.position != Vector3::ZERO || shapeData.rotation != Quaternion::IDENTITY){
@@ -1146,9 +1149,9 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
                 return false;
             }
 
-            createGenericJoltBody(entity, body, shape_result.Get());
+            if (!createGenericJoltBody(entity, body, shape_result.Get())) return false;
         }else{
-            createGenericJoltBody(entity, body, shapeData.shape);
+            if (!createGenericJoltBody(entity, body, shapeData.shape)) return false;
         }
     }
 
@@ -1160,7 +1163,7 @@ bool PhysicsSystem::syncBody3DShapes(Entity entity, Body3DComponent& body){
     return true;
 }
 
-void PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, const JPH::ShapeRefC shape){
+bool PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, const JPH::ShapeRefC shape){
     JPH::ObjectLayer layer = JPH::ObjectLayerPairFilterMask::sGetObjectLayer(1);
     JPH::EMotionType joltType = JPH::EMotionType::Static;
     JPH::EActivation activation = JPH::EActivation::DontActivate;
@@ -1197,6 +1200,10 @@ void PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, 
     }
 
     JPH::Body* jbody = body_interface.CreateBody(settings);
+    if (!jbody){
+        Log::error("Cannot create 3D Body for entity %u: body limit reached", entity);
+        return false;
+    }
     jbody->SetUserData(entity);
     //if (type != BodyType::STATIC){
     //    jbody->SetAllowSleeping(false);
@@ -1205,6 +1212,8 @@ void PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, 
     body.body = jbody->GetID();
 
     body_interface.AddBody(body.body, activation);
+
+    return true;
 }
 
 void PhysicsSystem::createBody2D(Entity entity){
@@ -2571,10 +2580,11 @@ void PhysicsSystem::fixedUpdate(double dt){
                 Quaternion nRotation = Quaternion(Angle::radToDefault(b2Rot_GetAngle(bTransform.q)), Vector3(0, 0, 1));
 
                 if (transform.parent != NULL_ENTITY){
-                    Transform& transformParent = scene->getComponent<Transform>(transform.parent);
-
-                    nPosition = transformParent.modelMatrix.inverse() * nPosition;
-                    nRotation = transformParent.worldRotation.inverse() * nRotation;
+                    Transform* transformParent = scene->findComponent<Transform>(transform.parent);
+                    if (transformParent){
+                        nPosition = transformParent->modelMatrix.inverse() * nPosition;
+                        nRotation = transformParent->worldRotation.inverse() * nRotation;
+                    }
                 }
 
                 if (transform.position != nPosition){
@@ -2644,10 +2654,11 @@ void PhysicsSystem::fixedUpdate(double dt){
                     Quaternion nRotation = Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
 
                     if (transform.parent != NULL_ENTITY){
-                        Transform& transformParent = scene->getComponent<Transform>(transform.parent);
-
-                        nPosition = transformParent.modelMatrix.inverse() * nPosition;
-                        nRotation = transformParent.worldRotation.inverse() * nRotation;
+                        Transform* transformParent = scene->findComponent<Transform>(transform.parent);
+                        if (transformParent){
+                            nPosition = transformParent->modelMatrix.inverse() * nPosition;
+                            nRotation = transformParent->worldRotation.inverse() * nRotation;
+                        }
                     }
 
                     if (transform.position != nPosition){
