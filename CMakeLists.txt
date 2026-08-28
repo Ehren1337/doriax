@@ -156,6 +156,10 @@ function(doriax_add_windows_resource out_var target_name icon_name original_file
     set(${out_var} $<TARGET_OBJECTS:${target_name}-resource> PARENT_SCOPE)
 endfunction()
 
+if(WIN32)
+    include(${DORIAX_ROOT}/platform/win/WindowsManifest.cmake)
+endif()
+
 set(DORIAX_EDITOR_ICON_OBJECTS)
 if(WIN32)
     doriax_add_windows_resource(
@@ -710,6 +714,10 @@ add_executable(
 
 configure_doriax_editor_target(doriax-editor)
 
+if(WIN32)
+    doriax_add_windows_manifest(doriax-editor)
+endif()
+
 if(PLATFORM_PROPERTIES_FLAGS)
     set_target_properties(doriax-editor PROPERTIES ${PLATFORM_PROPERTIES_FLAGS})
 endif()
@@ -829,6 +837,7 @@ if(WIN32)
     )
 
     configure_doriax_editor_target(doriax-editor-cmd)
+    doriax_add_windows_manifest(doriax-editor-cmd)
     add_dependencies(doriax-editor-cmd copy_doriax_editor_engine)
     list(APPEND DORIAX_EDITOR_INSTALL_TARGETS doriax-editor-cmd)
 endif()

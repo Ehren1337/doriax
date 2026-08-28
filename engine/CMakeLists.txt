@@ -956,6 +956,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
+    if(WIN32)
+        include(${DORIAX_ROOT}/platform/win/WindowsManifest.cmake)
+        doriax_add_windows_manifest(${APP_NAME})
+    endif()
+
     # Project script roots are injected here by the editor Exporter. They are
     # scoped to this target: include_directories() would reach the doriax
     # library too, ahead of core/, letting a project header shadow an engine one.

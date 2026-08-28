@@ -762,8 +762,9 @@ int editor::Backend::init(int argc, char* argv[]) {
     backend = new WinBackendData();
 
     // Before the window exists and before any monitor DPI is read, or the query
-    // below returns the 96 DPI Windows reports to unaware processes.
-    ImGui_ImplWin32_EnableDpiAwareness();
+    // below returns the 96 DPI Windows reports to unaware processes. ImGui's
+    // own helper only covers the calling thread, which is not enough.
+    WindowWin::enableDpiAwareness();
 
     const float uiScale = WindowWin::monitorScale(nullptr);
     const int initialWidth = app.getInitialWindowWidth(uiScale);

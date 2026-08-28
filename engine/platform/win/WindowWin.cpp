@@ -11,6 +11,15 @@
 
 using namespace doriax;
 
+// Not in MinGW or pre-1703 SDK headers, and the entry point taking them is
+// resolved by name anyway.
+#ifndef _DPI_AWARENESS_CONTEXTS_
+DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
+#endif
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
+#endif
+
 namespace {
 
     HINSTANCE gInstance = nullptr;
@@ -120,7 +129,43 @@ std::wstring doriax::winUtf8ToWide(const std::string& text) {
     return result;
 }
 
+// Awareness is a process property: a thread-scoped context leaves the process
+// unaware, so Windows draws the window at the unscaled size and stretches it
+// while an aware thread reads back the stretched sizes. Newest API to oldest.
+void WindowWin::enableDpiAwareness() {
+    static bool applied = false;
+    if (applied) return;
+    applied = true;
+
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32) return;
+
+    using SetProcessContextFn = BOOL (WINAPI*)(DPI_AWARENESS_CONTEXT);
+    if (auto setProcessContext = reinterpret_cast<SetProcessContextFn>(
+            GetProcAddress(user32, "SetProcessDpiAwarenessContext"))) {
+        if (setProcessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) return;
+        // Already settled by a manifest or an earlier call, and the rest would
+        // be refused for the same reason.
+        if (GetLastError() == ERROR_ACCESS_DENIED) return;
+    }
+
+    using SetProcessAwarenessFn = HRESULT (WINAPI*)(int);
+    if (HMODULE shcore = LoadLibraryW(L"shcore.dll")) {
+        auto setProcessAwareness = reinterpret_cast<SetProcessAwarenessFn>(
+            GetProcAddress(shcore, "SetProcessDpiAwareness"));
+        // 2 is PROCESS_PER_MONITOR_DPI_AWARE
+        if (setProcessAwareness && SUCCEEDED(setProcessAwareness(2))) return;
+    }
+
+    using SetProcessAwareFn = BOOL (WINAPI*)();
+    if (auto setProcessAware = reinterpret_cast<SetProcessAwareFn>(
+            GetProcAddress(user32, "SetProcessDPIAware"))) {
+        setProcessAware();
+    }
+}
+
 bool WindowWin::create(const WindowWinConfig& config) {
+    enableDpiAwareness();
     gInstance = GetModuleHandleW(nullptr);
     gClassName = config.className;
 

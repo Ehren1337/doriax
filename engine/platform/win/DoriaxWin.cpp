@@ -17,6 +17,7 @@
 
 #include "Engine.h"
 
+#include <cmath>
 #include <cstdio>
 
 #ifndef DORIAX_VSYNC_ENABLED
@@ -117,6 +118,17 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message,
                 return 0;
             }
             break;
+        case WM_DPICHANGED:
+            // Per-monitor awareness leaves the resize to the window; a
+            // fullscreen one already covers the monitor it moved to.
+            if (!WindowWin::isFullscreen()) {
+                const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+                SetWindowPos(handle, nullptr, suggested->left, suggested->top,
+                             suggested->right - suggested->left,
+                             suggested->bottom - suggested->top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            return 0;
         case WM_MOVE:
         case WM_DISPLAYCHANGE:
         case WM_SETFOCUS:
@@ -290,12 +302,17 @@ void drawFrame() {
 }
 
 int DoriaxWin::init(int argc, char **argv) {
+    // The project size is authored at 100%: an aware process draws at the
+    // monitor's own resolution instead of having its window enlarged for it.
+    WindowWin::enableDpiAwareness();
+    const float uiScale = WindowWin::monitorScale(nullptr);
+
     Engine::systemInit(argc, argv, new SystemWin(&inputRouter));
 
     WindowWinConfig config;
     config.title = DORIAX_WINDOW_TITLE;
-    config.width = DEFAULT_WINDOW_WIDTH;
-    config.height = DEFAULT_WINDOW_HEIGHT;
+    config.width = static_cast<int>(std::lround(DEFAULT_WINDOW_WIDTH * uiScale));
+    config.height = static_cast<int>(std::lround(DEFAULT_WINDOW_HEIGHT * uiScale));
     config.resizable = DORIAX_WINDOW_RESIZABLE;
     config.maximized = (DORIAX_WINDOW_MODE == 1);
     config.windowProc = windowProc;

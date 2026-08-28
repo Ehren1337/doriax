@@ -52,6 +52,10 @@ namespace doriax {
     class WindowWin {
     public:
 
+        // Declares the process per-monitor DPI aware. create() calls it; a
+        // caller reading monitor metrics before that needs it earlier.
+        static void enableDpiAwareness();
+
         // Registers the class, creates the window and registers the raw mouse
         // device that CAPTURED mode reads. Does not show the window.
         static bool create(const WindowWinConfig& config);
