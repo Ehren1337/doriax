@@ -91,6 +91,16 @@ namespace {
         return mesh.worldAABB != AABB::ZERO && (!instmesh || instmesh->cullInstances);
     }
 
+    // getCenter() asserts on null/infinite boxes. New foliage (and any empty
+    // instanced mesh) leaves worldAABB null; AABB::ZERO is the unloaded default
+    // and is not a useful sample point.
+    Vector3 meshProbeSamplePosition(const MeshComponent& mesh, const Transform& transform){
+        if (mesh.worldAABB.isFinite() && mesh.worldAABB != AABB::ZERO){
+            return mesh.worldAABB.getCenter();
+        }
+        return transform.worldPosition;
+    }
+
     void applyInstanceFadeUniform(ObjectRender& render, int slot, const InstancedMeshComponent& instmesh){
         float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, 0.0f, 0.0f,
             instmesh.fadeEyeLocal.x, instmesh.fadeEyeLocal.y, instmesh.fadeEyeLocal.z, 0.0f};
@@ -3854,9 +3864,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 // Probe assignment is per renderable. Its bounds center is a
                 // better representative point than the entity origin for meshes
                 // whose geometry is offset in local space.
-                Vector3 probeSamplePosition = mesh.worldAABB != AABB::ZERO
-                    ? mesh.worldAABB.getCenter()
-                    : transform.worldPosition;
+                Vector3 probeSamplePosition = meshProbeSamplePosition(mesh, transform);
                 selectReflectionProbe(probeSamplePosition, fs_reflection_probe, probeTexture);
                 ShaderData& probeShaderData = mesh.submeshes[i].shader.get()->shaderData;
                 render.addTexture(probeShaderData.getTextureIndex(TextureShaderType::REFLECTIONPROBE), ShaderStageType::FRAGMENT, probeTexture);
@@ -4463,9 +4471,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
 
         fs_reflection_probe_t probeParams;
         TextureRender* probeTexture = nullptr;
-        Vector3 probeSamplePosition = mesh.worldAABB != AABB::ZERO
-            ? mesh.worldAABB.getCenter()
-            : transform.worldPosition;
+        Vector3 probeSamplePosition = meshProbeSamplePosition(mesh, transform);
         bool hasLocalProbe = selectReflectionProbe(probeSamplePosition, probeParams, probeTexture)
             && probeParams.position_weight.w > 0.001f;
 
