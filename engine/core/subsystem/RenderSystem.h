@@ -177,6 +177,17 @@ namespace doriax{
 			float distanceToCamera;
 		};
 
+		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
+		struct OpaqueRenderData{
+			Entity entity;
+			MeshComponent* mesh;
+			InstancedMeshComponent* instmesh;
+			TerrainComponent* terrain;
+			TilemapComponent* tilemap;
+			Transform* transform;
+			float distanceToCamera;
+		};
+
 		// One merged run of tilemap indices to draw, in elements relative to the
 		// submesh index range (see selectTilemapChunks).
 		struct TilemapDrawRange{
@@ -286,6 +297,39 @@ namespace doriax{
 		// Main camera position for the instance distance fade: the colour and depth passes must
 		// fade against the same point or a shadow outlives its instance.
 		Vector3 fadeEyePosition;
+
+		// culled instances of every instanced mesh for one view, uploaded once per frame
+		struct InstanceView{
+			std::vector<InstanceRenderData> data;
+			ExternalBuffer buffer;
+			size_t capacity = 0; // bytes of the GPU buffer
+			bool needUpload = false;
+		};
+		InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
+		bool instanceViewsDirty;
+
+		// error a view hides at a distance: threshold * (perUnit * distance + constant)
+		struct LodView{
+			Vector3 origin;
+			float perUnit = 0;   // perspective: units per pixel at distance 1
+			float constant = 0;  // orthographic: units per pixel
+			float threshold = 1;
+			bool enabled = false;
+		};
+		LodView mainLodView;
+
+		struct ShadowSlot{
+			int slot;
+			LightComponent* light;
+			int cameraIndex;
+		};
+
+		// what one pass draws of a mesh
+		struct MeshDraw{
+			unsigned int instanceCount = 1;
+			unsigned int instanceFirst = 0;
+			unsigned int lod = 0;
+		};
 		Entity activeReflectionProbe = NULL_ENTITY;
 		fs_reflection_probe_t fs_reflection_probe;
 
@@ -512,6 +556,37 @@ namespace doriax{
 		void updateInstanceBuffers();
 		Rect getScissorRect(UILayoutComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport);
 
+		// mesh LOD
+		struct LodAttribute{
+			Buffer* buffer = nullptr;
+			Attribute* attribute = nullptr;
+		};
+		struct LodAttributes{
+			LodAttribute position;
+			LodAttribute index;
+			LodAttribute normal;
+			LodAttribute uv;
+		};
+		void updateMeshLods(Entity entity, MeshComponent& mesh, bool rehash);
+		static LodAttribute findSubmeshAttribute(Submesh& submesh, std::map<std::string, Buffer*>& buffers, AttributeType type);
+		static bool findLodAttributes(Submesh& submesh, std::map<std::string, Buffer*>& buffers, LodAttributes& attributes);
+		static uint64_t attributeHash(uint64_t seed, const LodAttribute& attribute);
+		static bool readLodSource(const LodAttributes& attributes, MeshLodSource& source);
+		void pollMeshLod(MeshComponent& mesh, Submesh& submesh);
+		static bool isMeshLodPending(Submesh& submesh);
+		void updateMeshLodErrors(MeshComponent& mesh);
+		void updateMainLodView(CameraComponent& camera, Transform& cameraTransform);
+		unsigned int selectMeshLod(const MeshComponent& mesh, const LodView* view, float distance, float worldScale) const;
+		LodView shadowLodView(const LightComponent& light, int cameraIndex, int slot) const;
+		std::vector<ShadowSlot> collectShadowSlots();
+
+		// instance views
+		void buildInstanceViews(CameraComponent& mainCamera, Transform& mainCameraTransform);
+		void buildInstanceView(int viewIndex, InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& origin, const Vector3& direction, bool keepOrder);
+		bool selectMeshDraw(MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw);
+		void bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first);
+		void drawSubmeshGeometry(ObjectRender& render, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount);
+
 		// terrain
 		bool terrainNodeLODSelect(TerrainComponent& terrain, Transform& transform, CameraComponent& camera, Transform& cameraTransform, TerrainNode& terrainNode, int lodLevel, int viewIndex);
 		AABB getTerrainNodeAABB(Transform& transform, TerrainNode& terrainNode);
@@ -526,8 +601,9 @@ namespace doriax{
 
 		void updateMeshBuffers(MeshComponent& mesh);
 		void updateTerrainNodesBuffer(TerrainComponent& terrain, int viewIndex);
-		bool drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView = 0);
-		bool drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO = false, PipelineType pipelineType = PIP_DEPTH);
+		// instanceView -1 draws every instance from the component buffer; lodView null is full detail
+		bool drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView = 0, int instanceView = -1, const LodView* lodView = nullptr);
+		bool drawMeshDepth(MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO = false, PipelineType pipelineType = PIP_DEPTH, int instanceView = -1, const LodView* lodView = nullptr);
 		void destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets = false);
 
 		// SSAO
@@ -546,7 +622,7 @@ namespace doriax{
 		// G-buffer geometry pass for SSR: MRT packed depth + view-space normal/roughness/metallic
 		bool ensureGBufferFramebuffer(unsigned int width, unsigned int height);
 		void renderGBufferPass(CameraComponent& camera);
-		bool drawMeshGBuffer(Entity entity, MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap);
+		bool drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int instanceView = -1, const LodView* lodView = nullptr);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
 
@@ -639,6 +715,7 @@ namespace doriax{
 		bool isInsideCamera(CameraComponent& camera, const AABB& box);
 		bool isInsideCamera(CameraComponent& camera, const Vector3& point);
 		bool isInsideCamera(CameraComponent& camera, const Vector3& center, const float& radius);
+		bool isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const Vector3& center, const float& radius);
 
 		void needReloadPoints();
 		void needReloadLines();

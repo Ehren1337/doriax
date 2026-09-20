@@ -59,6 +59,9 @@
 		17C554F82FB903B0008804C2 /* ModelPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 17C554F62FB903B0008804C2 /* ModelPool.h */; };
 		17C554F92FB903B0008804C2 /* ModelPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C554F72FB903B0008804C2 /* ModelPool.cpp */; };
 		17C554FA2FB903B0008804C2 /* ModelPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C554F72FB903B0008804C2 /* ModelPool.cpp */; };
+		71C005C2D2E7A0100C91BA00 /* MeshLodPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 71C005A2D2E7A0100C91BA00 /* MeshLodPool.h */; };
+		71C005D2D2E7A0100C91BA00 /* MeshLodPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C005B2D2E7A0100C91BA00 /* MeshLodPool.cpp */; };
+		71C005E2D2E7A0100C91BA00 /* MeshLodPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C005B2D2E7A0100C91BA00 /* MeshLodPool.cpp */; };
 		17FB42732FDDA6E3002F919C /* MirrorComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17FB42722FDDA6E3002F919C /* MirrorComponent.h */; };
 		17FB42762FDDA782002F919C /* IBLEnvironment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17FB42752FDDA782002F919C /* IBLEnvironment.cpp */; };
 		17FB42772FDDA782002F919C /* IBLEnvironment.h in Headers */ = {isa = PBXBuildFile; fileRef = 17FB42742FDDA782002F919C /* IBLEnvironment.h */; };
@@ -1467,6 +1470,8 @@
 		17BFFB732FF201F9008F5B7C /* nanosvgrast.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = nanosvgrast.h; sourceTree = "<group>"; };
 		17C554F62FB903B0008804C2 /* ModelPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ModelPool.h; sourceTree = "<group>"; };
 		17C554F72FB903B0008804C2 /* ModelPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ModelPool.cpp; sourceTree = "<group>"; };
+		71C005A2D2E7A0100C91BA00 /* MeshLodPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MeshLodPool.h; sourceTree = "<group>"; };
+		71C005B2D2E7A0100C91BA00 /* MeshLodPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MeshLodPool.cpp; sourceTree = "<group>"; };
 		17FB42722FDDA6E3002F919C /* MirrorComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MirrorComponent.h; sourceTree = "<group>"; };
 		17FB42742FDDA782002F919C /* IBLEnvironment.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IBLEnvironment.h; sourceTree = "<group>"; };
 		17FB42752FDDA782002F919C /* IBLEnvironment.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = IBLEnvironment.cpp; sourceTree = "<group>"; };
@@ -5372,6 +5377,8 @@
 			children = (
 				7157764C2B050C230049C970 /* FontPool.h */,
 				7157764D2B050C230049C970 /* FontPool.cpp */,
+				71C005A2D2E7A0100C91BA00 /* MeshLodPool.h */,
+				71C005B2D2E7A0100C91BA00 /* MeshLodPool.cpp */,
 				17C554F62FB903B0008804C2 /* ModelPool.h */,
 				17C554F72FB903B0008804C2 /* ModelPool.cpp */,
 				17235AD72FCF546A00AF8D04 /* ObjModelData.h */,
@@ -5753,6 +5760,7 @@
 				71ABBD10277A313C001CE3AF /* AlphaAction.h in Headers */,
 				71651FF12AA804B4008D9BF5 /* Contact2D.h in Headers */,
 				17C554F82FB903B0008804C2 /* ModelPool.h in Headers */,
+				71C005C2D2E7A0100C91BA00 /* MeshLodPool.h in Headers */,
 				71ABBD2B277A3210001CE3AF /* STBText.h in Headers */,
 				71CC839726B8C4D800EEBB93 /* Light.h in Headers */,
 				717D9B4127337850002C0803 /* ParticlesComponent.h in Headers */,
@@ -7223,6 +7231,7 @@
 				71AD5E742E9F2B87004951AB /* ScriptProperty.cpp in Sources */,
 				71ABBD362783C8BB001CE3AF /* Image.cpp in Sources */,
 				17C554FA2FB903B0008804C2 /* ModelPool.cpp in Sources */,
+				71C005D2D2E7A0100C91BA00 /* MeshLodPool.cpp in Sources */,
 				71E824902A9C23A600C8E6F2 /* Body2D.cpp in Sources */,
 				71AD5E702E9F2B86004951AB /* ScriptBase.cpp in Sources */,
 				71E5450A284D5BB700C68FAB /* RotateTracks.cpp in Sources */,
@@ -7411,6 +7420,7 @@
 				71D74955296731F200348AB8 /* EntityHandle.cpp in Sources */,
 				71ABBD352783C8BB001CE3AF /* Image.cpp in Sources */,
 				17C554F92FB903B0008804C2 /* ModelPool.cpp in Sources */,
+				71C005E2D2E7A0100C91BA00 /* MeshLodPool.cpp in Sources */,
 				71E8248F2A9C23A600C8E6F2 /* Body2D.cpp in Sources */,
 				71AD5E732E9F2B86004951AB /* ScriptBase.cpp in Sources */,
 				71E54509284D5BB700C68FAB /* RotateTracks.cpp in Sources */,

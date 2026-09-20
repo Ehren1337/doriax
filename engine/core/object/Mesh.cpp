@@ -279,6 +279,34 @@ bool Mesh::isCastShadows() const{
     return mesh.castShadows;
 }
 
+void Mesh::setLodEnabled(bool lodEnabled){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    if (mesh.lodEnabled != lodEnabled){
+        mesh.lodEnabled = lodEnabled;
+
+        mesh.needReload = true;
+    }
+}
+
+bool Mesh::isLodEnabled() const{
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    return mesh.lodEnabled;
+}
+
+void Mesh::setLodBias(float lodBias){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    mesh.lodBias = lodBias;
+}
+
+float Mesh::getLodBias() const{
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    return mesh.lodBias;
+}
+
 void Mesh::setReceiveShadows(bool receiveShadows){
     MeshComponent& mesh = getComponent<MeshComponent>();
 

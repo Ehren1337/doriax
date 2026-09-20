@@ -31,7 +31,11 @@ namespace doriax {
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         // swap the vertex buffer bound at load (original) for one of identical layout
         // (replacement), just before draw — used to bind a per-view instance buffer
-        void replaceVertexBuffer(BufferRender* original, BufferRender* replacement);
+        void replaceVertexBuffer(BufferRender* original, BufferRender* replacement, size_t byteOffset = 0);
+        // draw from another index buffer of the same element type (a LOD range); resetIndexBuffer
+        // returns to the one bound at load
+        void setIndexBuffer(BufferRender* buffer);
+        void resetIndexBuffer();
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         bool endLoad(uint8_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder);
 

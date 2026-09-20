@@ -98,6 +98,12 @@ namespace doriax{
         void setShadowQuality(ShadowQuality quality);
         ShadowQuality getShadowQuality() const;
 
+        void setMeshLodEnabled(bool enabled);
+        bool isMeshLodEnabled() const;
+
+        void setMeshLodThreshold(float pixels);
+        float getMeshLodThreshold() const;
+
         void setSSAOEnabled(bool ssaoEnabled);
         bool isSSAOEnabled() const;
 

@@ -57,6 +57,10 @@ namespace doriax{
         Vector4 backgroundColor = Vector4(0.0, 0.0, 0.0, 1.0); // sRGB
         ShadowQuality shadowQuality = ShadowQuality::LOW;
 
+        // a mesh detail level is drawn once its error projects below this many pixels
+        bool meshLodEnabled = true;
+        float meshLodThreshold = 1.0f;
+
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;

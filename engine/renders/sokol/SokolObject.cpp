@@ -40,12 +40,16 @@ SokolObject::SokolObject(){
     nodepth_pip.id = SG_INVALID_ID;
     rtt_nodepth_pip.id = SG_INVALID_ID;
     bind = {};
+    loadIndexBuffer.id = SG_INVALID_ID;
+    loadIndexOffset = 0;
     pipeline_desc = {};
     bindSlotIndex = 0;
 }
 
 SokolObject::SokolObject(const SokolObject& rhs) {
     bind = rhs.bind;
+    loadIndexBuffer = rhs.loadIndexBuffer;
+    loadIndexOffset = rhs.loadIndexOffset;
     pip = rhs.pip;
     depth_pip = rhs.depth_pip;
     shadow_depth_pip = rhs.shadow_depth_pip;
@@ -61,6 +65,8 @@ SokolObject::SokolObject(const SokolObject& rhs) {
 
 SokolObject& SokolObject::operator=(const SokolObject& rhs) {
     bind = rhs.bind;
+    loadIndexBuffer = rhs.loadIndexBuffer;
+    loadIndexOffset = rhs.loadIndexOffset;
     pip = rhs.pip;
     depth_pip = rhs.depth_pip;
     shadow_depth_pip = rhs.shadow_depth_pip;
@@ -167,6 +173,8 @@ void SokolObject::setIndex(BufferRender* buffer, AttributeDataType dataType, siz
     sg_buffer ibuf = buffer->backend.get();
     bind.index_buffer = ibuf;
     bind.index_buffer_offset = offset;
+    loadIndexBuffer = ibuf;
+    loadIndexOffset = offset;
 
     if (dataType == AttributeDataType::UNSIGNED_SHORT){
         pipeline_desc.index_type = SG_INDEXTYPE_UINT16;
@@ -217,14 +225,25 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
     }
 }
 
-void SokolObject::replaceVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer){
+void SokolObject::replaceVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer, size_t byteOffset){
     // A single interleaved buffer can occupy several bind slots (one per attribute
     // offset on Metal/D3D), so swap every slot that referenced the original buffer.
     for (auto const& kv : bufferToBindSlot){
         if (kv.first.id == fromBufferId){
             bind.vertex_buffers[kv.second] = toBuffer;
+            bind.vertex_buffer_offsets[kv.second] = (int)(kv.first.offset + byteOffset);
         }
     }
+}
+
+void SokolObject::setIndexBuffer(sg_buffer buffer){
+    bind.index_buffer = buffer;
+    bind.index_buffer_offset = 0;
+}
+
+void SokolObject::resetIndexBuffer(){
+    bind.index_buffer = loadIndexBuffer;
+    bind.index_buffer_offset = (int)loadIndexOffset;
 }
 
 void SokolObject::addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer){

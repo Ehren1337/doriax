@@ -40,6 +40,8 @@ namespace doriax{
     private:
 
         sg_bindings bind;
+        sg_buffer loadIndexBuffer;
+        size_t loadIndexOffset;
 
         sg_pipeline pip;
         sg_pipeline depth_pip;
@@ -75,7 +77,9 @@ namespace doriax{
         // rebind every vertex bind-slot that was filled from fromBufferId to toBuffer,
         // keeping the same per-slot layout/offset (used to swap a per-view instance
         // buffer in just before draw). Affects only the bindings, not the pipeline.
-        void replaceVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer);
+        void replaceVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer, size_t byteOffset);
+        void setIndexBuffer(sg_buffer buffer);
+        void resetIndexBuffer();
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         bool endLoad(uint8_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder);

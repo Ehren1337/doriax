@@ -83,6 +83,14 @@ namespace {
         return instmesh.fadeEnd;
     }
 
+    // shadow-map texels of error a caster may lose, well inside the PCF blur
+    const float SHADOW_LOD_TEXELS = 2.0f;
+
+    // an instanced mesh with culling off keeps its whole batch, bounds or not
+    bool cullsBatch(const MeshComponent& mesh, const InstancedMeshComponent* instmesh){
+        return mesh.worldAABB != AABB::ZERO && (!instmesh || instmesh->cullInstances);
+    }
+
     void applyInstanceFadeUniform(ObjectRender& render, int slot, const InstancedMeshComponent& instmesh){
         float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, 0.0f, 0.0f,
             instmesh.fadeEyeLocal.x, instmesh.fadeEyeLocal.y, instmesh.fadeEyeLocal.z, 0.0f};
@@ -225,6 +233,7 @@ TextureRender RenderSystem::emptyShadowDepth;
 bool RenderSystem::emptyTexturesCreated = false;
 
 RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
+    instanceViewsDirty = true;
     signature.set(scene->getComponentId<Transform>());
 
     this->scene = scene;
@@ -325,6 +334,12 @@ void RenderSystem::destroy(){
     destroySSR();
     destroyBlit();
     destroyPostProcess();
+    for (InstanceView& view : instanceViews){
+        view.buffer.getRender()->destroyBuffer();
+        view.data.clear();
+        view.capacity = 0;
+    }
+    instanceViewsDirty = true;
     shadowAtlasFramebuffer.destroyFramebuffer();
     shadowAtlasSlotResolution = 0;
     shadowAtlasCols = 0;
@@ -3243,9 +3258,442 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
         }
     }
 
+    updateMeshLods(entity, mesh, true);
+    if (instmesh){
+        instanceViewsDirty = true;
+    }
+
     SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
 
     return true;
+}
+
+// Levels come from MeshLodPool asynchronously; a load rehashes the geometry so a mesh
+// that changed never draws stale levels
+void RenderSystem::updateMeshLods(Entity entity, MeshComponent& mesh, bool rehash){
+    if (!mesh.lodEnabled || scene->findComponent<TerrainComponent>(entity) || scene->findComponent<TilemapComponent>(entity))
+        return;
+
+    std::map<std::string, Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0)
+        buffers["vertices"] = &mesh.buffer;
+    if (mesh.indices.getSize() > 0)
+        buffers["indices"] = &mesh.indices;
+    for (int i = 0; i < mesh.numExternalBuffers; i++)
+        buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+
+    for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
+        Submesh& submesh = mesh.submeshes[i];
+
+        if (!rehash && submesh.lodKey != 0){
+            pollMeshLod(mesh, submesh);
+            continue;
+        }
+
+        LodAttributes attributes;
+        if (!findLodAttributes(submesh, buffers, attributes)){
+            submesh.lodKey = 0;
+            submesh.lodData.reset();
+            continue;
+        }
+
+        // every simplifier input takes part in the key, and the index type the levels are packed in
+        const uint32_t layout[3] = {(uint32_t)attributes.index.attribute->getDataType(), attributes.index.attribute->getCount(), attributes.position.attribute->getCount()};
+        uint64_t key = MeshLodPool::hash(0, layout, sizeof(layout));
+        key = attributeHash(key, attributes.index);
+        key = attributeHash(key, attributes.position);
+        key = attributeHash(key, attributes.normal);
+        key = attributeHash(key, attributes.uv);
+        if (key == submesh.lodKey){
+            pollMeshLod(mesh, submesh);
+            continue;
+        }
+
+        submesh.lodKey = key;
+        submesh.lodData.reset();
+        submesh.lodIndices.getRender()->destroyBuffer();
+
+        if (!MeshLodPool::has(key)){
+            MeshLodSource source;
+            if (readLodSource(attributes, source)){
+                MeshLodPool::build(key, std::move(source));
+            }
+        }
+        pollMeshLod(mesh, submesh);
+    }
+}
+
+RenderSystem::LodAttribute RenderSystem::findSubmeshAttribute(Submesh& submesh, std::map<std::string, Buffer*>& buffers, AttributeType type){
+    auto it = submesh.attributes.find(type);
+    if (it != submesh.attributes.end()){
+        auto buf = buffers.find(it->second.getBufferName());
+        if (buf == buffers.end())
+            return {};
+        return {buf->second, &it->second};
+    }
+    for (auto const& buf : buffers){
+        if (buf.second->isRenderAttributes() && buf.second->getAttribute(type)){
+            return {buf.second, buf.second->getAttribute(type)};
+        }
+    }
+    return {};
+}
+
+// the position and index attributes a level can be built over, with the normal and uv
+// attributes that guide the collapses when present
+bool RenderSystem::findLodAttributes(Submesh& submesh, std::map<std::string, Buffer*>& buffers, LodAttributes& attributes){
+    if (submesh.primitiveType != PrimitiveType::TRIANGLES)
+        return false;
+
+    attributes.position = findSubmeshAttribute(submesh, buffers, AttributeType::POSITION);
+    attributes.index = findSubmeshAttribute(submesh, buffers, AttributeType::INDEX);
+    if (!attributes.position.attribute || !attributes.index.attribute)
+        return false;
+    if (attributes.position.attribute->getDataType() != AttributeDataType::FLOAT || attributes.position.attribute->getElements() != 3)
+        return false;
+    AttributeDataType indexType = attributes.index.attribute->getDataType();
+    if (indexType != AttributeDataType::UNSIGNED_SHORT && indexType != AttributeDataType::UNSIGNED_INT)
+        return false;
+    if (attributes.index.attribute->getCount() % 3 != 0)
+        return false;
+
+    unsigned int vertexCount = attributes.position.attribute->getCount();
+    attributes.normal = findSubmeshAttribute(submesh, buffers, AttributeType::NORMAL);
+    attributes.uv = findSubmeshAttribute(submesh, buffers, AttributeType::TEXCOORD1);
+    for (LodAttribute* optional : {&attributes.normal, &attributes.uv}){
+        if (optional->attribute && (optional->attribute->getDataType() != AttributeDataType::FLOAT || optional->attribute->getCount() != vertexCount))
+            *optional = {};
+    }
+    return true;
+}
+
+uint64_t RenderSystem::attributeHash(uint64_t seed, const LodAttribute& attribute){
+    if (!attribute.attribute)
+        return MeshLodPool::hash(seed, "", 1);
+    size_t stride = std::max(attribute.buffer->getStride(), 1u);
+    size_t begin = std::min((size_t)attribute.attribute->getOffset(), attribute.buffer->getSize());
+    size_t end = std::min(begin + (size_t)attribute.attribute->getCount() * stride, attribute.buffer->getSize());
+    return MeshLodPool::hash(seed, attribute.buffer->getData() + begin, end - begin);
+}
+
+bool RenderSystem::readLodSource(const LodAttributes& attributes, MeshLodSource& source){
+    unsigned int vertexCount = attributes.position.attribute->getCount();
+    unsigned int indexCount = attributes.index.attribute->getCount();
+    bool normal = attributes.normal.attribute != nullptr;
+    bool uv = attributes.uv.attribute != nullptr;
+
+    source.indexType = attributes.index.attribute->getDataType();
+    source.indices.reserve(indexCount);
+    for (unsigned int k = 0; k < indexCount; k++){
+        uint32_t value = (source.indexType == AttributeDataType::UNSIGNED_INT)
+            ? attributes.index.buffer->getUInt32(attributes.index.attribute, k)
+            : attributes.index.buffer->getUInt16(attributes.index.attribute, k);
+        if (value >= vertexCount)
+            return false;
+        source.indices.push_back(value);
+    }
+
+    source.positions.reserve(vertexCount * 3);
+    source.attributeCount = (normal ? 3 : 0) + (uv ? 2 : 0);
+    source.attributes.reserve(vertexCount * source.attributeCount);
+    for (unsigned int v = 0; v < vertexCount; v++){
+        Vector3 p = attributes.position.buffer->getVector3(attributes.position.attribute, v);
+        source.positions.insert(source.positions.end(), {p.x, p.y, p.z});
+        if (normal){
+            Vector3 n = attributes.normal.buffer->getVector3(attributes.normal.attribute, v);
+            source.attributes.insert(source.attributes.end(), {n.x, n.y, n.z});
+        }
+        if (uv){
+            Vector2 t = attributes.uv.buffer->getVector2(attributes.uv.attribute, v);
+            source.attributes.insert(source.attributes.end(), {t.x, t.y});
+        }
+    }
+
+    return true;
+}
+
+void RenderSystem::pollMeshLod(MeshComponent& mesh, Submesh& submesh){
+    if (!submesh.lodData){
+        submesh.lodData = MeshLodPool::get(submesh.lodKey);
+        if (!submesh.lodData)
+            return;
+        submesh.lodIndices.setData(submesh.lodData->indices.data(), submesh.lodData->indices.size());
+        submesh.lodIndices.setType(BufferType::INDEX_BUFFER);
+        submesh.lodIndices.setUsage(BufferUsage::IMMUTABLE);
+        updateMeshLodErrors(mesh);
+    }
+
+    if (submesh.lodData->numLevels > 1 && !submesh.lodIndices.getRender()->isCreated()){
+        submesh.lodIndices.getRender()->createBuffer(submesh.lodIndices.getSize(), submesh.lodIndices.getData(), BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE);
+    }
+}
+
+bool RenderSystem::hasPendingMeshLods() const{
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (int i = 0; i < meshes->size(); i++){
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            if (isMeshLodPending(mesh.submeshes[s]))
+                return true;
+        }
+    }
+    return false;
+}
+
+// a submesh still waiting for its levels, or for their GPU buffer
+bool RenderSystem::isMeshLodPending(Submesh& submesh){
+    if (submesh.lodKey == 0)
+        return false;
+    if (!submesh.lodData)
+        return true;
+    return submesh.lodData->numLevels > 1 && !submesh.lodIndices.getRender()->isCreated();
+}
+
+// a level is only as good as its worst submesh
+void RenderSystem::updateMeshLodErrors(MeshComponent& mesh){
+    mesh.numLods = 1;
+    for (unsigned int l = 0; l < MAX_MESH_LODS; l++)
+        mesh.lodError[l] = 0;
+    for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
+        const MeshLodData* data = mesh.submeshes[i].lodData.get();
+        if (!data)
+            continue;
+        mesh.numLods = std::max(mesh.numLods, data->numLevels);
+        for (unsigned int l = 1; l < data->numLevels; l++)
+            mesh.lodError[l] = std::max(mesh.lodError[l], data->levels[l].error);
+    }
+    instanceViewsDirty = true;
+}
+
+// world units one pixel of the main view spans; a change rebuilds the instance views
+void RenderSystem::updateMainLodView(CameraComponent& camera, Transform& cameraTransform){
+    float viewHeight = Engine::getViewRect().getHeight();
+    if (isFixedResolutionActive())
+        viewHeight = (float)scene->getFixedResolutionHeight();
+    viewHeight = std::max(viewHeight, 1.0f);
+
+    LodView view;
+    view.enabled = scene->isMeshLodEnabled();
+    view.threshold = scene->getMeshLodThreshold();
+    view.origin = cameraTransform.worldPosition;
+    if (camera.type == CameraType::CAMERA_PERSPECTIVE){
+        view.perUnit = 2.0f * std::tan(camera.yfov * 0.5f) / viewHeight;
+    }else{
+        view.constant = std::abs(camera.topClip - camera.bottomClip) / viewHeight;
+    }
+
+    if (view.enabled != mainLodView.enabled || view.threshold != mainLodView.threshold ||
+        view.origin != mainLodView.origin || view.perUnit != mainLodView.perUnit || view.constant != mainLodView.constant){
+        instanceViewsDirty = true;
+    }
+    mainLodView = view;
+}
+
+unsigned int RenderSystem::selectMeshLod(const MeshComponent& mesh, const LodView* view, float distance, float worldScale) const{
+    if (!view || !view->enabled || !mesh.lodEnabled || mesh.numLods < 2)
+        return 0;
+
+    float allowed = view->threshold * (view->perUnit * std::max(distance, 0.0f) + view->constant) / std::max(mesh.lodBias, 0.001f);
+    unsigned int level = 0;
+    for (unsigned int l = 1; l < mesh.numLods; l++){
+        if (mesh.lodError[l] * worldScale > allowed)
+            break;
+        level = l;
+    }
+    return level;
+}
+
+RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int cameraIndex, int slot) const{
+    LodView view;
+    view.enabled = scene->isMeshLodEnabled();
+    view.threshold = SHADOW_LOD_TEXELS;
+
+    const Matrix4& projection = light.cameras[cameraIndex].lightProjectionMatrix;
+    float texel = 2.0f / (std::abs(projection[1][1]) * std::max(getShadowAtlasSlotRect(slot).getHeight(), 1.0f));
+    if (light.type == LightType::DIRECTIONAL){
+        view.constant = texel;
+    }else{
+        view.origin = light.cameras[cameraIndex].lightViewMatrix.inverse() * Vector3(0, 0, 0);
+        view.perUnit = texel;
+    }
+    return view;
+}
+
+// projective atlas slots the shadow pass draws this frame
+std::vector<RenderSystem::ShadowSlot> RenderSystem::collectShadowSlots(){
+    std::vector<ShadowSlot> slots;
+    if (!hasShadows || !hasShadowAtlas)
+        return slots;
+
+    auto lights = scene->getComponentArray<LightComponent>();
+    int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
+    for (int l = 0; l < shadowLightCount; l++){
+        LightComponent& light = lights->getComponentFromIndex(l);
+        if (light.type == LightType::POINT || light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0)
+            continue;
+        int numShadowCameras = (light.type == LightType::DIRECTIONAL) ? (int)light.numShadowCascades : 1;
+        for (int c = 0; c < numShadowCameras; c++){
+            int slot = light.shadowMapIndex + c;
+            if (slot >= 0 && slot < shadowAtlasUsedSlots)
+                slots.push_back({slot, &light, c});
+        }
+    }
+    return slots;
+}
+
+// culled slice of every instanced mesh for the main camera and each shadow slot;
+// runs when a list or a camera changed, so a still frame uploads nothing
+void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& mainCameraTransform){
+    if (!instanceViewsDirty)
+        return;
+    instanceViewsDirty = false;
+
+    std::vector<ShadowSlot> shadowSlots = collectShadowSlots();
+    for (InstanceView& view : instanceViews){
+        view.data.clear();
+    }
+
+    // hidden entities are built too: the passes skip them, but their slices must stay valid
+    auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
+    for (int i = 0; i < instmeshes->size(); i++){
+        InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(instmeshes->getEntity(i));
+        Transform* transform = scene->findComponent<Transform>(instmeshes->getEntity(i));
+        if (!mesh || !transform || !mesh->loaded){
+            for (InstanceViewRange& range : instmesh.views)
+                range = InstanceViewRange();
+            continue;
+        }
+
+        // the main camera keeps the order where it is the layering: blended batches and 2D
+        bool keepOrder = mesh->transparent || !sortsByDistance(mainCamera);
+        buildInstanceView(0, instmesh, *mesh, *transform, mainCamera.farClip, mainCamera.frustumPlanes, mainLodView,
+            mainCameraTransform.worldPosition, Vector3::ZERO, keepOrder);
+
+        for (const ShadowSlot& shadow : shadowSlots){
+            if (!mesh->castShadows){
+                instmesh.views[1 + shadow.slot] = InstanceViewRange();
+                continue;
+            }
+            const LightCamera& lightCamera = shadow.light->cameras[shadow.cameraIndex];
+            LodView lodView = shadowLodView(*shadow.light, shadow.cameraIndex, shadow.slot);
+            Vector3 direction = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
+            buildInstanceView(1 + shadow.slot, instmesh, *mesh, *transform, lightCamera.nearFar.y, lightCamera.frustumPlanes, lodView,
+                lodView.origin, direction, false);
+        }
+    }
+
+    for (InstanceView& view : instanceViews){
+        view.needUpload = !view.data.empty();
+    }
+}
+
+// instances inside the frustum, nearest first (along direction when given), grouped by level
+void RenderSystem::buildInstanceView(int viewIndex, InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& origin, const Vector3& direction, bool keepOrder){
+    struct Candidate{
+        unsigned int index;
+        unsigned int lod;
+        float key;
+    };
+    static std::vector<Candidate> candidates;
+    candidates.clear();
+
+    InstanceViewRange& range = instmesh.views[viewIndex];
+    range = InstanceViewRange();
+    if (instmesh.renderBounds.size() < instmesh.numVisible)
+        return;
+
+    const Vector3& worldScale = transform.worldScale;
+    const float entityScale = std::max(std::abs(worldScale.x), std::max(std::abs(worldScale.y), std::abs(worldScale.z)));
+
+    for (unsigned int i = 0; i < instmesh.numVisible; i++){
+        const InstanceBounds& bounds = instmesh.renderBounds[i];
+        const Vector3 center = transform.modelMatrix * bounds.center;
+        const float radius = bounds.radius * entityScale;
+        if (instmesh.cullInstances && !isInsideCamera(cameraFar, frustumPlanes, center, radius))
+            continue;
+
+        Candidate candidate;
+        candidate.index = i;
+        candidate.lod = 0;
+        candidate.key = (float)i;
+        if (!keepOrder){
+            float distance = (center - lodView.origin).length() - radius;
+            candidate.lod = selectMeshLod(mesh, &lodView, distance, bounds.scale * entityScale);
+            candidate.key = (direction == Vector3::ZERO) ? (center - origin).squaredLength() : center.dotProduct(direction);
+        }
+        candidates.push_back(candidate);
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b){
+        return a.lod != b.lod ? a.lod < b.lod : a.key < b.key;
+    });
+
+    InstanceView& view = instanceViews[viewIndex];
+    range.offset = (unsigned int)view.data.size();
+    for (const Candidate& candidate : candidates){
+        view.data.push_back(instmesh.renderInstances[candidate.index]);
+        range.lodCount[candidate.lod]++;
+    }
+}
+
+// instances and detail level a pass draws a mesh with; false when there is nothing to draw
+bool RenderSystem::selectMeshDraw(MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw){
+    if (instmesh){
+        const InstanceViewRange* range = (instanceView >= 0) ? &instmesh->views[instanceView] : nullptr;
+        draw.instanceCount = range ? range->count() : instmesh->numVisible;
+        draw.instanceFirst = range ? range->offset : 0;
+        // unpainted foliage chunks make this common
+        if (draw.instanceCount == 0)
+            return false;
+    }
+
+    if (!ownLod && lodView){
+        float worldScale = std::max(std::abs(transform.worldScale.x), std::max(std::abs(transform.worldScale.y), std::abs(transform.worldScale.z)));
+        float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.distance(lodView->origin);
+        draw.lod = selectMeshLod(mesh, lodView, distance, worldScale);
+    }
+
+    return true;
+}
+
+// the slice of a view buffer, or the whole component buffer, starting at instance first
+void RenderSystem::bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first){
+    BufferRender* buffer = (instanceView >= 0) ? instanceViews[instanceView].buffer.getRender() : instmesh.buffer.getRender();
+    render.replaceVertexBuffer(instmesh.buffer.getRender(), buffer, (size_t)first * instmesh.buffer.getStride());
+}
+
+// a culled view draws each level bucket of its slice; anything else draws every instance at one level
+void RenderSystem::drawSubmeshGeometry(ObjectRender& render, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount){
+    Submesh& submesh = mesh.submeshes[submeshIndex];
+    const MeshLodData* lodData = submesh.lodData.get();
+    bool lodReady = lodData && lodData->numLevels > 1 && submesh.lodIndices.getRender()->isCreated();
+
+    auto drawLevel = [&](unsigned int level, unsigned int instances, unsigned int first){
+        if (instances == 0)
+            return;
+        if (instmesh)
+            bindInstances(render, *instmesh, instanceView, first);
+        level = lodReady ? std::min(level, lodData->numLevels - 1) : 0;
+        if (level > 0){
+            render.setIndexBuffer(submesh.lodIndices.getRender());
+            render.draw(lodData->levels[level].indexBase, lodData->levels[level].indexCount, instances);
+            render.resetIndexBuffer();
+        }else{
+            render.draw(0, submesh.vertexCount, instances);
+        }
+    };
+
+    if (instmesh && instanceView >= 0){
+        const InstanceViewRange& range = instmesh->views[instanceView];
+        unsigned int first = range.offset;
+        for (unsigned int l = 0; l < MAX_MESH_LODS; l++){
+            drawLevel(l, range.lodCount[l], first);
+            first += range.lodCount[l];
+        }
+    }else{
+        drawLevel(lod, instanceCount, 0);
+    }
 }
 
 // Uploads the dirty CPU-side buffers of a mesh, before the first pass of the frame
@@ -3297,6 +3745,24 @@ void RenderSystem::updateInstanceBuffers(){
 
         instmesh.needUpdateBuffer = false;
     }
+
+    for (InstanceView& view : instanceViews){
+        if (!view.needUpload)
+            continue;
+        view.needUpload = false;
+
+        const size_t size = view.data.size() * sizeof(InstanceRenderData);
+        BufferRender* render = view.buffer.getRender();
+        // grows with headroom and never shrinks
+        if (render->isCreated() && view.capacity < size)
+            render->destroyBuffer();
+        if (!render->isCreated()){
+            view.capacity = size + size / 2;
+            render->createBuffer(view.capacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
+        }
+        view.buffer.setData((unsigned char*)view.data.data(), size);
+        render->updateBuffer(size, view.buffer.getData());
+    }
 }
 
 // Uploads a terrain view's CDLOD node selection, before the first pass of the frame
@@ -3315,30 +3781,26 @@ void RenderSystem::updateTerrainNodesBuffer(TerrainComponent& terrain, int viewI
     terrain.views[viewIndex].needUpdateNodesBuffer = false;
 }
 
-bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView){
+bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView){
     if (mesh.loaded && !mesh.needReload){
 
         if (terrain && terrain->needUpdateTexture){
             return false;
         }
 
-        if (mesh.worldAABB != AABB::ZERO && !isInsideCamera(camera, mesh.worldAABB)) {
+        if (cullsBatch(mesh, instmesh) && !isInsideCamera(camera, mesh.worldAABB)) {
             return false;
         }
 
-        // unpainted foliage chunks make this common
-        if (instmesh && instmesh->numVisible == 0){
+        // Buffers already uploaded this frame by updateInstanceBuffers().
+        MeshDraw draw;
+        if (!selectMeshDraw(mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
             return false;
         }
+        unsigned int instanceCount = draw.instanceCount;
 
         updateMeshBuffers(mesh);
         writeCustomUniforms(mesh);
-
-        // Buffer already uploaded this frame by updateInstanceBuffers().
-        unsigned int instanceCount = 1;
-        if (instmesh){
-            instanceCount = instmesh->numVisible;
-        }
 
         if (terrain){
             updateTerrainNodesBuffer(*terrain, terrainView);
@@ -3486,11 +3948,14 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, passResolution);
 
             if (tilemap && !tilemapDrawRanges.empty()){
+                if (instmesh){
+                    bindInstances(render, *instmesh, instanceView, draw.instanceFirst);
+                }
                 for (const TilemapDrawRange& range : tilemapDrawRanges){
                     render.draw(range.offset, range.count, instanceCount);
                 }
             }else{
-                render.draw(0, mesh.submeshes[i].vertexCount, instanceCount);
+                drawSubmeshGeometry(render, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
             }
         }
     }
@@ -3498,7 +3963,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
     return true;
 }
 
-bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType){
+bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType, int instanceView, const LodView* lodView){
     // shadow passes only draw casters; the SSAO depth pre-pass draws every opaque mesh
     if (mesh.loaded && !mesh.needReload && (mesh.castShadows || forSSAO)){
 
@@ -3506,14 +3971,15 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, con
             return false;
         }
 
-        if (mesh.worldAABB != AABB::ZERO && !isInsideCamera(cameraFar, frustumPlanes, mesh.worldAABB)) {
+        if (cullsBatch(mesh, instmesh) && !isInsideCamera(cameraFar, frustumPlanes, mesh.worldAABB)) {
             return false;
         }
 
-        // unpainted foliage chunks make this common
-        if (instmesh && instmesh->numVisible == 0){
+        MeshDraw draw;
+        if (!selectMeshDraw(mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
             return false;
         }
+        unsigned int instanceCount = draw.instanceCount;
 
         updateMeshBuffers(mesh);
         writeCustomUniforms(mesh);
@@ -3549,10 +4015,6 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, con
                 return false;
             }
 
-            unsigned int instanceCount = 1;
-            if (instmesh){
-                instanceCount = instmesh->numVisible;
-            }
             if (terrain){
                 instanceCount = terrain->views[0].nodesbuffer[i].getCount();
                 depthRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrain->views[0].nodesbuffer[i].getRender());
@@ -3592,11 +4054,14 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, const float cameraFar, con
             }
 
             if (tilemap && !tilemapDrawRanges.empty()){
+                if (instmesh){
+                    bindInstances(depthRender, *instmesh, instanceView, draw.instanceFirst);
+                }
                 for (const TilemapDrawRange& range : tilemapDrawRanges){
                     depthRender.draw(range.offset, range.count, instanceCount);
                 }
             }else{
-                depthRender.draw(0, mesh.submeshes[i].vertexCount, instanceCount);
+                drawSubmeshGeometry(depthRender, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
             }
         }
     }
@@ -3828,7 +4293,7 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
         TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
         vs_depth_t params = {transform.modelMatrix, renderVP};
-        drawMeshDepth(mesh, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true);
+        drawMeshDepth(mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, 0, &mainLodView);
     }
     ssaoPassRender.endRenderPass();
 }
@@ -3858,7 +4323,7 @@ bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int hei
     return gbufferFramebuffer.isCreated();
 }
 
-bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap){
+bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int instanceView, const LodView* lodView){
     if (!mesh.loaded || mesh.needReload)
         return true;
 
@@ -3866,14 +4331,15 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, const flo
         return false;
     }
 
-    if (mesh.worldAABB != AABB::ZERO && !isInsideCamera(cameraFar, frustumPlanes, mesh.worldAABB)) {
+    if (cullsBatch(mesh, instmesh) && !isInsideCamera(cameraFar, frustumPlanes, mesh.worldAABB)) {
         return false;
     }
 
-    // unpainted foliage chunks make this common
-    if (instmesh && instmesh->numVisible == 0){
+    MeshDraw draw;
+    if (!selectMeshDraw(mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
         return false;
     }
+    unsigned int instanceCount = draw.instanceCount;
 
     updateMeshBuffers(mesh);
 
@@ -3908,11 +4374,6 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, const flo
         if (!gbufferRender.beginDraw(PIP_GBUFFER)){
             mesh.needReload = true;
             return false;
-        }
-
-        unsigned int instanceCount = 1;
-        if (instmesh){
-            instanceCount = instmesh->numVisible;
         }
 
         gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferParams, sizeof(vs_gbuffer_t), &vsGBufferParams);
@@ -3950,11 +4411,14 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, const flo
         }
 
         if (tilemap && !tilemapDrawRanges.empty()){
+            if (instmesh){
+                bindInstances(gbufferRender, *instmesh, instanceView, draw.instanceFirst);
+            }
             for (const TilemapDrawRange& range : tilemapDrawRanges){
                 gbufferRender.draw(range.offset, range.count, instanceCount);
             }
         }else{
-            gbufferRender.draw(0, mesh.submeshes[i].vertexCount, instanceCount);
+            drawSubmeshGeometry(gbufferRender, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
         }
     }
 
@@ -4002,7 +4466,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
         Matrix4 normalMatrix = viewModel.inverse().transpose();
 
         vs_gbuffer_t params = {transform.modelMatrix, renderVP, normalMatrix};
-        drawMeshGBuffer(entity, mesh, camera.farClip, camera.frustumPlanes, params, hasLocalProbe, instmesh, terrain, tilemap);
+        drawMeshGBuffer(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, hasLocalProbe, instmesh, terrain, tilemap, 0, &mainLodView);
     }
     gbufferPassRender.endRenderPass();
 }
@@ -4594,6 +5058,13 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
                 instmesh->buffer.clearAll();
             }
             instmesh->buffer.getRender()->destroyBuffer();
+        }
+
+        submesh.lodIndices.getRender()->destroyBuffer();
+        if (!preserveAssets){
+            submesh.lodIndices.clearAll();
+            submesh.lodData.reset();
+            submesh.lodKey = 0;
         }
 
         //Destroy render
@@ -5995,11 +6466,15 @@ bool RenderSystem::isInsideCamera(CameraComponent& camera, const Vector3& point)
 }
 
 bool RenderSystem::isInsideCamera(CameraComponent& camera, const Vector3& center, const float& radius){
+    return isInsideCamera(camera.farClip, camera.frustumPlanes, center, radius);
+}
+
+bool RenderSystem::isInsideCamera(const float cameraFar, const Plane frustumPlanes[6], const Vector3& center, const float& radius){
     for (int plane = 0; plane < 6; ++plane){
-        if (plane == FRUSTUM_PLANE_FAR && camera.farClip == 0)
+        if (plane == FRUSTUM_PLANE_FAR && cameraFar == 0)
             continue;
 
-        if (camera.frustumPlanes[plane].getDistance(center) < -radius){
+        if (frustumPlanes[plane].getDistance(center) < -radius){
             return false;
         }
     }
@@ -6136,6 +6611,13 @@ void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix,
 void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform){
     instmesh.renderInstances.clear();
     instmesh.renderInstances.reserve(instmesh.instances.size());
+    instmesh.renderBounds.clear();
+    instmesh.renderBounds.reserve(instmesh.instances.size());
+
+    const bool hasBounds = !mesh.verticesAABB.isNull() && !mesh.verticesAABB.isInfinite();
+    const Vector3 localCenter = hasBounds ? mesh.verticesAABB.getCenter() : Vector3::ZERO;
+    const float localRadius = hasBounds ? mesh.verticesAABB.getHalfSize().length() : 0.0f;
+
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
     instmesh.lastFadeCullEnd = cullEnd;
     instmesh.lastFadeCullEye = instmesh.fadeEyeLocal;
@@ -6186,11 +6668,19 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
             instmesh.renderInstances[instmesh.numVisible].textureRect = instmesh.instances[i].textureRect;
             instmesh.numVisible++;
 
+            const Vector3& scale = instmesh.instances[i].scale;
+            InstanceBounds bounds;
+            bounds.scale = std::max(std::abs(scale.x), std::max(std::abs(scale.y), std::abs(scale.z)));
+            bounds.center = instanceMatrix * localCenter;
+            bounds.radius = localRadius * bounds.scale;
+            instmesh.renderBounds.push_back(bounds);
+
             mesh.aabb.merge(instanceMatrix * mesh.verticesAABB);
         }
     }
 
     mesh.needUpdateAABB = true;
+    instanceViewsDirty = true;
 
     if (mesh.loaded)
         instmesh.needUpdateBuffer = true;
@@ -6205,7 +6695,24 @@ void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshCompo
 
         return (transform.modelMatrix * positionA).dotProduct(camDir) < (transform.modelMatrix * positionB).dotProduct(camDir);
     };
-    std::sort(instmesh.renderInstances.begin(), instmesh.renderInstances.end(), comparePoints);
+
+    // the bounds follow the sort so the instance views keep matching
+    std::vector<unsigned int> order(instmesh.renderInstances.size());
+    for (unsigned int i = 0; i < order.size(); i++)
+        order[i] = i;
+    std::sort(order.begin(), order.end(), [&](unsigned int a, unsigned int b){
+        return comparePoints(instmesh.renderInstances[a], instmesh.renderInstances[b]);
+    });
+    std::vector<InstanceRenderData> sortedInstances(order.size());
+    std::vector<InstanceBounds> sortedBounds(std::min(order.size(), instmesh.renderBounds.size()));
+    for (unsigned int i = 0; i < order.size(); i++){
+        sortedInstances[i] = instmesh.renderInstances[order[i]];
+        if (order[i] < sortedBounds.size() && i < sortedBounds.size())
+            sortedBounds[i] = instmesh.renderBounds[order[i]];
+    }
+    instmesh.renderInstances.swap(sortedInstances);
+    instmesh.renderBounds.swap(sortedBounds);
+    instanceViewsDirty = true;
 
     if (mesh.loaded)
         instmesh.needUpdateBuffer = true;
@@ -6880,6 +7387,11 @@ void RenderSystem::update(double dt){
     Transform& mainCameraTransform = *mainCameraTransformPtr;
     fadeEyePosition = mainCameraTransform.worldPosition;
 
+    updateMainLodView(mainCamera, mainCameraTransform);
+    if (mainCamera.needUpdate){
+        instanceViewsDirty = true;
+    }
+
     // while extra cameras render, draw() rewrites the shared MVP and sky matrices
     // per camera; removing the last of them (a mirror, a reflection probe) would
     // otherwise leave the scene on that camera's view until something turns dirty
@@ -6998,6 +7510,21 @@ void RenderSystem::update(double dt){
                 }
 
                 instmesh->needUpdateInstances = false;
+
+                InstanceViewSettings viewSettings = {instmesh->cullInstances, mesh.castShadows, mesh.lodEnabled, mesh.lodBias};
+                if (transform.needUpdate || viewSettings != instmesh->viewSettings){
+                    instmesh->viewSettings = viewSettings;
+                    instanceViewsDirty = true;
+                }
+            }
+
+            if (mesh.loaded && !mesh.needReload){
+                for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+                    if (isMeshLodPending(mesh.submeshes[s])){
+                        updateMeshLods(entity, mesh, false);
+                        break;
+                    }
+                }
             }
 
             if (terrain && mesh.numSubmeshes > 1){
@@ -7220,6 +7747,7 @@ void RenderSystem::update(double dt){
                 updateLightFromScene(light, transform, mainCamera, mainCameraTransform);
 
                 light.needUpdateShadowCamera = false;
+                instanceViewsDirty = true;
             }
         }
 
@@ -7328,6 +7856,11 @@ void RenderSystem::draw(){
 
     updateShadowBindings();
     updateAllTerrainRenderTextures();
+    if (CameraComponent* mainCamera = scene->findComponent<CameraComponent>(scene->getCamera())){
+        if (Transform* mainCameraTransform = scene->findComponent<Transform>(scene->getCamera())){
+            buildInstanceViews(*mainCamera, *mainCameraTransform);
+        }
+    }
     updateInstanceBuffers();
 
     // free the fixed-resolution target when the setting is turned off (the blit
@@ -7344,7 +7877,10 @@ void RenderSystem::draw(){
         auto meshes = scene->getComponentArray<MeshComponent>();
         int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
 
-        auto drawShadowCasters = [&](LightComponent& light, int cameraIndex, PipelineType pipelineType){
+        // a projective slot has its own culled instance view; point faces draw everything
+        auto drawShadowCasters = [&](LightComponent& light, int cameraIndex, PipelineType pipelineType, int instanceView){
+            const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, cameraIndex, instanceView - 1) : LodView();
+            const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
             for (int i = 0; i < meshes->size(); i++){
                 MeshComponent& mesh = meshes->getComponentFromIndex(i);
                 Entity entity = meshes->getEntity(i);
@@ -7383,6 +7919,7 @@ void RenderSystem::draw(){
 
                 drawMeshDepth(
                     mesh,
+                    *transform,
                     light.cameras[cameraIndex].nearFar.y,
                     light.cameras[cameraIndex].frustumPlanes,
                     vsDepthParams,
@@ -7390,7 +7927,9 @@ void RenderSystem::draw(){
                     terrain,
                     tilemap,
                     false,
-                    pipelineType);
+                    pipelineType,
+                    instanceView,
+                    lodView);
             }
         };
 
@@ -7423,7 +7962,7 @@ void RenderSystem::draw(){
                 shadowAtlasPassRender.applyViewport(slotRect);
                 shadowAtlasPassRender.applyScissor(slotRect);
                 passResolution = Vector2(slotRect.getWidth(), slotRect.getHeight());
-                drawShadowCasters(light, c, PIP_SHADOW_DEPTH);
+                drawShadowCasters(light, c, PIP_SHADOW_DEPTH, 1 + slotIndex);
             }
         }
         if (projectivePassStarted){
@@ -7459,7 +7998,7 @@ void RenderSystem::draw(){
                 pointAtlasSlotWritten = true;
 
                 passResolution = Vector2(slotRect.getWidth(), slotRect.getHeight());
-                drawShadowCasters(light, c, PIP_DEPTH);
+                drawShadowCasters(light, c, PIP_DEPTH, -1);
                 shadowPointAtlasPassRender.endRenderPass();
             }
         }
@@ -7724,6 +8263,53 @@ void RenderSystem::draw(){
         //---------Draw opaque meshes and UI----------
         bool hasActiveScissor = false;
 
+        // only the main camera has a culled instance view and detail levels
+        const int instanceView = isMainCamera ? 0 : -1;
+        const LodView* lodView = isMainCamera ? &mainLodView : nullptr;
+
+        // a 3D pass draws opaque meshes nearest first so early depth rejects what nearer
+        // surfaces cover; a 2D pass keeps the transform order, which is its layering
+        std::vector<OpaqueRenderData> opaqueRenders;
+        if (distanceSort){
+            for (int i = 0; i < transforms->size(); i++){
+                Transform& transform = transforms->getComponentFromIndex(i);
+                Entity entity = transforms->getEntity(i);
+                Signature signature = scene->getSignature(entity);
+
+                if (!signature.test(scene->getComponentId<MeshComponent>()) || signature.test(scene->getComponentId<CameraComponent>())){
+                    continue;
+                }
+
+                if (hasMultipleCameras || hasReflectionProbes){
+                    updateMVP(i, transform, camera, cameraTransform);
+                }
+
+                MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+                if (!transform.visible || samplesCameraTarget(camera, mesh)){
+                    continue;
+                }
+
+                InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+                TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+                if (terrain && terrainView != 0){
+                    updateTerrain(*terrain, transform, camera, cameraTransform, terrainView);
+                }
+                TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+
+                if (!mesh.transparent){
+                    const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(cameraTransform.worldPosition);
+                    opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance});
+                }else{
+                    transparentRenders.push({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, transform.distanceToCamera});
+                }
+            }
+
+            std::sort(opaqueRenders.begin(), opaqueRenders.end(), [](const OpaqueRenderData& a, const OpaqueRenderData& b){
+                return a.distanceToCamera < b.distanceToCamera;
+            });
+
+        }
+
         //---------Draw sky----------
         auto skys = scene->getComponentArray<SkyComponent>();
         if (skys->size() > 0){
@@ -7738,6 +8324,12 @@ void RenderSystem::draw(){
             }
         }
 
+        if (distanceSort){
+            for (const OpaqueRenderData& opaque : opaqueRenders){
+                drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
+            }
+        }
+
         for (int i = 0; i < transforms->size(); i++){
             Transform& transform = transforms->getComponentFromIndex(i);
             Entity entity = transforms->getEntity(i);
@@ -7745,6 +8337,10 @@ void RenderSystem::draw(){
 
             if (signature.test(scene->getComponentId<CameraComponent>())){
                 continue;
+            }
+
+            if (distanceSort && signature.test(scene->getComponentId<MeshComponent>())){
+                continue; // drawn above
             }
 
             if (hasMultipleCameras || hasReflectionProbes){
@@ -7831,12 +8427,7 @@ void RenderSystem::draw(){
                     // ones refreshed in update()
                     TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
-                    if (!mesh.transparent || !distanceSort){
-                        //Draw opaque meshes if transparency is not necessary
-                        drawMesh(entity, mesh, transform, camera, cameraTransform, colorPip, instmesh, terrain, tilemap, terrainView);
-                    }else{
-                        transparentRenders.push({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, transform.distanceToCamera});
-                    }
+                    drawMesh(entity, mesh, transform, camera, cameraTransform, colorPip, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
                 }
 
             }else if (signature.test(scene->getComponentId<UIComponent>())){
@@ -7884,7 +8475,7 @@ void RenderSystem::draw(){
             TransparentRenderData renderData = transparentRenders.top();
 
             if (renderData.type == TransparentRenderType::MESH){
-                drawMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView);
+                drawMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
             }else if (renderData.type == TransparentRenderType::POINTS){
                 drawPoints(*renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
             }

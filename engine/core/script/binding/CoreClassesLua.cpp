@@ -678,6 +678,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ssaoRadius", &Scene::getSSAORadius, &Scene::setSSAORadius)
         .addProperty("ssaoIntensity", &Scene::getSSAOIntensity, &Scene::setSSAOIntensity)
         .addProperty("ssaoBias", &Scene::getSSAOBias, &Scene::setSSAOBias)
+        .addProperty("meshLodEnabled", &Scene::isMeshLodEnabled, &Scene::setMeshLodEnabled)
+        .addProperty("meshLodThreshold", &Scene::getMeshLodThreshold, &Scene::setMeshLodThreshold)
         .addProperty("ssaoDebug", &Scene::isSSAODebug, &Scene::setSSAODebug)
         .addProperty("ssrEnabled", &Scene::isSSREnabled, &Scene::setSSREnabled)
         .addProperty("ssrMaxDistance", &Scene::getSSRMaxDistance, &Scene::setSSRMaxDistance)

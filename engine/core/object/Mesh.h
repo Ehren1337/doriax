@@ -77,6 +77,12 @@ namespace doriax{
         void setReceiveShadows(bool receiveShadows);
         bool isReceiveShadows() const;
 
+        void setLodEnabled(bool lodEnabled);
+        bool isLodEnabled() const;
+
+        void setLodBias(float lodBias);
+        float getLodBias() const;
+
         void setRenderInReflectionProbes(bool renderInReflectionProbes);
         bool isRenderInReflectionProbes() const;
 

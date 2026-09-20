@@ -18,6 +18,7 @@
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
 #include "buffer/ExternalBuffer.h"
+#include "pool/MeshLodPool.h"
 #include "math/Rect.h"
 #include <map>
 #include <memory>
@@ -146,6 +147,11 @@ namespace doriax{
         float normAdjustJoint = 1.0f;
         float normAdjustWeight = 1.0f;
         bool hasSkinningNormalization = false;
+
+        // detail levels over the same vertices, keyed by the geometry they were built from
+        std::shared_ptr<MeshLodData> lodData;
+        ExternalBuffer lodIndices;
+        uint64_t lodKey = 0;
     };
 
     struct MeshComponent{
@@ -205,6 +211,12 @@ namespace doriax{
 
         bool transparent = false;
         bool autoTransparency = true;
+
+        // detail levels by projected error (Scene::setMeshLodThreshold); bias above 1 keeps detail longer
+        bool lodEnabled = true;
+        float lodBias = 1.0f;
+        float lodError[MAX_MESH_LODS] = {}; // largest error of any submesh at each level
+        unsigned int numLods = 1;
 
         CullingMode cullingMode = CullingMode::BACK;
         WindingOrder windingOrder = WindingOrder::CCW;

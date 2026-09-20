@@ -831,6 +831,7 @@ set(DORIAX_SRCS
     core/pool/TextureDataPool.cpp
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
+    core/pool/MeshLodPool.cpp
     core/registry/EntityRegistry.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp

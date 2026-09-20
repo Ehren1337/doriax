@@ -164,6 +164,22 @@ ShadowQuality Scene::getShadowQuality() const{
     return settings.shadowQuality;
 }
 
+void Scene::setMeshLodEnabled(bool enabled){
+    settings.meshLodEnabled = enabled;
+}
+
+bool Scene::isMeshLodEnabled() const{
+    return settings.meshLodEnabled;
+}
+
+void Scene::setMeshLodThreshold(float pixels){
+    settings.meshLodThreshold = std::max(pixels, 0.0f);
+}
+
+float Scene::getMeshLodThreshold() const{
+    return settings.meshLodThreshold;
+}
+
 void Scene::setSSAOEnabled(bool ssaoEnabled){
     if (settings.ssaoEnabled != ssaoEnabled){
         settings.ssaoEnabled = ssaoEnabled;

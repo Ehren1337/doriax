@@ -67,6 +67,11 @@
 #define MAX_SUBMESHES 16
 #endif
 
+// detail levels per submesh, level 0 being the source geometry
+#ifndef MAX_MESH_LODS
+#define MAX_MESH_LODS 4
+#endif
+
 #ifndef MAX_TILEMAP_TILESRECT
 #define MAX_TILEMAP_TILESRECT 200
 #endif
