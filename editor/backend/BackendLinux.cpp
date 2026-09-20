@@ -2889,6 +2889,8 @@ int editor::Backend::init(int argc, char* argv[]) {
         app.processProjectChange();
         if (backend->shouldClose) break;
         renderFrame(false);
+        if (app.consumeBenchmarkExit())
+            backend->shouldClose = true;
     }
 
     app.shutdownBackgroundWork();
@@ -2926,7 +2928,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     shutdownX11();
     if (engineStarted)
         app.engineShutdown();
-    return 0;
+    return app.getExitCode();
 }
 
 editor::App& editor::Backend::getApp() {

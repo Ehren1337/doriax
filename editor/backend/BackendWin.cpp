@@ -922,6 +922,8 @@ int editor::Backend::init(int argc, char* argv[]) {
         app.processProjectChange();
         if (backend->shouldClose) break;
         renderFrame(false);
+        if (app.consumeBenchmarkExit())
+            backend->shouldClose = true;
     }
     backend->liveResizeFrame = {};
     KillTimer(backend->window, LIVE_RESIZE_TIMER_ID);
@@ -944,7 +946,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     shutdownWindow();
     if (engineStarted)
         app.engineShutdown();
-    return 0;
+    return app.getExitCode();
 }
 
 editor::App& editor::Backend::getApp() {

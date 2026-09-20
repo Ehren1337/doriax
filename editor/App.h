@@ -34,6 +34,7 @@
 #include "render/SceneRender.h"
 
 #include <chrono>
+#include <filesystem>
 #include <functional>
 #include <mutex>
 #include <queue>
@@ -97,6 +98,29 @@ namespace doriax::editor{
         bool renderedScenePrevFrame = false;
         float footerFramerate = 0.0f;
         float footerDeltaMs = 0.0f;
+
+        bool benchmarkEnabled = false;
+        bool benchmarkExit = false;
+        bool benchmarkFailed = false;
+        bool benchmarkCameraReady = false;
+        uint32_t benchmarkSceneId = 0;
+        std::filesystem::path benchmarkProject;
+        std::string benchmarkScene;
+        std::string benchmarkName;
+        std::filesystem::path benchmarkOut;
+        int benchmarkWarmupFrames = 90;
+        int benchmarkMeasureFrames = 180;
+        // scene setting overrides: -1 keeps the scene's value
+        int benchmarkMeshLod = -1;
+        int benchmarkDepthPrepass = -1;
+        int benchmarkPhase = 0;
+        int benchmarkPhaseFrames = 0;
+        std::vector<float> benchmarkFps;
+        std::vector<uint32_t> benchmarkDraws;
+        std::vector<uint32_t> benchmarkInstances;
+        std::vector<uint64_t> benchmarkTris;
+        std::chrono::steady_clock::time_point benchmarkWaitStart{};
+        std::chrono::steady_clock::time_point benchmarkMeasureStart{};
 
         ImGuiID dockspace_id;
         ImGuiID dock_id_middle_top;
@@ -197,6 +221,11 @@ namespace doriax::editor{
         bool popSaveDialogQueueItem();
 
         void closeWindow();
+        void parseBenchmarkArgs(int argc, char** argv);
+        bool selectBenchmarkScene();
+        void failBenchmark(const std::string& message);
+        void tickBenchmark();
+        void finishBenchmark();
 
     public:
         void processMainThreadTasks() override;
@@ -217,6 +246,10 @@ namespace doriax::editor{
         void engineRender();
         void engineViewDestroyed();
         void engineShutdown();
+
+        bool isBenchmarkMode() const { return benchmarkEnabled; }
+        bool consumeBenchmarkExit();
+        int getExitCode() const { return benchmarkFailed ? 1 : 0; }
 
         bool isProjectLoading() const { return projectLoading; }
         const std::string& getLoadingStatus() const { return loadingStatus; }

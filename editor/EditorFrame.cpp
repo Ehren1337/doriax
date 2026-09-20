@@ -41,6 +41,8 @@ std::string EditorFrame::formatWindowTitle(const std::string& projectName){
 }
 
 bool EditorFrame::isIdle() const{
+    if (app && app->isBenchmarkMode())
+        return false;
     return monotonicSeconds() - lastActivityTime > IDLE_ENTER_DELAY;
 }
 
@@ -84,9 +86,9 @@ bool EditorFrame::run(EditorFrameState& state){
 
     // Unfocused always drops synchronization, so a blocked present can never
     // stall the event loop that serves clipboard requests.
-    const bool vsync = playSessionActive
+    const bool vsync = app->isBenchmarkMode() ? false : (playSessionActive
         ? project->isVSyncEnabled()
-        : AppSettings::getEditorVSyncEnabled();
+        : AppSettings::getEditorVSyncEnabled());
     const bool frameSync = state.focused && vsync;
     const bool targetReady =
         state.minimized || renderer->updateTarget(state.width, state.height, frameSync);

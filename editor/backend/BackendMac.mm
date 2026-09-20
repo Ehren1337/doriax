@@ -1006,9 +1006,9 @@ int editor::Backend::init(int argc, char* argv[]) {
                 const bool focused = NSApp.active;
                 const bool playSessionActive =
                     activeProject->isPlaySessionActive();
-                const bool frameSync = playSessionActive
+                const bool frameSync = app.isBenchmarkMode() ? false : (playSessionActive
                     ? activeProject->isVSyncEnabled()
-                    : AppSettings::getEditorVSyncEnabled();
+                    : AppSettings::getEditorVSyncEnabled());
                 setMouseControlSuspended(playSessionActive &&
                     !activeProject->isMainScenePlaying());
 
@@ -1073,6 +1073,8 @@ int editor::Backend::init(int argc, char* argv[]) {
                     if (remaining > 0.0)
                         [NSThread sleepForTimeInterval:remaining];
                 }
+                if (app.consumeBenchmarkExit())
+                    backend->shouldClose = true;
             }
         }
 
@@ -1104,7 +1106,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         delete backend;
         backend = nullptr;
         app.engineShutdown();
-        return 0;
+        return app.getExitCode();
     }
 }
 

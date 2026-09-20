@@ -32,6 +32,7 @@
 
 #include "shader/ShaderBuilder.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/RenderSystem.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -39,6 +40,12 @@
 #include <algorithm>
 #include <limits>
 #include <utility>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <cstdint>
+#include <cstring>
 
 #if defined(_WIN32)
   #include <windows.h>
@@ -1749,7 +1756,121 @@ void editor::App::reportLoadingProgress(const std::string& status) {
     pumpingLoading = false;
 }
 
+static std::string jsonEscape(const std::string& text) {
+    std::ostringstream out;
+    for (unsigned char c : text) {
+        switch (c) {
+            case '"': out << "\\\""; break;
+            case '\\': out << "\\\\"; break;
+            case '\n': out << "\\n"; break;
+            case '\r': out << "\\r"; break;
+            case '\t': out << "\\t"; break;
+            default:
+                if (c < 0x20)
+                    out << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c << std::dec;
+                else
+                    out << c;
+        }
+    }
+    return out.str();
+}
+
+void editor::App::parseBenchmarkArgs(int argc, char** argv) {
+    if (argc < 2 || std::strcmp(argv[1], "benchmark") != 0)
+        return;
+
+    benchmarkEnabled = true;
+    auto requireValue = [&](int& index, const char* name) -> const char* {
+        if (index + 1 >= argc) {
+            failBenchmark(std::string("missing value for ") + name);
+            return nullptr;
+        }
+        return argv[++index];
+    };
+
+    for (int i = 2; i < argc; i++) {
+        const std::string arg = argv[i];
+        if (arg == "-p" || arg == "--project") {
+            if (const char* value = requireValue(i, "--project"))
+                benchmarkProject = value;
+        } else if (arg == "-s" || arg == "--scene") {
+            if (const char* value = requireValue(i, "--scene"))
+                benchmarkScene = value;
+        } else if (arg == "--frames") {
+            if (const char* value = requireValue(i, "--frames"))
+                benchmarkMeasureFrames = std::max(1, std::atoi(value));
+        } else if (arg == "--warmup") {
+            if (const char* value = requireValue(i, "--warmup"))
+                benchmarkWarmupFrames = std::max(0, std::atoi(value));
+        } else if (arg == "--mesh-lod") {
+            if (const char* value = requireValue(i, "--mesh-lod"))
+                benchmarkMeshLod = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--depth-prepass") {
+            if (const char* value = requireValue(i, "--depth-prepass"))
+                benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--name") {
+            if (const char* value = requireValue(i, "--name"))
+                benchmarkName = value;
+        } else if (arg == "--out") {
+            if (const char* value = requireValue(i, "--out"))
+                benchmarkOut = value;
+        } else if (arg == "-h" || arg == "--help") {
+            continue;
+        } else {
+            failBenchmark("unknown argument '" + arg + "'");
+            return;
+        }
+    }
+
+    if (benchmarkProject.empty()) {
+        failBenchmark("--project is required");
+    }
+}
+
+// the project's start scene unless --scene names another; true once it is the selected one
+bool editor::App::selectBenchmarkScene() {
+    fs::path scenePath = benchmarkScene;
+    if (scenePath.is_relative())
+        scenePath = project.getProjectPath() / scenePath;
+
+    SceneProject* match = nullptr;
+    for (SceneProject& sceneProject : project.getScenes()) {
+        const bool wanted = benchmarkScene.empty()
+            ? sceneProject.id == project.getStartSceneId()
+            : (sceneProject.name == benchmarkScene || sceneProject.filepath.filename() == benchmarkScene ||
+               project.getProjectPath() / sceneProject.filepath == scenePath);
+        if (wanted) {
+            match = &sceneProject;
+            break;
+        }
+    }
+    if (!match)
+        return false;
+
+    benchmarkSceneId = match->id;
+    if (!match->opened)
+        project.openScene(match->filepath, false);
+    else
+        project.setSelectedSceneId(benchmarkSceneId);
+
+    SceneProject* selected = project.getSelectedScene();
+    return selected && selected->id == benchmarkSceneId;
+}
+
+void editor::App::failBenchmark(const std::string& message) {
+    std::cerr << "benchmark: " << message << "\n";
+    benchmarkFailed = true;
+    benchmarkExit = true;
+}
+
+bool editor::App::consumeBenchmarkExit() {
+    const bool exit = benchmarkExit;
+    benchmarkExit = false;
+    return exit;
+}
+
 void editor::App::engineInit(int argc, char** argv) {
+    parseBenchmarkArgs(argc, argv);
     reportLoadingProgress("Initializing engine...");
     Engine::systemInit(argc, argv, new editor::Platform(&project));
 
@@ -1782,6 +1903,37 @@ void editor::App::engineViewLoaded(){
 void editor::App::loadStartupProject() {
     lastLoadingFrame = {};
     reportLoadingProgress("Loading project...");
+
+    // a failed benchmark still runs one frame: the main loop exits on benchmarkExit, and
+    // closing before the first frame would leave the render queue waiting on shutdown
+    if (benchmarkEnabled) {
+        if (benchmarkExit)
+            return;
+
+        fs::path projectPath = benchmarkProject;
+        if (fs::is_regular_file(projectPath) && projectPath.filename() == "project.yaml")
+            projectPath = projectPath.parent_path();
+
+        if (!project.loadProject(projectPath, false)) {
+            failBenchmark("failed to load project '" + benchmarkProject.string() + "'");
+            return;
+        }
+
+        if (!selectBenchmarkScene()) {
+            failBenchmark(benchmarkScene.empty() ? "the project has no start scene" : "scene '" + benchmarkScene + "' is not in the project");
+            return;
+        }
+
+        project.setVSyncEnabled(false);
+        if (SceneProject* selected = project.getScene(benchmarkSceneId)) {
+            selected->displaySettings.showGrid3D = false;
+            selected->displaySettings.showOrigin = false;
+            selected->displaySettings.hideSelectionOutline = true;
+        }
+        projectLoading = false;
+        requestRedraw();
+        return;
+    }
 
     std::filesystem::path lastProjectPath = AppSettings::getLastProjectPath();
 
@@ -1853,6 +2005,7 @@ void editor::App::engineRender(){
     auto sceneNeedsRender = [&](SceneProject& sp, bool isSelected) -> bool {
         bool active = sp.needUpdateRender;
         bool gaugeAnimating = false;
+        if (benchmarkEnabled) active = true;
         // A running play session must advance and redraw its simulation every frame.
         if (sp.playState == ScenePlayState::PLAYING) active = true;
         // A drag preview redraws until the settle frames cover its restore.
@@ -2011,6 +2164,164 @@ void editor::App::engineRender(){
         footerDeltaMs = 0.0f;
     }
     renderedScenePrevFrame = renderedSceneThisFrame;
+    if (benchmarkEnabled)
+        tickBenchmark();
+}
+
+void editor::App::tickBenchmark() {
+    if (benchmarkExit)
+        return;
+
+    SceneProject* selected = project.getScene(benchmarkSceneId);
+    if (!selected || !selected->scene || !selected->sceneRender) {
+        if (benchmarkWaitStart.time_since_epoch().count() == 0)
+            benchmarkWaitStart = std::chrono::steady_clock::now();
+        if (std::chrono::steady_clock::now() - benchmarkWaitStart > std::chrono::seconds(90)) {
+            failBenchmark("timed out waiting for the scene to load");
+        }
+        return;
+    }
+
+    if (!benchmarkCameraReady) {
+        // the scene tab decides the selected scene, so bring it to front like Play does
+        if (sceneWindow)
+            sceneWindow->requestPlayFocus(benchmarkSceneId);
+        Entity camera = selected->scene->getCamera();
+        if (camera == NULL_ENTITY)
+            camera = selected->mainCamera;
+        if (selected->sceneRender->setPreviewCamera(camera))
+            benchmarkCameraReady = true;
+        if (benchmarkMeshLod >= 0)
+            selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
+        if (benchmarkDepthPrepass >= 0)
+            selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
+        selected->displaySettings.showGrid3D = false;
+        selected->displaySettings.showOrigin = false;
+        selected->displaySettings.hideSelectionOutline = true;
+        selected->sceneRender->hideAllGizmos();
+    }
+
+    auto meshSystem = selected->scene->getSystem<MeshSystem>();
+    auto renderSystem = selected->scene->getSystem<RenderSystem>();
+    const bool loading =
+        Engine::getQueuedResourceCount() > 0 ||
+        (meshSystem && (meshSystem->hasPendingAsyncModelLoads() || meshSystem->hasPendingFoliageUpdates())) ||
+        (renderSystem && (!renderSystem->isAllLoaded() || renderSystem->hasPendingMeshLods()));
+
+    if (benchmarkPhase == 0) {
+        if (benchmarkWaitStart.time_since_epoch().count() == 0)
+            benchmarkWaitStart = std::chrono::steady_clock::now();
+        if (loading) {
+            if (std::chrono::steady_clock::now() - benchmarkWaitStart > std::chrono::seconds(90)) {
+                std::cerr << "benchmark: timed out waiting for resources; measuring anyway\n";
+                benchmarkPhase = 1;
+                benchmarkPhaseFrames = 0;
+            }
+            return;
+        }
+        if (!renderedSceneThisFrame || sceneWindow->getWidth(selected->id) <= 0)
+            return;
+        benchmarkPhase = 1;
+        benchmarkPhaseFrames = 0;
+        return;
+    }
+
+    if (!renderedSceneThisFrame)
+        return;
+
+    if (benchmarkPhase == 1) {
+        if (++benchmarkPhaseFrames >= benchmarkWarmupFrames) {
+            benchmarkPhase = 2;
+            benchmarkPhaseFrames = 0;
+            benchmarkFps.clear();
+            benchmarkDraws.clear();
+            benchmarkInstances.clear();
+            benchmarkTris.clear();
+            benchmarkMeasureStart = std::chrono::steady_clock::now();
+        }
+        return;
+    }
+
+    if (benchmarkPhase == 2) {
+        const Engine::FrameStats& stats = Engine::getFrameStats();
+        benchmarkFps.push_back(Engine::getFramerate());
+        benchmarkDraws.push_back(stats.drawCalls);
+        benchmarkInstances.push_back(stats.instances);
+        benchmarkTris.push_back(stats.triangles);
+        if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames)
+            finishBenchmark();
+    }
+}
+
+void editor::App::finishBenchmark() {
+    const double elapsed = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - benchmarkMeasureStart).count();
+    const size_t n = benchmarkFps.size();
+    double avgFps = 0.0;
+    double avgDraws = 0.0;
+    double avgInstances = 0.0;
+    double avgTris = 0.0;
+    for (size_t i = 0; i < n; i++) {
+        avgFps += benchmarkFps[i];
+        avgDraws += benchmarkDraws[i];
+        avgInstances += benchmarkInstances[i];
+        avgTris += static_cast<double>(benchmarkTris[i]);
+    }
+    if (n > 0) {
+        avgFps /= static_cast<double>(n);
+        avgDraws /= static_cast<double>(n);
+        avgInstances /= static_cast<double>(n);
+        avgTris /= static_cast<double>(n);
+    }
+
+    float minFps = 0.0f;
+    float maxFps = 0.0f;
+    if (!benchmarkFps.empty()) {
+        minFps = *std::min_element(benchmarkFps.begin(), benchmarkFps.end());
+        maxFps = *std::max_element(benchmarkFps.begin(), benchmarkFps.end());
+    }
+
+    const double wallFps = (elapsed > 0.0 && n > 0) ? static_cast<double>(n) / elapsed : 0.0;
+
+    SceneProject* selected = project.getScene(benchmarkSceneId);
+    const int width = selected && sceneWindow ? sceneWindow->getWidth(selected->id) : 0;
+    const int height = selected && sceneWindow ? sceneWindow->getHeight(selected->id) : 0;
+
+    std::ostringstream json;
+    json << std::fixed;
+    json.precision(2);
+    json << "{\n"
+         << "  \"name\": \"" << jsonEscape(benchmarkName.empty() ? (selected ? selected->name : "scene") : benchmarkName) << "\",\n"
+         << "  \"scene\": \"" << jsonEscape(selected ? selected->name : benchmarkScene) << "\",\n"
+         << "  \"meshLod\": " << ((selected && selected->scene && selected->scene->isMeshLodEnabled()) ? "true" : "false") << ",\n"
+         << "  \"depthPrepass\": " << ((selected && selected->scene && selected->scene->isDepthPrepassEnabled()) ? "true" : "false") << ",\n"
+         << "  \"viewport\": [" << width << ", " << height << "],\n"
+         << "  \"frames\": " << n << ",\n"
+         << "  \"warmupFrames\": " << benchmarkWarmupFrames << ",\n"
+         << "  \"elapsedSeconds\": " << elapsed << ",\n"
+         << "  \"wallFps\": " << wallFps << ",\n"
+         << "  \"avgFps\": " << avgFps << ",\n"
+         << "  \"minFps\": " << minFps << ",\n"
+         << "  \"maxFps\": " << maxFps << ",\n"
+         << "  \"avgMs\": " << (wallFps > 0.0 ? 1000.0 / wallFps : 0.0) << ",\n"
+         << "  \"avgDrawCalls\": " << avgDraws << ",\n"
+         << "  \"avgInstances\": " << avgInstances << ",\n"
+         << "  \"avgTriangles\": " << avgTris << "\n"
+         << "}\n";
+
+    const std::string text = json.str();
+    std::cout << text;
+    std::cout.flush();
+    if (!benchmarkOut.empty()) {
+        std::ofstream file(benchmarkOut);
+        if (file)
+            file << text;
+        else
+            failBenchmark("failed to write " + benchmarkOut.string());
+    }
+
+    benchmarkEnabled = false;
+    benchmarkExit = true;
 }
 
 void editor::App::enqueueMainThreadTask(std::function<void()> task) {
@@ -2704,8 +3015,10 @@ void editor::App::closeWindow(){
     // A moved camera, a different selected scene and a changed terrain brush live
     // only in the model until this runs, and nothing else asks for it. Also flushes
     // a tab reorder still sitting in captureTabOrder()'s debounce.
-    project.saveWorkspaceFile();
-    tabsOrderDirty = false;
+    if (!benchmarkEnabled) {
+        project.saveWorkspaceFile();
+        tabsOrderDirty = false;
+    }
 
     // Stop all playing scenes before shutdown to properly cleanup script instances
     for (auto& sceneProject : project.getScenes()) {

@@ -261,7 +261,8 @@ static void printMainUsage(const std::string& commandName) {
         << "Usage:\n"
         << "  " << commandName << "                          Open the editor.\n"
         << "  " << commandName << " export [options]         Export a project.\n"
-        << "  " << commandName << " shaders [options]        Generate shaders.\n\n"
+        << "  " << commandName << " shaders [options]        Generate shaders.\n"
+        << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 
@@ -282,6 +283,23 @@ static void printUsage(const std::string& commandName) {
         << "If no --backend is provided, all supported backends are used.\n"
         << "If no --shader is provided, shaders discovered while regenerating scenes are exported.\n"
         << "For standalone shader generation, use `" << commandName << " shaders`.\n";
+}
+
+static void printBenchmarkUsage(const std::string& commandName) {
+    std::cout
+        << "Usage:\n"
+        << "  " << commandName << " benchmark --project <project-dir> --scene <scene> [options]\n\n"
+        << "Options:\n"
+        << "  -p, --project <path>   Project directory or project.yaml file.\n"
+        << "  -s, --scene <scene>    Scene file or scene name. Default: the project's start scene.\n"
+        << "      --frames <n>       Measured frames after warmup. Default: 180.\n"
+        << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
+        << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
+        << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
+        << "      --name <label>     Label written into the JSON result.\n"
+        << "      --out <path>       Write JSON to this file in addition to stdout.\n"
+        << "  -h, --help             Show this help.\n\n"
+        << "Vsync is forced off. The scene camera is used for the capture.\n";
 }
 
 static void printShadersUsage(const std::string& commandName) {
@@ -591,6 +609,14 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
         return 1;
     }
 
+    return 0;
+}
+
+int CommandLine::runBenchmarkHelp(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    printBenchmarkUsage(getCommandName(executableName));
+    (void)argc;
+    (void)argv;
     return 0;
 }
 
