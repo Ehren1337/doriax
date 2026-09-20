@@ -2484,7 +2484,7 @@ void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
     this->disableFixedResolution = disableFixedResolution;
 }
 
-bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain){
+bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain){
 
     if (!Engine::isViewLoaded()) 
         return false;
@@ -2789,7 +2789,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
         // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
         // (SSR uses its own G-buffer shader, built below). A depth fork is built even
         // without a pass, so its uniforms and build errors show up in the editor.
-        bool needDepthPass = (hasShadows && mesh.castShadows) || scene->isSSAOEnabled();
+        const bool needPrepass = scene->isDepthPrepassEnabled();
+        bool needDepthPass = (hasShadows && mesh.castShadows) || scene->isSSAOEnabled() || needPrepass;
         if (needDepthPass || !mesh.customDepthShader.empty()){
             mesh.submeshes[i].depthShaderProperties = ShaderPool::getDepthMeshProperties(
                 p_depthTexture, mesh.submeshes[i].hasSkinning, mesh.submeshes[i].hasMorphTarget,
@@ -3013,6 +3014,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
             ShaderData& depthShaderData = mesh.submeshes[i].depthShader.get()->shaderData;
 
             mesh.submeshes[i].slotVSDepthParams = depthShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_VS_PARAMS);
+            depthShaderData.getUniformBlockMembers("u_vs_depthParams", mesh.submeshes[i].sizeVSDepthParams);
             if (p_depthAlphaMask){
                 mesh.submeshes[i].slotFSDepthMaterial = depthShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_FS_MATERIAL);
             }
@@ -3118,7 +3120,13 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipeline
             CullingMode depthCullingMode = mesh.cullingMode;
             bool depthFaceCulling = (mesh.submeshes[i].textureShadow)? false : mesh.submeshes[i].faceCulling;
 
-            if (!depthRender.endLoad(PIP_DEPTH | PIP_SHADOW_DEPTH, depthFaceCulling, true, depthCullingMode, mesh.windingOrder)){
+            uint16_t depthPipelines = PIP_DEPTH | PIP_SHADOW_DEPTH;
+            if (needPrepass){
+                if (pipelines & PIP_DEFAULT) depthPipelines |= PIP_ZPREPASS;
+                if (pipelines & PIP_RTT) depthPipelines |= PIP_ZPREPASS_RTT;
+            }
+            // the prepass writes the depth the color pass will test, so it culls like it
+            if (!depthRender.endLoad(depthPipelines, depthFaceCulling, true, depthCullingMode, mesh.windingOrder, faceCulling)){
                 return false;
             }
         }
@@ -4021,7 +4029,7 @@ bool RenderSystem::drawMeshDepth(MeshComponent& mesh, Transform& transform, cons
             }
 
             //model, mvp matrix
-            depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthParams, sizeof(float) * 32, &vsDepthParams);
+            depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthParams, std::min((unsigned int)sizeof(vs_depth_t), mesh.submeshes[i].sizeVSDepthParams), &vsDepthParams);
 
             applyCustomUniforms(depthRender, mesh.submeshes[i].customVSDepthParams, frameTime, passResolution);
             applyCustomUniforms(depthRender, mesh.submeshes[i].customFSDepthParams, frameTime, passResolution);
@@ -4292,7 +4300,7 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
         TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
-        vs_depth_t params = {transform.modelMatrix, renderVP};
+        vs_depth_t params = {transform.modelMatrix, renderVP, renderVP * transform.modelMatrix};
         drawMeshDepth(mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, 0, &mainLodView);
     }
     ssaoPassRender.endRenderPass();
@@ -5146,7 +5154,7 @@ void RenderSystem::prepareMeshForDataReload(Entity entity, MeshComponent& mesh){
     destroyMesh(entity, mesh, true);
 }
 
-bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint8_t pipelines, bool isText){
+bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bool isText){
 
     if (!Engine::isViewLoaded()) 
         return false;
@@ -5337,7 +5345,7 @@ void RenderSystem::destroyUI(Entity entity, UIComponent& ui){
     SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
 }
 
-bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint8_t pipelines){
+bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t pipelines){
 
     if (!Engine::isViewLoaded()) 
         return false;
@@ -5430,7 +5438,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint8_t pi
     return true;
 }
 
-bool RenderSystem::loadLines(Entity entity, LinesComponent& lines, uint8_t pipelines){
+bool RenderSystem::loadLines(Entity entity, LinesComponent& lines, uint16_t pipelines){
 
     if (!Engine::isViewLoaded()) 
         return false;
@@ -5669,7 +5677,7 @@ void RenderSystem::destroyLines(Entity entity, LinesComponent& lines){
     SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
 }
 
-bool RenderSystem::loadSky(Entity entity, SkyComponent& sky, uint8_t pipelines){
+bool RenderSystem::loadSky(Entity entity, SkyComponent& sky, uint16_t pipelines){
 
     if (!Engine::isViewLoaded()) 
         return false;	
@@ -7202,8 +7210,8 @@ void RenderSystem::updateMVP(size_t index, Transform& transform, CameraComponent
     transform.distanceToCamera = (cameraTransform.worldPosition - transform.worldPosition).length();
 }
 
-uint8_t RenderSystem::getScenePipelines() const{
-    uint8_t pipelines = 0;
+uint16_t RenderSystem::getScenePipelines() const{
+    uint16_t pipelines = 0;
 
     Entity mainCameraEntity = scene->getCamera();
     auto cameras = scene->getComponentArray<CameraComponent>();
@@ -7309,7 +7317,7 @@ void RenderSystem::update(double dt){
     updateSwapchainRedirect();
 
     Entity mainCameraEntity = scene->getCamera();
-    uint8_t pipelines = getScenePipelines();
+    uint16_t pipelines = getScenePipelines();
 
     hasMultipleCameras = false;
     for (int i = 0; i < cameras->size(); i++){
@@ -7912,9 +7920,11 @@ void RenderSystem::draw(){
                     modelViewMatrix.set(2, 1, 0.0);
                     modelViewMatrix.set(2, 2, transform->worldScale.z);
 
-                    vsDepthParams = {modelViewMatrix, light.cameras[cameraIndex].lightProjectionMatrix};
+                    const Matrix4& projection = light.cameras[cameraIndex].lightProjectionMatrix;
+                    vsDepthParams = {modelViewMatrix, projection, projection * modelViewMatrix};
                 }else{
-                    vsDepthParams = {transform->modelMatrix, light.cameras[cameraIndex].lightViewProjectionMatrix};
+                    const Matrix4& lightVP = light.cameras[cameraIndex].lightViewProjectionMatrix;
+                    vsDepthParams = {transform->modelMatrix, lightVP, lightVP * transform->modelMatrix};
                 }
 
                 drawMeshDepth(
@@ -8267,10 +8277,13 @@ void RenderSystem::draw(){
         const int instanceView = isMainCamera ? 0 : -1;
         const LodView* lodView = isMainCamera ? &mainLodView : nullptr;
 
+        const bool depthPrepass = isMainCamera && camera.depthTest && scene->isDepthPrepassEnabled();
+
         // a 3D pass draws opaque meshes nearest first so early depth rejects what nearer
-        // surfaces cover; a 2D pass keeps the transform order, which is its layering
+        // surfaces cover; a 2D pass keeps the transform order, which is its layering, and
+        // only lists them for the depth prepass
         std::vector<OpaqueRenderData> opaqueRenders;
-        if (distanceSort){
+        if (distanceSort || depthPrepass){
             for (int i = 0; i < transforms->size(); i++){
                 Transform& transform = transforms->getComponentFromIndex(i);
                 Entity entity = transforms->getEntity(i);
@@ -8299,15 +8312,33 @@ void RenderSystem::draw(){
                 if (!mesh.transparent){
                     const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(cameraTransform.worldPosition);
                     opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance});
-                }else{
+                }else if (distanceSort){
                     transparentRenders.push({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, transform.distanceToCamera});
                 }
             }
 
-            std::sort(opaqueRenders.begin(), opaqueRenders.end(), [](const OpaqueRenderData& a, const OpaqueRenderData& b){
-                return a.distanceToCamera < b.distanceToCamera;
-            });
+            if (distanceSort){
+                std::sort(opaqueRenders.begin(), opaqueRenders.end(), [](const OpaqueRenderData& a, const OpaqueRenderData& b){
+                    return a.distanceToCamera < b.distanceToCamera;
+                });
+            }
+        }
 
+        // the same draws, depth only, with the color pass's own MVP; a color fork
+        // without a depth fork is left out since its vertices may not match
+        if (depthPrepass){
+            const PipelineType prepassPip = offscreenTarget ? PIP_ZPREPASS_RTT : PIP_ZPREPASS;
+            const bool sceneColorFork = !scene->getDefaultMeshShader().empty();
+            Matrix4 renderVP = camera.viewProjectionMatrix;
+            if (isRenderingFlipped(camera)){
+                renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
+            }
+            for (const OpaqueRenderData& opaque : opaqueRenders){
+                if ((sceneColorFork || !opaque.mesh->customShader.empty()) && opaque.mesh->customDepthShader.empty())
+                    continue;
+                vs_depth_t params = {opaque.transform->modelMatrix, renderVP, opaque.transform->modelViewProjectionMatrix};
+                drawMeshDepth(*opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
+            }
         }
 
         //---------Draw sky----------

@@ -13,10 +13,15 @@
 //       float amplitude;
 //   } customParams;
 
+// mvpMatrix is lightVPMatrix * modelMatrix computed once, so a depth prepass matches
+// mesh.vert bit for bit; a fork may still multiply the two itself
 uniform u_vs_depthParams {
     mat4 modelMatrix;
     mat4 lightVPMatrix;
+    mat4 mvpMatrix;
 } depthParams;
+
+invariant gl_Position;
 
 #ifdef USE_INSTANCE_FADE
     uniform u_vs_fade {
@@ -59,8 +64,6 @@ vec4 getPosition(mat4 boneTransform){
 }
 
 void main() {
-    mat4 lightMVPMatrix = depthParams.lightVPMatrix * depthParams.modelMatrix;
-
     mat4 boneTransform = getBoneTransform();
 
     #ifdef HAS_INSTANCING
@@ -86,7 +89,7 @@ void main() {
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
     #endif
 
-    gl_Position = lightMVPMatrix * pos;
+    gl_Position = depthParams.mvpMatrix * pos;
 
     v_projZW = gl_Position.zw;
     // No Y flip here: the target keeps its native orientation and the atlas lookup

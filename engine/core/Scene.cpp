@@ -180,6 +180,18 @@ float Scene::getMeshLodThreshold() const{
     return settings.meshLodThreshold;
 }
 
+void Scene::setDepthPrepassEnabled(bool enabled){
+    if (settings.depthPrepassEnabled != enabled){
+        settings.depthPrepassEnabled = enabled;
+        // the prepass pipelines are built with the mesh
+        getSystem<RenderSystem>()->needReloadMeshes();
+    }
+}
+
+bool Scene::isDepthPrepassEnabled() const{
+    return settings.depthPrepassEnabled;
+}
+
 void Scene::setSSAOEnabled(bool ssaoEnabled){
     if (settings.ssaoEnabled != ssaoEnabled){
         settings.ssaoEnabled = ssaoEnabled;

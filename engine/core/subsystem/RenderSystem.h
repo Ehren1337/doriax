@@ -98,7 +98,8 @@ namespace doriax{
 
 	typedef struct vs_depth_t {
 		Matrix4 modelMatrix;
-	    Matrix4 lightSpaceMatrix;
+		Matrix4 lightVPMatrix;
+		Matrix4 mvpMatrix; // lightVPMatrix * modelMatrix
 	} vs_depth_t;
 
 	typedef struct vs_gbuffer_t {
@@ -264,7 +265,7 @@ namespace doriax{
 		// batch order currently baked into the shared points/instance arrays
 		bool lastBatchSort;
 		// pipelines the objects were loaded with, to catch a destination change
-		uint8_t loadedPipelines;
+		uint16_t loadedPipelines;
 
 		// Projected spotlight masks share one horizontal R8 atlas. Each punctual-light
 		// array index maps directly to one fixed-size atlas tile.
@@ -693,13 +694,13 @@ namespace doriax{
 		void presentFramebufferToSwapchain(Framebuffer* source);
 
 		// pipelines this scene's cameras need; objects reload when it changes
-		uint8_t getScenePipelines() const;
+		uint16_t getScenePipelines() const;
 
-		bool loadMesh(Entity entity, MeshComponent& mesh, uint8_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain);
-		bool loadPoints(Entity entity, PointsComponent& points, uint8_t pipelines);
-		bool loadLines(Entity entity, LinesComponent& lines, uint8_t pipelines);
-		bool loadUI(Entity entity, UIComponent& ui, uint8_t pipelines, bool isText);
-		bool loadSky(Entity entity, SkyComponent& sky, uint8_t pipelines);
+		bool loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain);
+		bool loadPoints(Entity entity, PointsComponent& points, uint16_t pipelines);
+		bool loadLines(Entity entity, LinesComponent& lines, uint16_t pipelines);
+		bool loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bool isText);
+		bool loadSky(Entity entity, SkyComponent& sky, uint16_t pipelines);
 
 		void updateFramebuffer(CameraComponent& camera);
 		void updateTransform(Transform& transform);
@@ -727,6 +728,7 @@ namespace doriax{
 		void prepareMeshForDataReload(Entity entity, MeshComponent& mesh);
 
 		bool isAllLoaded() const;
+		bool hasPendingMeshLods() const;
 	
 		void load() override;
 		void draw() override;

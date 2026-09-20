@@ -20,6 +20,9 @@ uniform u_vs_pbrParams {
     mat4 mvpMatrix;
 } pbrParams;
 
+// same expression as depth.vert, so a depth prepass and this pass agree bit for bit
+invariant gl_Position;
+
 #ifdef USE_INSTANCE_FADE
     uniform u_vs_fade {
         vec4 fadeRange; //start.x, end.y

@@ -37,7 +37,7 @@ namespace doriax {
         void setIndexBuffer(BufferRender* buffer);
         void resetIndexBuffer();
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
-        bool endLoad(uint8_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder);
+        bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
 
         bool beginDraw(PipelineType pipType);
         void applyUniformBlock(int slot, unsigned int count, void* data);

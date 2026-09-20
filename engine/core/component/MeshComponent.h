@@ -94,6 +94,7 @@ namespace doriax{
         int slotFSTerrainLayers = -1;
 
         int slotVSDepthParams = -1;
+        unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
         int slotFSDepthMaterial = -1;
         int slotVSDepthFade = -1;
         int slotVSDepthSkinning = -1;

@@ -2364,7 +2364,7 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      bad uniform can no longer produce an unbounded loop (a GPU hang).
     // v27: per-layer PBR terrain (HAS_TERRAIN_PBR) — layer maps are slices of the detail
     //      array driven by u_fs_terrainLayers, in the color pass and the G-buffer alike.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v28";
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v29";
 }
 
 void editor::App::pushTabNotificationStyle(){

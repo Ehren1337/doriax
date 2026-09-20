@@ -104,6 +104,9 @@ namespace doriax{
         void setMeshLodThreshold(float pixels);
         float getMeshLodThreshold() const;
 
+        void setDepthPrepassEnabled(bool enabled);
+        bool isDepthPrepassEnabled() const;
+
         void setSSAOEnabled(bool ssaoEnabled);
         bool isSSAOEnabled() const;
 

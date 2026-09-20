@@ -39,6 +39,8 @@ SokolObject::SokolObject(){
     gbuffer_pip.id = SG_INVALID_ID;
     nodepth_pip.id = SG_INVALID_ID;
     rtt_nodepth_pip.id = SG_INVALID_ID;
+    zprepass_pip.id = SG_INVALID_ID;
+    zprepass_rtt_pip.id = SG_INVALID_ID;
     bind = {};
     loadIndexBuffer.id = SG_INVALID_ID;
     loadIndexOffset = 0;
@@ -58,6 +60,8 @@ SokolObject::SokolObject(const SokolObject& rhs) {
     gbuffer_pip = rhs.gbuffer_pip;
     nodepth_pip = rhs.nodepth_pip;
     rtt_nodepth_pip = rhs.rtt_nodepth_pip;
+    zprepass_pip = rhs.zprepass_pip;
+    zprepass_rtt_pip = rhs.zprepass_rtt_pip;
     pipeline_desc = rhs.pipeline_desc;
     bindSlotIndex = rhs.bindSlotIndex;
     bufferToBindSlot = rhs.bufferToBindSlot;
@@ -75,6 +79,8 @@ SokolObject& SokolObject::operator=(const SokolObject& rhs) {
     gbuffer_pip = rhs.gbuffer_pip;
     nodepth_pip = rhs.nodepth_pip;
     rtt_nodepth_pip = rhs.rtt_nodepth_pip;
+    zprepass_pip = rhs.zprepass_pip;
+    zprepass_rtt_pip = rhs.zprepass_rtt_pip;
     pipeline_desc = rhs.pipeline_desc;
     bindSlotIndex = rhs.bindSlotIndex;
     bufferToBindSlot = rhs.bufferToBindSlot;
@@ -272,7 +278,7 @@ void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, Te
     }
 }
 
-bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder){
+bool SokolObject::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
 
     if (pipelines & (int)PipelineType::PIP_DEPTH) {
         sg_pipeline_desc pip_depth_desc = pipeline_desc;
@@ -291,6 +297,45 @@ bool SokolObject::endLoad(uint8_t pipelines, bool enableFaceCulling, bool enable
         depth_pip = makePipeline(pip_depth_desc);
         if (depth_pip.id == SG_INVALID_ID){
             return false;
+        }
+    }
+
+    // Depth prepass: the depth shader writes only depth into the color pass target, so
+    // formats and winding follow that target (PIP_DEFAULT or PIP_RTT) rather than PIP_DEPTH.
+    if (pipelines & ((int)PipelineType::PIP_ZPREPASS | (int)PipelineType::PIP_ZPREPASS_RTT)) {
+        sg_pipeline_desc pip_zprepass_desc = pipeline_desc;
+
+        pip_zprepass_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        pip_zprepass_desc.depth.write_enabled = true;
+        pip_zprepass_desc.colors[0].write_mask = SG_COLORMASK_NONE;
+
+        if (pipelines & (int)PipelineType::PIP_ZPREPASS){
+            if (prepassFaceCulling){
+                pip_zprepass_desc.cull_mode = getCullMode(cullingMode);
+                pip_zprepass_desc.face_winding = getFaceWinding(windingOrder);
+            }
+            zprepass_pip = makePipeline(pip_zprepass_desc);
+            if (zprepass_pip.id == SG_INVALID_ID){
+                return false;
+            }
+        }
+
+        if (pipelines & (int)PipelineType::PIP_ZPREPASS_RTT){
+            pip_zprepass_desc.sample_count = 1;
+            pip_zprepass_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+            pip_zprepass_desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+            WindingOrder rttWinding = windingOrder;
+            if (Engine::isOpenGL()){
+                rttWinding = (windingOrder == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
+            }
+            if (prepassFaceCulling){
+                pip_zprepass_desc.cull_mode = getCullMode(cullingMode);
+                pip_zprepass_desc.face_winding = getFaceWinding(rttWinding);
+            }
+            zprepass_rtt_pip = makePipeline(pip_zprepass_desc);
+            if (zprepass_rtt_pip.id == SG_INVALID_ID){
+                return false;
+            }
         }
     }
 
@@ -445,6 +490,10 @@ bool SokolObject::beginDraw(PipelineType pipType){
     sg_pipeline selectedPipeline = pip;
     if (pipType == PipelineType::PIP_DEPTH){
         selectedPipeline = depth_pip;
+    }else if (pipType == PipelineType::PIP_ZPREPASS){
+        selectedPipeline = zprepass_pip;
+    }else if (pipType == PipelineType::PIP_ZPREPASS_RTT){
+        selectedPipeline = zprepass_rtt_pip;
     }else if (pipType == PipelineType::PIP_SHADOW_DEPTH){
         selectedPipeline = shadow_depth_pip;
     }else if (pipType == PipelineType::PIP_GBUFFER){
@@ -494,6 +543,8 @@ void SokolObject::destroy(){
         destroyPipeline(gbuffer_pip);
         destroyPipeline(nodepth_pip);
         destroyPipeline(rtt_nodepth_pip);
+        destroyPipeline(zprepass_pip);
+        destroyPipeline(zprepass_rtt_pip);
     }
 
     pip.id = SG_INVALID_ID;
@@ -504,6 +555,8 @@ void SokolObject::destroy(){
     gbuffer_pip.id = SG_INVALID_ID;
     nodepth_pip.id = SG_INVALID_ID;
     rtt_nodepth_pip.id = SG_INVALID_ID;
+    zprepass_pip.id = SG_INVALID_ID;
+    zprepass_rtt_pip.id = SG_INVALID_ID;
     bind = {};
     pipeline_desc = {};
     bindSlotIndex = 0;

@@ -54,8 +54,8 @@ void ObjectRender::addTexture(std::pair<int, int> slot, ShaderStageType stage, T
     backend.addTexture(slot, stage, texture);
 }
 
-bool ObjectRender::endLoad(uint8_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder){
-    return backend.endLoad(pipelines, enableFaceCulling, enableDepthWrite, cullingMode, windingOrder);
+bool ObjectRender::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
+    return backend.endLoad(pipelines, enableFaceCulling, enableDepthWrite, cullingMode, windingOrder, prepassFaceCulling);
 }
 
 bool ObjectRender::beginDraw(PipelineType pipType){

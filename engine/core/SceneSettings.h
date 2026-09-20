@@ -61,6 +61,9 @@ namespace doriax{
         bool meshLodEnabled = true;
         float meshLodThreshold = 1.0f;
 
+        // depth-only pass before the opaque draws; pays off with heavy overdraw
+        bool depthPrepassEnabled = false;
+
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;
