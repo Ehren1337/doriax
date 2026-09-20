@@ -41,6 +41,10 @@ namespace doriax{
         float fadeEnd = 0;
         Vector3 fadeEyeLocal; //camera in model space, where the range is measured
 
+        // fade range the render lists were cut at (render system cache)
+        float lastFadeCullEnd = -1;
+        Vector3 lastFadeCullEye;
+
         bool instancedBillboard = false;
         bool instancedCylindricalBillboard = false;
 

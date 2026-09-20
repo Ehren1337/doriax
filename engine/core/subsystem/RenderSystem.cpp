@@ -65,6 +65,24 @@ namespace {
         render.applyUniformBlock(slot, sizeof(normAdjust), &normAdjust);
     }
 
+    // fade distance past which instances can be dropped: only the built-in triangle
+    // shaders shrink them to nothing, and the SSR G-buffer has no fade yet
+    float instanceFadeCullEnd(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Scene& scene){
+        if (scene.isSSREnabled() || !scene.getDefaultMeshShader().empty() ||
+            !instmesh.distanceFade || !mesh.customShader.empty() || !mesh.customDepthShader.empty() ||
+            !(instmesh.fadeEnd > instmesh.fadeStart) || !std::isfinite(instmesh.fadeStart) ||
+            !std::isfinite(instmesh.fadeEnd) || instmesh.fadeEnd < 0.0f){
+            return -1.0f;
+        }
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            const auto primitive = mesh.submeshes[s].primitiveType;
+            if (primitive != PrimitiveType::TRIANGLES && primitive != PrimitiveType::TRIANGLE_STRIP){
+                return -1.0f;
+            }
+        }
+        return instmesh.fadeEnd;
+    }
+
     void applyInstanceFadeUniform(ObjectRender& render, int slot, const InstancedMeshComponent& instmesh){
         float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, 0.0f, 0.0f,
             instmesh.fadeEyeLocal.x, instmesh.fadeEyeLocal.y, instmesh.fadeEyeLocal.z, 0.0f};
@@ -6118,6 +6136,12 @@ void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix,
 void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform){
     instmesh.renderInstances.clear();
     instmesh.renderInstances.reserve(instmesh.instances.size());
+    const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
+    instmesh.lastFadeCullEnd = cullEnd;
+    instmesh.lastFadeCullEye = instmesh.fadeEyeLocal;
+    // small margin for CPU/GPU float differences at the edge
+    const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
+    const float cullRadiusSquared = cullRadius * cullRadius;
 
     Quaternion bRotation;
     if (instmesh.instancedBillboard){
@@ -6138,6 +6162,12 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
     size_t instancesSize = (instmesh.instances.size() < instmesh.maxInstances)? instmesh.instances.size() : instmesh.maxInstances;
     for (int i = 0; i < instancesSize; i++){
         if (instmesh.instances[i].visible){
+            // model-local XZ distance from the instance origin, as in mesh.vert
+            const float dx = instmesh.instances[i].position.x - instmesh.fadeEyeLocal.x;
+            const float dz = instmesh.instances[i].position.z - instmesh.fadeEyeLocal.z;
+            if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared){
+                continue;
+            }
             Matrix4 translateMatrix = Matrix4::translateMatrix(instmesh.instances[i].position);
             Matrix4 rotationMatrix;
             Matrix4 scaleMatrix = Matrix4::scaleMatrix(instmesh.instances[i].scale);
@@ -6944,7 +6974,12 @@ void RenderSystem::update(double dt){
 
                 bool sortTransparentInstances = mesh.transparent && batchSort;
 
-                bool instancesNeedUpdate = instmesh->needUpdateInstances || mesh.needUpdateAABB || batchSortChanged;
+                const float cullEnd = instanceFadeCullEnd(*instmesh, mesh, *scene);
+                const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd ||
+                    (cullEnd >= 0.0f && (instmesh->fadeEyeLocal.x != instmesh->lastFadeCullEye.x ||
+                                        instmesh->fadeEyeLocal.z != instmesh->lastFadeCullEye.z));
+                bool instancesNeedUpdate = instmesh->needUpdateInstances || mesh.needUpdateAABB ||
+                    batchSortChanged || fadeSelectionChanged;
 
                 if (instancesNeedUpdate && !instmesh->instancedBillboard){
                     updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
