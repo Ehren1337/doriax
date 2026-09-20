@@ -567,6 +567,96 @@ unsigned int Mesh::getMaxInstances() const{
     return 0;
 }
 
+void Mesh::setDistanceFade(bool distanceFade){
+    if (hasInstancedMesh()){
+        MeshComponent& mesh = getComponent<MeshComponent>();
+        InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
+
+        if (instmesh.distanceFade != distanceFade){
+            instmesh.distanceFade = distanceFade;
+
+            mesh.needReload = true;
+        }
+    }else{
+        Log::error("There is no instanced mesh component in this mesh");
+    }
+}
+
+bool Mesh::isDistanceFade() const{
+    if (hasInstancedMesh()){
+        InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
+
+        return instmesh.distanceFade;
+    }
+
+    return false;
+}
+
+void Mesh::setFadeRange(float fadeStart, float fadeEnd){
+    setFadeStart(fadeStart);
+    setFadeEnd(fadeEnd);
+}
+
+void Mesh::setFadeStart(float fadeStart){
+    if (hasInstancedMesh()){
+        InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
+
+        instmesh.fadeStart = fadeStart;
+    }else{
+        Log::error("There is no instanced mesh component in this mesh");
+    }
+}
+
+float Mesh::getFadeStart() const{
+    if (hasInstancedMesh()){
+        InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
+
+        return instmesh.fadeStart;
+    }
+
+    return 0;
+}
+
+void Mesh::setFadeEnd(float fadeEnd){
+    if (hasInstancedMesh()){
+        InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
+
+        instmesh.fadeEnd = fadeEnd;
+    }else{
+        Log::error("There is no instanced mesh component in this mesh");
+    }
+}
+
+float Mesh::getFadeEnd() const{
+    if (hasInstancedMesh()){
+        InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
+
+        return instmesh.fadeEnd;
+    }
+
+    return 0;
+}
+
+void Mesh::setCullInstances(bool cullInstances){
+    if (hasInstancedMesh()){
+        InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
+
+        instmesh.cullInstances = cullInstances;
+    }else{
+        Log::error("There is no instanced mesh component in this mesh");
+    }
+}
+
+bool Mesh::isCullInstances() const{
+    if (hasInstancedMesh()){
+        InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
+
+        return instmesh.cullInstances;
+    }
+
+    return false;
+}
+
 void Mesh::addInstance(InstanceData instance){
     createInstancedMesh();
 

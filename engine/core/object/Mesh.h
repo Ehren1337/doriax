@@ -128,6 +128,19 @@ namespace doriax{
         void setMaxInstances(unsigned int maxInstances);
         unsigned int getMaxInstances() const;
 
+        // instances shrink to nothing between fadeStart and fadeEnd (model-space distances)
+        void setDistanceFade(bool distanceFade);
+        bool isDistanceFade() const;
+
+        void setFadeRange(float fadeStart, float fadeEnd);
+        void setFadeStart(float fadeStart);
+        float getFadeStart() const;
+        void setFadeEnd(float fadeEnd);
+        float getFadeEnd() const;
+
+        void setCullInstances(bool cullInstances);
+        bool isCullInstances() const;
+
         void addInstance(InstanceData instance);
         void addInstance(Vector3 position);
         void addInstance(float x, float y, float z);

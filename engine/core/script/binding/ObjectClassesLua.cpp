@@ -475,6 +475,11 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addProperty("instancedBillboard", &Mesh::isInstancedBillboard, (void(Mesh::*)(bool))&Mesh::setInstancedBillboard)
         .addProperty("instancedCylindricalBillboard", &Mesh::isInstancedCylindricalBillboard, &Mesh::setInstancedCylindricalBillboard)
         .addProperty("maxInstances", &Mesh::getMaxInstances, &Mesh::setMaxInstances)
+        .addProperty("distanceFade", &Mesh::isDistanceFade, &Mesh::setDistanceFade)
+        .addFunction("setFadeRange", &Mesh::setFadeRange)
+        .addProperty("fadeStart", &Mesh::getFadeStart, &Mesh::setFadeStart)
+        .addProperty("fadeEnd", &Mesh::getFadeEnd, &Mesh::setFadeEnd)
+        .addProperty("cullInstances", &Mesh::isCullInstances, &Mesh::setCullInstances)
         .addFunction("addInstance",
             luabridge::overload<InstanceData>(&Mesh::addInstance),
             luabridge::overload<Vector3>(&Mesh::addInstance),
