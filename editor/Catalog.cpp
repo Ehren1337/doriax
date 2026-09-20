@@ -1290,6 +1290,7 @@ namespace {
         if (fieldName == ".maxHeight") return {PropertyType::Float, UpdateFlags_Terrain_Foliage, &def.maxHeight, &layer.maxHeight};
         if (fieldName == ".drawDistance") return {PropertyType::Float, UpdateFlags_Terrain_Foliage, &def.drawDistance, &layer.drawDistance};
         if (fieldName == ".seed") return {PropertyType::UInt, UpdateFlags_Terrain_Foliage, &def.seed, &layer.seed};
+        if (fieldName == ".castShadows") return {PropertyType::Bool, UpdateFlags_Terrain_Foliage, &def.castShadows, &layer.castShadows};
 
         return PropertyData();
     }
@@ -2364,6 +2365,7 @@ namespace {
             field(".maxHeight", PropertyType::Float, (void*)&defLayer.maxHeight, layer ? (void*)&layer->maxHeight : nullptr);
             field(".drawDistance", PropertyType::Float, (void*)&defLayer.drawDistance, layer ? (void*)&layer->drawDistance : nullptr);
             field(".seed", PropertyType::UInt, (void*)&defLayer.seed, layer ? (void*)&layer->seed : nullptr);
+            field(".castShadows", PropertyType::Bool, (void*)&defLayer.castShadows, layer ? (void*)&layer->castShadows : nullptr);
         }
     }
 

@@ -5341,6 +5341,7 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
     node["maxHeight"] = layer.maxHeight;
     node["drawDistance"] = layer.drawDistance;
     node["seed"] = layer.seed;
+    node["castShadows"] = layer.castShadows;
     return node;
 }
 
@@ -5349,6 +5350,7 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     if (node["meshPath"]) layer.meshPath = node["meshPath"].as<std::string>();
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
     if (node["seed"]) layer.seed = node["seed"].as<unsigned int>();
+    if (node["castShadows"]) layer.castShadows = node["castShadows"].as<bool>();
     layer.density = decodeFinite(node["density"], layer.density);
     layer.minScale = decodeFinite(node["minScale"], layer.minScale);
     layer.maxScale = decodeFinite(node["maxScale"], layer.maxScale);

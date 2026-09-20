@@ -3183,6 +3183,10 @@ void editor::TerrainEditWindow::show(){
             if (ImGui::DragFloat("##foliage_distance", &layer.drawDistance, 1.0f, 1.0f, 500.0f, "%.0f")){
                 setFoliageLayerProperty("drawDistance", std::max(1.0f, layer.drawDistance));
             }
+            terrainPropertyRow("Cast shadows", "Turn off for grass-scale scatter so it skips the shadow cascades.");
+            if (ImGui::Checkbox("##foliage_cast_shadows", &layer.castShadows)){
+                setFoliageLayerProperty("castShadows", layer.castShadows);
+            }
             terrainPropertyRow("Seed", "Change the seed to reshuffle instance positions.");
             if (ImGui::InputScalar("##foliage_seed", ImGuiDataType_U32, &layer.seed)){
                 setFoliageLayerProperty("seed", layer.seed);

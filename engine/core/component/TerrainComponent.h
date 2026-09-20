@@ -131,6 +131,7 @@ namespace doriax{
         float maxHeight = 1;
         float drawDistance = 50;
         unsigned int seed = 0;
+        bool castShadows = true; // off spares grass-scale scatter the shadow cascades
     };
 
     struct DORIAX_API TerrainComponent{

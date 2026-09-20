@@ -3331,6 +3331,7 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
             instmesh.distanceFade = true;
             instmesh.fadeStart = fadeStart;
             instmesh.fadeEnd = fadeEnd;
+            mesh.castShadows = layer.castShadows;
 
             // Grows with headroom and never shrinks, so a draw distance drag rebuilds little.
             if (instmesh.maxInstances < capacity){

@@ -1330,6 +1330,7 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".maxHeight = " << formatFloat(layer.maxHeight) << ";\n";
         code << ind << var << ".drawDistance = " << formatFloat(layer.drawDistance) << ";\n";
         code << ind << var << ".seed = " << formatUInt(layer.seed) << ";\n";
+        code << ind << var << ".castShadows = " << formatBool(layer.castShadows) << ";\n";
         code << ind << "terrain.foliageLayers.push_back(" << var << ");\n";
     }
     code << ind << "terrain.needUpdateTerrain = true;\n";
