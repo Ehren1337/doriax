@@ -2654,6 +2654,7 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["shadowQuality"] = shadowQualityToString(scene->getShadowQuality());
     sceneNode["meshLodEnabled"] = scene->isMeshLodEnabled();
     sceneNode["meshLodThreshold"] = scene->getMeshLodThreshold();
+    sceneNode["depthPrepassEnabled"] = scene->isDepthPrepassEnabled();
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
@@ -2718,6 +2719,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
     if (node["meshLodThreshold"]) {
         scene->setMeshLodThreshold(decodeFinite(node["meshLodThreshold"], scene->getMeshLodThreshold()));
+    }
+    if (node["depthPrepassEnabled"]) {
+        scene->setDepthPrepassEnabled(node["depthPrepassEnabled"].as<bool>());
     }
 
     if (node["lightState"]) {

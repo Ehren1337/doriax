@@ -2423,6 +2423,7 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << ind2 << "scene->setShadowQuality(" << formatShadowQuality(scene->getShadowQuality()) << ");\n";
     out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
     out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
+    out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatFloat(scene->getAmbientLight2DIntensity()) << ");\n";

@@ -285,6 +285,11 @@ namespace doriax::editor{
                     return scene->getMeshLodThreshold();
                 }
             }
+            else if (propertyName == "depth_prepass_enabled") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isDepthPrepassEnabled();
+                }
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     return scene->isSSAOEnabled();
@@ -457,6 +462,9 @@ namespace doriax::editor{
             else if (propertyName == "mesh_lod_threshold") {
                 if constexpr (std::is_same_v<T, float>) return d.meshLodThreshold;
             }
+            else if (propertyName == "depth_prepass_enabled") {
+                if constexpr (std::is_same_v<T, bool>) return d.depthPrepassEnabled;
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.ssaoEnabled;
             }
@@ -590,6 +598,11 @@ namespace doriax::editor{
             else if (propertyName == "mesh_lod_threshold") {
                 if constexpr (std::is_same_v<T, float>) {
                     scene->setMeshLodThreshold(value);
+                }
+            }
+            else if (propertyName == "depth_prepass_enabled") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setDepthPrepassEnabled(value);
                 }
             }
             else if (propertyName == "ssao_enabled") {

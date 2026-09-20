@@ -1800,6 +1800,7 @@ Json sceneReadableProperties(SceneProject* sceneProject) {
     props["physics_gravity_3d"] = {{"type", "vector3"}, {"value", vector3Json(Catalog::getSceneProperty<Vector3>(scene, "physics_gravity_3d"))}};
     props["mesh_lod_enabled"] = {{"type", "bool"}, {"value", Catalog::getSceneProperty<bool>(scene, "mesh_lod_enabled")}};
     props["mesh_lod_threshold"] = {{"type", "float"}, {"value", Catalog::getSceneProperty<float>(scene, "mesh_lod_threshold")}};
+    props["depth_prepass_enabled"] = {{"type", "bool"}, {"value", Catalog::getSceneProperty<bool>(scene, "depth_prepass_enabled")}};
     props["ssao_enabled"] = {{"type", "bool"}, {"value", Catalog::getSceneProperty<bool>(scene, "ssao_enabled")}};
     props["ssao_radius"] = {{"type", "float"}, {"value", Catalog::getSceneProperty<float>(scene, "ssao_radius")}};
     props["ssao_intensity"] = {{"type", "float"}, {"value", Catalog::getSceneProperty<float>(scene, "ssao_intensity")}};
@@ -3010,7 +3011,7 @@ ActionResult EditorActionExecutor::setSceneProperty(const Json& arguments) {
             return failResult("physics_gravity_3d requires vector3_value.");
         }
         cmd = new ScenePropertyCmd<Vector3>(project, sceneId, property, value);
-    } else if (property == "ssao_enabled" ||
+    } else if (property == "ssao_enabled" || property == "mesh_lod_enabled" || property == "depth_prepass_enabled" ||
                property == "ssao_debug" || property == "ssr_enabled" ||
                property == "fixed_resolution_enabled") {
         if (!arguments.contains("bool_value") || !arguments["bool_value"].is_boolean()) {

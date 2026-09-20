@@ -13568,6 +13568,18 @@ void editor::Properties::show(){
                     ImGui::EndTable();
                 }
 
+                ImGui::SeparatorText("Depth Prepass");
+
+                if (ImGui::BeginTable("scene_prepass_settings_table", 2, tableFlags)) {
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Enabled"));
+                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                    drawScenePropertyRow<bool>(sceneProject, "depth_prepass_enabled", "Enabled", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                        "Write depth before the opaque color pass so each pixel is shaded once. Pays off with heavy overdraw (dense foliage); costs an extra geometry pass.");
+
+                    ImGui::EndTable();
+                }
+
                 ImGui::SeparatorText("Ambient Occlusion (SSAO)");
 
                 if (ImGui::BeginTable("scene_ssao_settings_table", 2, tableFlags)) {
