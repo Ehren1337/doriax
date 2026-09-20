@@ -1125,6 +1125,52 @@
 		71FCE4C228E0FA01003C5217 /* LuaBridgeAddon.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */; };
 		71FCE4C528E0FA31003C5217 /* LuaBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4C428E0FA31003C5217 /* LuaBridge.h */; };
 		71FFE3FF2A369FE90089A6C9 /* ThreadUtils.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FFE3FE2A369FE90089A6C9 /* ThreadUtils.h */; };
+		71C00022D2E7A0100C91BA00 /* allocator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00012D2E7A0100C91BA00 /* allocator.cpp */; };
+		71C00032D2E7A0100C91BA00 /* allocator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00012D2E7A0100C91BA00 /* allocator.cpp */; };
+		71C00052D2E7A0100C91BA00 /* clusterizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00042D2E7A0100C91BA00 /* clusterizer.cpp */; };
+		71C00062D2E7A0100C91BA00 /* clusterizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00042D2E7A0100C91BA00 /* clusterizer.cpp */; };
+		71C00082D2E7A0100C91BA00 /* indexanalyzer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00072D2E7A0100C91BA00 /* indexanalyzer.cpp */; };
+		71C00092D2E7A0100C91BA00 /* indexanalyzer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00072D2E7A0100C91BA00 /* indexanalyzer.cpp */; };
+		71C000B2D2E7A0100C91BA00 /* indexcodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C000A2D2E7A0100C91BA00 /* indexcodec.cpp */; };
+		71C000C2D2E7A0100C91BA00 /* indexcodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C000A2D2E7A0100C91BA00 /* indexcodec.cpp */; };
+		71C000E2D2E7A0100C91BA00 /* indexgenerator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C000D2D2E7A0100C91BA00 /* indexgenerator.cpp */; };
+		71C000F2D2E7A0100C91BA00 /* indexgenerator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C000D2D2E7A0100C91BA00 /* indexgenerator.cpp */; };
+		71C00112D2E7A0100C91BA00 /* meshletcodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00102D2E7A0100C91BA00 /* meshletcodec.cpp */; };
+		71C00122D2E7A0100C91BA00 /* meshletcodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00102D2E7A0100C91BA00 /* meshletcodec.cpp */; };
+		71C00142D2E7A0100C91BA00 /* meshletutils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00132D2E7A0100C91BA00 /* meshletutils.cpp */; };
+		71C00152D2E7A0100C91BA00 /* meshletutils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00132D2E7A0100C91BA00 /* meshletutils.cpp */; };
+		71C00172D2E7A0100C91BA00 /* opacitymap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00162D2E7A0100C91BA00 /* opacitymap.cpp */; };
+		71C00182D2E7A0100C91BA00 /* opacitymap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00162D2E7A0100C91BA00 /* opacitymap.cpp */; };
+		71C001A2D2E7A0100C91BA00 /* overdrawoptimizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00192D2E7A0100C91BA00 /* overdrawoptimizer.cpp */; };
+		71C001B2D2E7A0100C91BA00 /* overdrawoptimizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00192D2E7A0100C91BA00 /* overdrawoptimizer.cpp */; };
+		71C001D2D2E7A0100C91BA00 /* partition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C001C2D2E7A0100C91BA00 /* partition.cpp */; };
+		71C001E2D2E7A0100C91BA00 /* partition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C001C2D2E7A0100C91BA00 /* partition.cpp */; };
+		71C00202D2E7A0100C91BA00 /* quantization.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C001F2D2E7A0100C91BA00 /* quantization.cpp */; };
+		71C00212D2E7A0100C91BA00 /* quantization.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C001F2D2E7A0100C91BA00 /* quantization.cpp */; };
+		71C00232D2E7A0100C91BA00 /* rasterizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00222D2E7A0100C91BA00 /* rasterizer.cpp */; };
+		71C00242D2E7A0100C91BA00 /* rasterizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00222D2E7A0100C91BA00 /* rasterizer.cpp */; };
+		71C00262D2E7A0100C91BA00 /* remesher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00252D2E7A0100C91BA00 /* remesher.cpp */; };
+		71C00272D2E7A0100C91BA00 /* remesher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00252D2E7A0100C91BA00 /* remesher.cpp */; };
+		71C00292D2E7A0100C91BA00 /* simplifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00282D2E7A0100C91BA00 /* simplifier.cpp */; };
+		71C002A2D2E7A0100C91BA00 /* simplifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00282D2E7A0100C91BA00 /* simplifier.cpp */; };
+		71C002C2D2E7A0100C91BA00 /* spatialorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C002B2D2E7A0100C91BA00 /* spatialorder.cpp */; };
+		71C002D2D2E7A0100C91BA00 /* spatialorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C002B2D2E7A0100C91BA00 /* spatialorder.cpp */; };
+		71C002F2D2E7A0100C91BA00 /* stripifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C002E2D2E7A0100C91BA00 /* stripifier.cpp */; };
+		71C00302D2E7A0100C91BA00 /* stripifier.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C002E2D2E7A0100C91BA00 /* stripifier.cpp */; };
+		71C00322D2E7A0100C91BA00 /* tangentspace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00312D2E7A0100C91BA00 /* tangentspace.cpp */; };
+		71C00332D2E7A0100C91BA00 /* tangentspace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00312D2E7A0100C91BA00 /* tangentspace.cpp */; };
+		71C00352D2E7A0100C91BA00 /* vcacheoptimizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00342D2E7A0100C91BA00 /* vcacheoptimizer.cpp */; };
+		71C00362D2E7A0100C91BA00 /* vcacheoptimizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00342D2E7A0100C91BA00 /* vcacheoptimizer.cpp */; };
+		71C00382D2E7A0100C91BA00 /* vertexcodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00372D2E7A0100C91BA00 /* vertexcodec.cpp */; };
+		71C00392D2E7A0100C91BA00 /* vertexcodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C00372D2E7A0100C91BA00 /* vertexcodec.cpp */; };
+		71C003B2D2E7A0100C91BA00 /* vertexfilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C003A2D2E7A0100C91BA00 /* vertexfilter.cpp */; };
+		71C003C2D2E7A0100C91BA00 /* vertexfilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C003A2D2E7A0100C91BA00 /* vertexfilter.cpp */; };
+		71C003E2D2E7A0100C91BA00 /* vfetchoptimizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C003D2D2E7A0100C91BA00 /* vfetchoptimizer.cpp */; };
+		71C003F2D2E7A0100C91BA00 /* vfetchoptimizer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71C003D2D2E7A0100C91BA00 /* vfetchoptimizer.cpp */; };
+		71C00412D2E7A0100C91BA00 /* meshoptimizer.h in Headers */ = {isa = PBXBuildFile; fileRef = 71C00402D2E7A0100C91BA00 /* meshoptimizer.h */; };
+		71C00422D2E7A0100C91BA00 /* meshoptimizer.h in Headers */ = {isa = PBXBuildFile; fileRef = 71C00402D2E7A0100C91BA00 /* meshoptimizer.h */; };
+		71C00452D2E7A0100C91BA00 /* libmeshoptimizer-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */; };
+		71C00462D2E7A0100C91BA00 /* libmeshoptimizer-macos.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 71C00442D2E7A0100C91BA00 /* libmeshoptimizer-macos.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1323,6 +1369,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = 71F97B79262D1FFE00CD6F2B;
 			remoteInfo = "tinygltf-ios";
+		};
+		71C00492D2E7A0100C91BA00 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 71C00472D2E7A0100C91BA00;
+			remoteInfo = "meshoptimizer-ios";
+		};
+		71C004A2D2E7A0100C91BA00 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7162F8C0259547D60075B97D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 71C00482D2E7A0100C91BA00;
+			remoteInfo = "meshoptimizer-macos";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -2870,6 +2930,30 @@
 		71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridgeAddon.h; sourceTree = "<group>"; };
 		71FCE4C428E0FA31003C5217 /* LuaBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridge.h; sourceTree = "<group>"; };
 		71FFE3FE2A369FE90089A6C9 /* ThreadUtils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThreadUtils.h; sourceTree = "<group>"; };
+		71C00012D2E7A0100C91BA00 /* allocator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = allocator.cpp; sourceTree = "<group>"; };
+		71C00042D2E7A0100C91BA00 /* clusterizer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clusterizer.cpp; sourceTree = "<group>"; };
+		71C00072D2E7A0100C91BA00 /* indexanalyzer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = indexanalyzer.cpp; sourceTree = "<group>"; };
+		71C000A2D2E7A0100C91BA00 /* indexcodec.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = indexcodec.cpp; sourceTree = "<group>"; };
+		71C000D2D2E7A0100C91BA00 /* indexgenerator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = indexgenerator.cpp; sourceTree = "<group>"; };
+		71C00102D2E7A0100C91BA00 /* meshletcodec.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = meshletcodec.cpp; sourceTree = "<group>"; };
+		71C00132D2E7A0100C91BA00 /* meshletutils.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = meshletutils.cpp; sourceTree = "<group>"; };
+		71C00162D2E7A0100C91BA00 /* opacitymap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = opacitymap.cpp; sourceTree = "<group>"; };
+		71C00192D2E7A0100C91BA00 /* overdrawoptimizer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = overdrawoptimizer.cpp; sourceTree = "<group>"; };
+		71C001C2D2E7A0100C91BA00 /* partition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = partition.cpp; sourceTree = "<group>"; };
+		71C001F2D2E7A0100C91BA00 /* quantization.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = quantization.cpp; sourceTree = "<group>"; };
+		71C00222D2E7A0100C91BA00 /* rasterizer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = rasterizer.cpp; sourceTree = "<group>"; };
+		71C00252D2E7A0100C91BA00 /* remesher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = remesher.cpp; sourceTree = "<group>"; };
+		71C00282D2E7A0100C91BA00 /* simplifier.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = simplifier.cpp; sourceTree = "<group>"; };
+		71C002B2D2E7A0100C91BA00 /* spatialorder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = spatialorder.cpp; sourceTree = "<group>"; };
+		71C002E2D2E7A0100C91BA00 /* stripifier.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = stripifier.cpp; sourceTree = "<group>"; };
+		71C00312D2E7A0100C91BA00 /* tangentspace.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = tangentspace.cpp; sourceTree = "<group>"; };
+		71C00342D2E7A0100C91BA00 /* vcacheoptimizer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = vcacheoptimizer.cpp; sourceTree = "<group>"; };
+		71C00372D2E7A0100C91BA00 /* vertexcodec.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = vertexcodec.cpp; sourceTree = "<group>"; };
+		71C003A2D2E7A0100C91BA00 /* vertexfilter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = vertexfilter.cpp; sourceTree = "<group>"; };
+		71C003D2D2E7A0100C91BA00 /* vfetchoptimizer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = vfetchoptimizer.cpp; sourceTree = "<group>"; };
+		71C00402D2E7A0100C91BA00 /* meshoptimizer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = meshoptimizer.h; sourceTree = "<group>"; };
+		71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libmeshoptimizer-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		71C00442D2E7A0100C91BA00 /* libmeshoptimizer-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libmeshoptimizer-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2921,6 +3005,7 @@
 			files = (
 				71A800092AD9A001007C91BA /* libharfbuzz-ios.a in Frameworks */,
 				71A800292AD9A002007C91BA /* libsheenbidi-ios.a in Frameworks */,
+				71C00452D2E7A0100C91BA00 /* libmeshoptimizer-ios.a in Frameworks */,
 				7105CEAD2AD62381007C91BA /* libjoltphysics-ios.a in Frameworks */,
 				71E824822A9C235A00C8E6F2 /* libbox2d-ios.a in Frameworks */,
 				717AD95B290B6275007D7DB5 /* libsoloud-ios.a in Frameworks */,
@@ -2971,6 +3056,7 @@
 			files = (
 				71A8000A2AD9A001007C91BA /* libharfbuzz-macos.a in Frameworks */,
 				71A8002A2AD9A002007C91BA /* libsheenbidi-macos.a in Frameworks */,
+				71C00462D2E7A0100C91BA00 /* libmeshoptimizer-macos.a in Frameworks */,
 				7105CEAA2AD62363007C91BA /* libjoltphysics-macos.a in Frameworks */,
 				71E8247F2A9C22E100C8E6F2 /* libbox2d-macos.a in Frameworks */,
 				7182C89429686E380013B9D8 /* liblua-macos.a in Frameworks */,
@@ -3089,6 +3175,20 @@
 			buildActionMask = 2147483647;
 			files = (
 				71F97B98262D202300CD6F2B /* libstb-ios.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		71C004D2D2E7A0100C91BA00 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		71C004E2D2E7A0100C91BA00 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3868,6 +3968,8 @@
 				71A800082AD9A001007C91BA /* libharfbuzz-macos.a */,
 				71A800272AD9A002007C91BA /* libsheenbidi-ios.a */,
 				71A800282AD9A002007C91BA /* libsheenbidi-macos.a */,
+				71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */,
+				71C00442D2E7A0100C91BA00 /* libmeshoptimizer-macos.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -4219,6 +4321,7 @@
 				71F97B56262D1EF200CD6F2B /* json */,
 				71BE604125B1C55B006D6E02 /* lua */,
 				71FCE4C328E0FA31003C5217 /* luabridge3 */,
+				71C00532D2E7A0100C91BA00 /* meshoptimizer */,
 				17BFFB742FF201F9008F5B7C /* nanosvg */,
 				71A8002B2AD9A002007C91BA /* sheenbidi */,
 				7162FC9725962A0E0075B97D /* sokol */,
@@ -5488,6 +5591,35 @@
 			path = luabridge3;
 			sourceTree = "<group>";
 		};
+		71C00532D2E7A0100C91BA00 /* meshoptimizer */ = {
+			isa = PBXGroup;
+			children = (
+				71C00012D2E7A0100C91BA00 /* allocator.cpp */,
+				71C00042D2E7A0100C91BA00 /* clusterizer.cpp */,
+				71C00072D2E7A0100C91BA00 /* indexanalyzer.cpp */,
+				71C000A2D2E7A0100C91BA00 /* indexcodec.cpp */,
+				71C000D2D2E7A0100C91BA00 /* indexgenerator.cpp */,
+				71C00102D2E7A0100C91BA00 /* meshletcodec.cpp */,
+				71C00132D2E7A0100C91BA00 /* meshletutils.cpp */,
+				71C00162D2E7A0100C91BA00 /* opacitymap.cpp */,
+				71C00192D2E7A0100C91BA00 /* overdrawoptimizer.cpp */,
+				71C001C2D2E7A0100C91BA00 /* partition.cpp */,
+				71C001F2D2E7A0100C91BA00 /* quantization.cpp */,
+				71C00222D2E7A0100C91BA00 /* rasterizer.cpp */,
+				71C00252D2E7A0100C91BA00 /* remesher.cpp */,
+				71C00282D2E7A0100C91BA00 /* simplifier.cpp */,
+				71C002B2D2E7A0100C91BA00 /* spatialorder.cpp */,
+				71C002E2D2E7A0100C91BA00 /* stripifier.cpp */,
+				71C00312D2E7A0100C91BA00 /* tangentspace.cpp */,
+				71C00342D2E7A0100C91BA00 /* vcacheoptimizer.cpp */,
+				71C00372D2E7A0100C91BA00 /* vertexcodec.cpp */,
+				71C003A2D2E7A0100C91BA00 /* vertexfilter.cpp */,
+				71C003D2D2E7A0100C91BA00 /* vfetchoptimizer.cpp */,
+				71C00402D2E7A0100C91BA00 /* meshoptimizer.h */,
+			);
+			path = meshoptimizer;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -5917,6 +6049,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		71C004F2D2E7A0100C91BA00 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				71C00412D2E7A0100C91BA00 /* meshoptimizer.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		71C00502D2E7A0100C91BA00 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				71C00422D2E7A0100C91BA00 /* meshoptimizer.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
@@ -6034,6 +6182,7 @@
 			dependencies = (
 				71A8001B2AD9A001007C91BA /* PBXTargetDependency */,
 				71A8003E2AD9A002007C91BA /* PBXTargetDependency */,
+				71C004B2D2E7A0100C91BA00 /* PBXTargetDependency */,
 				7105CEAC2AD62376007C91BA /* PBXTargetDependency */,
 				71E824812A9C22F100C8E6F2 /* PBXTargetDependency */,
 				717AD95A290B6268007D7DB5 /* PBXTargetDependency */,
@@ -6115,6 +6264,7 @@
 			dependencies = (
 				71A8001D2AD9A001007C91BA /* PBXTargetDependency */,
 				71A800402AD9A002007C91BA /* PBXTargetDependency */,
+				71C004C2D2E7A0100C91BA00 /* PBXTargetDependency */,
 				7105CEA92AD62350007C91BA /* PBXTargetDependency */,
 				71E8247E2A9C22D000C8E6F2 /* PBXTargetDependency */,
 				7182C89329686E310013B9D8 /* PBXTargetDependency */,
@@ -6389,6 +6539,40 @@
 			productReference = 71F97B85262D1FFE00CD6F2B /* libtinygltf-ios.a */;
 			productType = "com.apple.product-type.library.static";
 		};
+		71C00472D2E7A0100C91BA00 /* meshoptimizer-ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 71C00582D2E7A0100C91BA00 /* Build configuration list for PBXNativeTarget "meshoptimizer-ios" */;
+			buildPhases = (
+				71C004F2D2E7A0100C91BA00 /* Headers */,
+				71C00512D2E7A0100C91BA00 /* Sources */,
+				71C004D2D2E7A0100C91BA00 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "meshoptimizer-ios";
+			productName = "meshoptimizer-ios";
+			productReference = 71C00432D2E7A0100C91BA00 /* libmeshoptimizer-ios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		71C00482D2E7A0100C91BA00 /* meshoptimizer-macos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 71C00592D2E7A0100C91BA00 /* Build configuration list for PBXNativeTarget "meshoptimizer-macos" */;
+			buildPhases = (
+				71C00502D2E7A0100C91BA00 /* Headers */,
+				71C00522D2E7A0100C91BA00 /* Sources */,
+				71C004E2D2E7A0100C91BA00 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "meshoptimizer-macos";
+			productName = "meshoptimizer-macos";
+			productReference = 71C00442D2E7A0100C91BA00 /* libmeshoptimizer-macos.a */;
+			productType = "com.apple.product-type.library.static";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -6441,6 +6625,12 @@
 						CreatedOnToolsVersion = 14.3.1;
 					};
 					71A800302AD9A002007C91BA = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
+					71C00472D2E7A0100C91BA00 = {
+						CreatedOnToolsVersion = 14.3.1;
+					};
+					71C00482D2E7A0100C91BA00 = {
 						CreatedOnToolsVersion = 14.3.1;
 					};
 					71BE602725B1C49C006D6E02 = {
@@ -6502,6 +6692,8 @@
 				71A8000C2AD9A001007C91BA /* harfbuzz-ios */,
 				71A800302AD9A002007C91BA /* sheenbidi-macos */,
 				71A8002F2AD9A002007C91BA /* sheenbidi-ios */,
+				71C00482D2E7A0100C91BA00 /* meshoptimizer-macos */,
+				71C00472D2E7A0100C91BA00 /* meshoptimizer-ios */,
 			);
 		};
 /* End PBXProject section */
@@ -7494,6 +7686,62 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		71C00512D2E7A0100C91BA00 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				71C00022D2E7A0100C91BA00 /* allocator.cpp in Sources */,
+				71C00052D2E7A0100C91BA00 /* clusterizer.cpp in Sources */,
+				71C00082D2E7A0100C91BA00 /* indexanalyzer.cpp in Sources */,
+				71C000B2D2E7A0100C91BA00 /* indexcodec.cpp in Sources */,
+				71C000E2D2E7A0100C91BA00 /* indexgenerator.cpp in Sources */,
+				71C00112D2E7A0100C91BA00 /* meshletcodec.cpp in Sources */,
+				71C00142D2E7A0100C91BA00 /* meshletutils.cpp in Sources */,
+				71C00172D2E7A0100C91BA00 /* opacitymap.cpp in Sources */,
+				71C001A2D2E7A0100C91BA00 /* overdrawoptimizer.cpp in Sources */,
+				71C001D2D2E7A0100C91BA00 /* partition.cpp in Sources */,
+				71C00202D2E7A0100C91BA00 /* quantization.cpp in Sources */,
+				71C00232D2E7A0100C91BA00 /* rasterizer.cpp in Sources */,
+				71C00262D2E7A0100C91BA00 /* remesher.cpp in Sources */,
+				71C00292D2E7A0100C91BA00 /* simplifier.cpp in Sources */,
+				71C002C2D2E7A0100C91BA00 /* spatialorder.cpp in Sources */,
+				71C002F2D2E7A0100C91BA00 /* stripifier.cpp in Sources */,
+				71C00322D2E7A0100C91BA00 /* tangentspace.cpp in Sources */,
+				71C00352D2E7A0100C91BA00 /* vcacheoptimizer.cpp in Sources */,
+				71C00382D2E7A0100C91BA00 /* vertexcodec.cpp in Sources */,
+				71C003B2D2E7A0100C91BA00 /* vertexfilter.cpp in Sources */,
+				71C003E2D2E7A0100C91BA00 /* vfetchoptimizer.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		71C00522D2E7A0100C91BA00 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				71C00032D2E7A0100C91BA00 /* allocator.cpp in Sources */,
+				71C00062D2E7A0100C91BA00 /* clusterizer.cpp in Sources */,
+				71C00092D2E7A0100C91BA00 /* indexanalyzer.cpp in Sources */,
+				71C000C2D2E7A0100C91BA00 /* indexcodec.cpp in Sources */,
+				71C000F2D2E7A0100C91BA00 /* indexgenerator.cpp in Sources */,
+				71C00122D2E7A0100C91BA00 /* meshletcodec.cpp in Sources */,
+				71C00152D2E7A0100C91BA00 /* meshletutils.cpp in Sources */,
+				71C00182D2E7A0100C91BA00 /* opacitymap.cpp in Sources */,
+				71C001B2D2E7A0100C91BA00 /* overdrawoptimizer.cpp in Sources */,
+				71C001E2D2E7A0100C91BA00 /* partition.cpp in Sources */,
+				71C00212D2E7A0100C91BA00 /* quantization.cpp in Sources */,
+				71C00242D2E7A0100C91BA00 /* rasterizer.cpp in Sources */,
+				71C00272D2E7A0100C91BA00 /* remesher.cpp in Sources */,
+				71C002A2D2E7A0100C91BA00 /* simplifier.cpp in Sources */,
+				71C002D2D2E7A0100C91BA00 /* spatialorder.cpp in Sources */,
+				71C00302D2E7A0100C91BA00 /* stripifier.cpp in Sources */,
+				71C00332D2E7A0100C91BA00 /* tangentspace.cpp in Sources */,
+				71C00362D2E7A0100C91BA00 /* vcacheoptimizer.cpp in Sources */,
+				71C00392D2E7A0100C91BA00 /* vertexcodec.cpp in Sources */,
+				71C003C2D2E7A0100C91BA00 /* vertexfilter.cpp in Sources */,
+				71C003F2D2E7A0100C91BA00 /* vfetchoptimizer.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -7636,6 +7884,16 @@
 			isa = PBXTargetDependency;
 			target = 71F97B79262D1FFE00CD6F2B /* tinygltf-ios */;
 			targetProxy = 71F97B99262D203300CD6F2B /* PBXContainerItemProxy */;
+		};
+		71C004B2D2E7A0100C91BA00 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 71C00472D2E7A0100C91BA00 /* meshoptimizer-ios */;
+			targetProxy = 71C00492D2E7A0100C91BA00 /* PBXContainerItemProxy */;
+		};
+		71C004C2D2E7A0100C91BA00 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 71C00482D2E7A0100C91BA00 /* meshoptimizer-macos */;
+			targetProxy = 71C004A2D2E7A0100C91BA00 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -7851,6 +8109,7 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../libs/meshoptimizer",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -7874,6 +8133,7 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../libs/meshoptimizer",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
 				OTHER_LDFLAGS = "-ObjC";
@@ -8053,6 +8313,7 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../libs/meshoptimizer",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -8084,6 +8345,7 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../libs/meshoptimizer",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
@@ -8121,6 +8383,7 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../platform/mac",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
@@ -8156,6 +8419,7 @@
 					"$(SRCROOT)/../../libs/joltphysics",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../platform/mac",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
@@ -8188,6 +8452,7 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../libs/meshoptimizer",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -8214,6 +8479,7 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/harfbuzz",
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
+					"$(SRCROOT)/../../libs/meshoptimizer",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 10.15;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -8830,6 +9096,67 @@
 			};
 			name = Release;
 		};
+		71C00542D2E7A0100C91BA00 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CODE_SIGN_STYLE = Automatic;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/meshoptimizer";
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		71C00552D2E7A0100C91BA00 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CODE_SIGN_STYLE = Automatic;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/meshoptimizer";
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		71C00562D2E7A0100C91BA00 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/meshoptimizer";
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		71C00572D2E7A0100C91BA00 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				EXECUTABLE_PREFIX = lib;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/meshoptimizer";
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -9072,6 +9399,24 @@
 			buildConfigurations = (
 				71F97B83262D1FFE00CD6F2B /* Debug */,
 				71F97B84262D1FFE00CD6F2B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		71C00582D2E7A0100C91BA00 /* Build configuration list for PBXNativeTarget "meshoptimizer-ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				71C00542D2E7A0100C91BA00 /* Debug */,
+				71C00552D2E7A0100C91BA00 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		71C00592D2E7A0100C91BA00 /* Build configuration list for PBXNativeTarget "meshoptimizer-macos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				71C00562D2E7A0100C91BA00 /* Debug */,
+				71C00572D2E7A0100C91BA00 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

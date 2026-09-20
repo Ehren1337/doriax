@@ -702,6 +702,7 @@ include_directories(SYSTEM libs/box2d/include)
 include_directories(SYSTEM libs/joltphysics)
 include_directories(SYSTEM libs/harfbuzz)
 include_directories(SYSTEM libs/sheenbidi/Headers)
+include_directories(SYSTEM libs/meshoptimizer)
 
 add_subdirectory(libs/sokol)
 add_subdirectory(libs/lua)
@@ -714,6 +715,7 @@ add_subdirectory(libs/box2d)
 add_subdirectory(libs/joltphysics)
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
+add_subdirectory(libs/meshoptimizer)
 
 # Set again here because standalone builds skip the root CMakeLists
 if(MSVC)
@@ -724,7 +726,7 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    box2d joltphysics harfbuzz sheenbidi)
+    box2d joltphysics harfbuzz sheenbidi meshoptimizer)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
 
@@ -906,7 +908,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud box2d joltphysics harfbuzz sheenbidi
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud box2d joltphysics harfbuzz sheenbidi meshoptimizer
 )
 
 # Checked after the marker above, so the value the Exporter injects is validated too
