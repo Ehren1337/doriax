@@ -581,6 +581,8 @@ namespace {
         makeFastProperty<MeshComponent, bool, &MeshComponent::receiveIBL>("receiveIBL", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::castShadows>("castShadows", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::receiveShadows>("receiveShadows", PropertyType::Bool, UpdateFlags_Mesh_Reload),
+        makeFastProperty<MeshComponent, bool, &MeshComponent::lodEnabled>("lodEnabled", PropertyType::Bool, UpdateFlags_Mesh_Reload),
+        makeFastProperty<MeshComponent, float, &MeshComponent::lodBias>("lodBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<MeshComponent, bool, &MeshComponent::renderInReflectionProbes>("renderInReflectionProbes", PropertyType::Bool, UpdateFlags_Reflection_Probe_Recapture_All),
         makeFastProperty<MeshComponent, bool, &MeshComponent::transparent>("transparent", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::autoTransparency>("autoTransparency", PropertyType::Bool, UpdateFlags_Mesh_Reload),
@@ -1614,6 +1616,7 @@ namespace {
         // distanceFade picks the shader variant, so changing it needs the reload that
         // fadeStart and fadeEnd, which are plain uniforms, do not.
         if (propertyName == "distanceFade") return {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.distanceFade, &comp->distanceFade};
+        if (propertyName == "cullInstances") return {PropertyType::Bool, UpdateFlags_Instanced_Mesh, &def.cullInstances, &comp->cullInstances};
         if (propertyName == "fadeStart") return {PropertyType::Float, UpdateFlags_None, &def.fadeStart, &comp->fadeStart};
         if (propertyName == "fadeEnd") return {PropertyType::Float, UpdateFlags_None, &def.fadeEnd, &comp->fadeEnd};
         if (propertyName == "instancedBillboard") return {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.instancedBillboard, &comp->instancedBillboard};
@@ -1665,6 +1668,7 @@ namespace {
         InstancedMeshComponent& def = getDefaultComponent<InstancedMeshComponent>();
         ps["maxInstances"] = {PropertyType::UInt, UpdateFlags_Mesh_Reload, &def.maxInstances, comp ? &comp->maxInstances : nullptr};
         ps["distanceFade"] = {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.distanceFade, comp ? &comp->distanceFade : nullptr};
+        ps["cullInstances"] = {PropertyType::Bool, UpdateFlags_Instanced_Mesh, &def.cullInstances, comp ? &comp->cullInstances : nullptr};
         ps["fadeStart"] = {PropertyType::Float, UpdateFlags_None, &def.fadeStart, comp ? &comp->fadeStart : nullptr};
         ps["fadeEnd"] = {PropertyType::Float, UpdateFlags_None, &def.fadeEnd, comp ? &comp->fadeEnd : nullptr};
         ps["instancedBillboard"] = {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.instancedBillboard, comp ? &comp->instancedBillboard : nullptr};

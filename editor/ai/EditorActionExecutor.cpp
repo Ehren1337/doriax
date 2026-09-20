@@ -1798,6 +1798,8 @@ Json sceneReadableProperties(SceneProject* sceneProject) {
     props["shadows_2d_quality"] = {{"type", "int"}, {"value", static_cast<int>(Catalog::getSceneProperty<ShadowQuality>(scene, "shadows_2d_quality"))}};
     props["physics_gravity_2d"] = {{"type", "vector2"}, {"value", vector2Json(Catalog::getSceneProperty<Vector2>(scene, "physics_gravity_2d"))}};
     props["physics_gravity_3d"] = {{"type", "vector3"}, {"value", vector3Json(Catalog::getSceneProperty<Vector3>(scene, "physics_gravity_3d"))}};
+    props["mesh_lod_enabled"] = {{"type", "bool"}, {"value", Catalog::getSceneProperty<bool>(scene, "mesh_lod_enabled")}};
+    props["mesh_lod_threshold"] = {{"type", "float"}, {"value", Catalog::getSceneProperty<float>(scene, "mesh_lod_threshold")}};
     props["ssao_enabled"] = {{"type", "bool"}, {"value", Catalog::getSceneProperty<bool>(scene, "ssao_enabled")}};
     props["ssao_radius"] = {{"type", "float"}, {"value", Catalog::getSceneProperty<float>(scene, "ssao_radius")}};
     props["ssao_intensity"] = {{"type", "float"}, {"value", Catalog::getSceneProperty<float>(scene, "ssao_intensity")}};
@@ -3016,7 +3018,7 @@ ActionResult EditorActionExecutor::setSceneProperty(const Json& arguments) {
         }
         cmd = new ScenePropertyCmd<bool>(project, sceneId, property, arguments["bool_value"].get<bool>());
     } else if (property == "global_illumination_intensity" || property == "ambient_light_2d_intensity" ||
-               property == "ssao_radius" ||
+               property == "ssao_radius" || property == "mesh_lod_threshold" ||
                property == "ssao_intensity" || property == "ssao_bias" ||
                property == "ssr_max_distance" || property == "ssr_thickness" ||
                property == "ssr_intensity" || property == "ssr_blur") {

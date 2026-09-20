@@ -2652,6 +2652,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
 
     sceneNode["backgroundColor"] = encodeVector4(scene->getBackgroundColor());
     sceneNode["shadowQuality"] = shadowQualityToString(scene->getShadowQuality());
+    sceneNode["meshLodEnabled"] = scene->isMeshLodEnabled();
+    sceneNode["meshLodThreshold"] = scene->getMeshLodThreshold();
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
@@ -2710,6 +2712,12 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
 
     if (node["shadowQuality"]) {
         scene->setShadowQuality(stringToShadowQuality(node["shadowQuality"].as<std::string>()));
+    }
+    if (node["meshLodEnabled"]) {
+        scene->setMeshLodEnabled(node["meshLodEnabled"].as<bool>());
+    }
+    if (node["meshLodThreshold"]) {
+        scene->setMeshLodThreshold(decodeFinite(node["meshLodThreshold"], scene->getMeshLodThreshold()));
     }
 
     if (node["lightState"]) {
@@ -4568,6 +4576,8 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["receiveIBL"] = mesh.receiveIBL;
     node["castShadows"] = mesh.castShadows;
     node["receiveShadows"] = mesh.receiveShadows;
+    node["lodEnabled"] = mesh.lodEnabled;
+    node["lodBias"] = mesh.lodBias;
     node["renderInReflectionProbes"] = mesh.renderInReflectionProbes;
     node["shadowsBillboard"] = mesh.shadowsBillboard;
     node["transparent"] = mesh.transparent;
@@ -4657,6 +4667,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["receiveIBL"]) mesh.receiveIBL = node["receiveIBL"].as<bool>();
     if (node["castShadows"]) mesh.castShadows = node["castShadows"].as<bool>();
     if (node["receiveShadows"]) mesh.receiveShadows = node["receiveShadows"].as<bool>();
+    if (node["lodEnabled"]) mesh.lodEnabled = node["lodEnabled"].as<bool>();
+    mesh.lodBias = decodeFinite(node["lodBias"], mesh.lodBias);
     if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = node["renderInReflectionProbes"].as<bool>();
     if (node["shadowsBillboard"]) mesh.shadowsBillboard = node["shadowsBillboard"].as<bool>();
     if (node["transparent"]) mesh.transparent = node["transparent"].as<bool>();
@@ -7580,6 +7592,7 @@ YAML::Node editor::Stream::encodeInstancedMeshComponent(const InstancedMeshCompo
     YAML::Node node;
 
     node["maxInstances"] = instmesh.maxInstances;
+    node["cullInstances"] = instmesh.cullInstances;
     node["distanceFade"] = instmesh.distanceFade;
     node["fadeStart"] = instmesh.fadeStart;
     node["fadeEnd"] = instmesh.fadeEnd;
@@ -7607,6 +7620,7 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
     if (oldInstmesh) { instmesh = *oldInstmesh; }
 
     if (node["maxInstances"]) instmesh.maxInstances = node["maxInstances"].as<unsigned int>();
+    if (node["cullInstances"]) instmesh.cullInstances = node["cullInstances"].as<bool>();
     if (node["distanceFade"]) instmesh.distanceFade = node["distanceFade"].as<bool>();
     instmesh.fadeStart = decodeFinite(node["fadeStart"], instmesh.fadeStart);
     instmesh.fadeEnd = decodeFinite(node["fadeEnd"], instmesh.fadeEnd);

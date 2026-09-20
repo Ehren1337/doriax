@@ -799,6 +799,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     code << ind << "mesh.receiveIBL = " << formatBool(mesh.receiveIBL) << ";\n";
     code << ind << "mesh.castShadows = " << formatBool(mesh.castShadows) << ";\n";
     code << ind << "mesh.receiveShadows = " << formatBool(mesh.receiveShadows) << ";\n";
+    code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
+    code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
     code << ind << "mesh.renderInReflectionProbes = " << formatBool(mesh.renderInReflectionProbes) << ";\n";
     if (!mesh.customShader.empty())
         code << ind << "mesh.customShader = " << formatString(mesh.customShader) << ";\n";
@@ -2419,6 +2421,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << "\n";
     out << ind2 << "scene->setBackgroundColor(" << formatVector4(scene->getBackgroundColor()) << ");\n";
     out << ind2 << "scene->setShadowQuality(" << formatShadowQuality(scene->getShadowQuality()) << ");\n";
+    out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
+    out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatFloat(scene->getAmbientLight2DIntensity()) << ");\n";
@@ -2874,6 +2878,7 @@ std::string editor::Factory::createInstancedMeshComponent(int indentSpaces, Enti
     const std::string ind = indentation(indentSpaces);
     code << ind << "InstancedMeshComponent instmesh;\n";
     code << ind << "instmesh.maxInstances = " << formatUInt(p.maxInstances) << ";\n";
+    code << ind << "instmesh.cullInstances = " << formatBool(p.cullInstances) << ";\n";
     code << ind << "instmesh.distanceFade = " << formatBool(p.distanceFade) << ";\n";
     code << ind << "instmesh.fadeStart = " << formatFloat(p.fadeStart) << ";\n";
     code << ind << "instmesh.fadeEnd = " << formatFloat(p.fadeEnd) << ";\n";

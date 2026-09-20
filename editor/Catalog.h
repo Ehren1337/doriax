@@ -275,6 +275,16 @@ namespace doriax::editor{
                     return scene->getLightState();
                 }
             }
+            else if (propertyName == "mesh_lod_enabled") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isMeshLodEnabled();
+                }
+            }
+            else if (propertyName == "mesh_lod_threshold") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getMeshLodThreshold();
+                }
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     return scene->isSSAOEnabled();
@@ -441,6 +451,12 @@ namespace doriax::editor{
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) return d.lightState;
             }
+            else if (propertyName == "mesh_lod_enabled") {
+                if constexpr (std::is_same_v<T, bool>) return d.meshLodEnabled;
+            }
+            else if (propertyName == "mesh_lod_threshold") {
+                if constexpr (std::is_same_v<T, float>) return d.meshLodThreshold;
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.ssaoEnabled;
             }
@@ -564,6 +580,16 @@ namespace doriax::editor{
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) {
                     scene->setLightState(value);
+                }
+            }
+            else if (propertyName == "mesh_lod_enabled") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setMeshLodEnabled(value);
+                }
+            }
+            else if (propertyName == "mesh_lod_threshold") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setMeshLodThreshold(value);
                 }
             }
             else if (propertyName == "ssao_enabled") {

@@ -5921,6 +5921,16 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
     propertyRow(RowPropertyType::Bool, cpType, "castShadows", "Cast Shadows", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "receiveShadows", "Receive Shadows", sceneProject, entities);
 
+    RowSettings lodSettings;
+    lodSettings.help = "Draw simplified detail levels of this mesh when it is far away (scene Mesh Detail setting).";
+    propertyRow(RowPropertyType::Bool, cpType, "lodEnabled", "Detail Levels", sceneProject, entities, lodSettings);
+    if (sceneProject->scene->getComponent<MeshComponent>(entities[0]).lodEnabled) {
+        RowSettings lodBiasSettings;
+        lodBiasSettings.help = "Scales how far detail is kept: above 1 keeps it longer, below 1 drops it sooner.";
+        lodBiasSettings.secondColSize = 6 * ImGui::GetFontSize();
+        propertyRow(RowPropertyType::FloatPositive, cpType, "lodBias", "Detail Bias", sceneProject, entities, lodBiasSettings);
+    }
+
     RowSettings reflectionProbeSettings;
     reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep an object out of its own reflection.";
     propertyRow(RowPropertyType::Bool, cpType, "renderInReflectionProbes", "Render in Probes", sceneProject, entities, reflectionProbeSettings);
@@ -8959,6 +8969,9 @@ void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneP
     propertyRow(RowPropertyType::UInt, cpType, "maxInstances", "Max Instances", sceneProject, entities, settingsUInt);
     propertyRow(RowPropertyType::Bool, cpType, "instancedBillboard", "Billboard", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "instancedCylindricalBillboard", "Cylindrical Billboard", sceneProject, entities);
+    RowSettings cullSettings;
+    cullSettings.help = "Skip instances outside the camera and shadow views. Turn off for shaders that move instances away from their bounds.";
+    propertyRow(RowPropertyType::Bool, cpType, "cullInstances", "Cull Instances", sceneProject, entities, cullSettings);
     propertyRow(RowPropertyType::Bool, cpType, "distanceFade", "Distance Fade", sceneProject, entities, fadeSettings);
     if (sceneProject->scene->getComponent<InstancedMeshComponent>(entities[0]).distanceFade) {
         propertyRow(RowPropertyType::FloatPositive, cpType, "fadeStart", "Fade Start", sceneProject, entities, settingsUInt);
@@ -13535,6 +13548,22 @@ void editor::Properties::show(){
                         "- Medium: 5x5 samples\n"
                         "- High: 7x7 samples\n"
                         "Higher values cost more per shadowed pixel.");
+
+                    ImGui::EndTable();
+                }
+
+                ImGui::SeparatorText("Mesh Detail (LOD)");
+
+                if (ImGui::BeginTable("scene_lod_settings_table", 2, tableFlags)) {
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Threshold"));
+                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                    drawScenePropertyRow<bool>(sceneProject, "mesh_lod_enabled", "Enabled", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                        "Draw simplified versions of meshes when their detail no longer shows on screen.");
+                    if (doriax::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "mesh_lod_enabled")) {
+                        drawScenePropertyRow<float>(sceneProject, "mesh_lod_threshold", "Threshold", ScenePropertyInputType::SliderFloat, -1.0f, 0.25f, 8.0f,
+                            "Screen pixels of geometric error a simplified mesh may show. Lower keeps more detail.");
+                    }
 
                     ImGui::EndTable();
                 }
