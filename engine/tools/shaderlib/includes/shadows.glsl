@@ -136,17 +136,27 @@ float shadowCalculationAux(int shadowMapIndex, Shadow shadowConf, float NdotL){
 
     if (pcfRadius > 0){
 
-        // The clamp leaves pcfRadius at MAX_PCF_RADIUS, so the constant bound
-        // covers the taps in use and nothing more
-        #ifdef IS_HLSL
-        for(int x = -MAX_PCF_RADIUS; x <= MAX_PCF_RADIUS; ++x) {
-            for(int y = -MAX_PCF_RADIUS; y <= MAX_PCF_RADIUS; ++y) {
-        #else
-        for(int x = -pcfRadius; x <= pcfRadius; ++x) {
-            for(int y = -pcfRadius; y <= pcfRadius; ++y) {
-        #endif
-                vec2 sampleCoord = clamp(proj_coords.xy + vec2(x, y) * texel_size, slotMin, slotMax);
-                shadow += shadowCompare(shadowMapIndex, currentDepth, bias, sampleCoord);
+        // the (2r+1)^2 box of bilinear taps weighs texels [1-f, 1, .., 1, f] per axis;
+        // one bilinear fetch per texel pair, placed by the weights, gives the same result
+        vec2 texelPos = proj_coords.xy * shadowConf.mapSize - 0.5;
+        vec2 base = floor(texelPos);
+        vec2 f = texelPos - base;
+
+        // constant bound: HLSL unrolls any loop holding a texture lookup
+        for (int kx = 0; kx <= MAX_PCF_RADIUS; ++kx) {
+            if (kx > pcfRadius) break;
+            float wx0 = (kx == 0) ? 1.0 - f.x : 1.0;
+            float wx1 = (kx == pcfRadius) ? f.x : 1.0;
+            float wx = wx0 + wx1;
+            float ox = float(-pcfRadius + 2 * kx) + wx1 / wx + 0.5;
+            for (int ky = 0; ky <= MAX_PCF_RADIUS; ++ky) {
+                if (ky > pcfRadius) break;
+                float wy0 = (ky == 0) ? 1.0 - f.y : 1.0;
+                float wy1 = (ky == pcfRadius) ? f.y : 1.0;
+                float wy = wy0 + wy1;
+                float oy = float(-pcfRadius + 2 * ky) + wy1 / wy + 0.5;
+                vec2 sampleCoord = clamp((base + vec2(ox, oy)) * texel_size, slotMin, slotMax);
+                shadow += wx * wy * shadowCompare(shadowMapIndex, currentDepth, bias, sampleCoord);
             }
         }
         float pcfTaps = float(2 * pcfRadius + 1);
