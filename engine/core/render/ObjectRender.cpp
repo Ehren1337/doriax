@@ -3,14 +3,17 @@
 
 #include "ObjectRender.h"
 
+#include "Engine.h"
+
 using namespace doriax;
 
 ObjectRender::ObjectRender(){ }
 
-ObjectRender::ObjectRender(const ObjectRender& rhs) : backend(rhs.backend) { }
+ObjectRender::ObjectRender(const ObjectRender& rhs) : backend(rhs.backend), primitiveType(rhs.primitiveType) { }
 
 ObjectRender& ObjectRender::operator=(const ObjectRender& rhs) { 
     backend = rhs.backend; 
+    primitiveType = rhs.primitiveType;
     return *this; 
 }
 
@@ -19,6 +22,7 @@ ObjectRender::~ObjectRender(){
 }
 
 void ObjectRender::beginLoad(PrimitiveType primitiveType){
+    this->primitiveType = primitiveType;
     backend.beginLoad(primitiveType);
 }
 
@@ -68,6 +72,13 @@ void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){
 
 void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
     backend.draw(baseElement, vertexCount, instanceCount);
+
+    uint64_t triangles = 0;
+    if (primitiveType == PrimitiveType::TRIANGLES)
+        triangles = vertexCount / 3;
+    else if (primitiveType == PrimitiveType::TRIANGLE_STRIP && vertexCount > 2)
+        triangles = vertexCount - 2;
+    Engine::addDrawStats(instanceCount, triangles * (instanceCount > 0 ? instanceCount : 1));
 }
 
 void ObjectRender::destroy(){

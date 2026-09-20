@@ -881,11 +881,17 @@ void editor::App::showFooter(){
         // Right side: Performance stats
         char fpsText[32];
         char msText[32];
+        char drawText[48];
+        char triText[48];
         sprintf(fpsText, ICON_FA_GAUGE_HIGH " %.1f FPS", fps);
         sprintf(msText, ICON_FA_CLOCK " %.2f ms", deltaMs);
+        const Engine::FrameStats& frameStats = Engine::getFrameStats();
+        sprintf(drawText, ICON_FA_CUBES " %u", frameStats.drawCalls);
+        sprintf(triText, ICON_FA_DRAW_POLYGON " %llu", (unsigned long long)frameStats.triangles);
 
         // Calculate width to position at right
-        float statsWidth = ImGui::CalcTextSize(fpsText).x + ImGui::CalcTextSize(msText).x + 30.0f;
+        float statsWidth = ImGui::CalcTextSize(fpsText).x + ImGui::CalcTextSize(msText).x
+            + ImGui::CalcTextSize(drawText).x + ImGui::CalcTextSize(triText).x + 70.0f;
         float statsStartX = ImGui::GetWindowContentRegionMax().x - statsWidth;
         if (statsStartX > ImGui::GetCursorPosX()) {
             ImGui::SameLine(statsStartX);
@@ -898,6 +904,14 @@ void editor::App::showFooter(){
         ImGui::TextDisabled("|");
         ImGui::SameLine();
         ImGui::Text("%s", msText);
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+        ImGui::Text("%s", drawText);
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+        ImGui::Text("%s", triText);
     }
     ImGui::End();
 

@@ -73,6 +73,8 @@ double Engine::updateTimeCount = 0;
 
 double Engine::deltatime = 0;
 float Engine::framerate = 0;
+Engine::FrameStats Engine::frameStats;
+Engine::FrameStats Engine::currentFrameStats;
 
 // Upper bound for the delta time exposed to gameplay and the update loop.
 // A frame that stalls (scene load, debugger break, alt-tab) is clamped so scripts
@@ -584,6 +586,21 @@ float Engine::getFramerate(){
 
 float Engine::getDeltatime(){
     return deltatime;
+}
+
+void Engine::beginFrameStats(){
+    frameStats = currentFrameStats;
+    currentFrameStats = FrameStats();
+}
+
+void Engine::addDrawStats(uint32_t instances, uint64_t triangles){
+    currentFrameStats.drawCalls++;
+    currentFrameStats.instances += instances;
+    currentFrameStats.triangles += triangles;
+}
+
+const Engine::FrameStats& Engine::getFrameStats(){
+    return frameStats;
 }
 
 float Engine::getMaxDeltatime(){
@@ -1120,6 +1137,7 @@ void Engine::systemDraw(){
     // again for a scene stack loaded during the update
     beginCompositeFramebuffer();
 
+    beginFrameStats();
     for (int i = 0; i < scenes.size(); i++){
         scenes[i]->draw();
     }

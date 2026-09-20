@@ -19,6 +19,8 @@ namespace doriax {
         SokolObject backend;
         //***
 
+        PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
+
         ObjectRender();
         ObjectRender(const ObjectRender& rhs);
         ObjectRender& operator=(const ObjectRender& rhs);

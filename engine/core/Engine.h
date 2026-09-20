@@ -202,7 +202,14 @@ namespace doriax {
     };
 
     class DORIAX_API Engine {
-        
+    public:
+        // draw calls, instances and triangles submitted by the last systemDraw
+        struct FrameStats{
+            uint32_t drawCalls = 0;
+            uint32_t instances = 0;
+            uint64_t triangles = 0;
+        };
+
     private:
         //-----Doriax config-----
         static std::vector<Scene*> scenes;
@@ -237,6 +244,8 @@ namespace doriax {
         static double deltatime;
         static double maxDeltatime;
         static float framerate;
+        static FrameStats frameStats;
+        static FrameStats currentFrameStats;
         
         static double updateTime;
 
@@ -353,6 +362,10 @@ namespace doriax {
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
+
+        static void beginFrameStats();
+        static void addDrawStats(uint32_t instances, uint64_t triangles);
+        static const FrameStats& getFrameStats();
 
         // Upper bound (in seconds) for the value returned by getDeltatime() and used by the update loop. Default 0.25.
         static float getMaxDeltatime();
