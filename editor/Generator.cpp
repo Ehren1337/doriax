@@ -1458,6 +1458,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "}\n\n";
     }
 
+    // The add function only creates the scenes, leaving the running stack alone;
+    // SceneManager::addChildScene() puts them on screen
     for (const auto& sceneData : scenes) {
         std::string stackId = Factory::toIdentifier(sceneData.name);
         mainContent += "// --- Scene stack: " + sceneData.name + " ---\n";
@@ -1489,14 +1491,6 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             mainContent += "        initScripts(" + sceneName + ");\n";
             mainContent += "    }\n";
         }
-        mainContent += "\n";
-        for (const auto sceneId : sceneData.activeScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
-            if (sceneData.id != sceneId) {
-                mainContent += "    Engine::addSceneLayer(" + sceneName + ");\n";
-            }
-        }
-
         mainContent += "}\n\n";
     }
 

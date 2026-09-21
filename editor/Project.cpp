@@ -8414,9 +8414,7 @@ void editor::Project::registerSceneManager() {
             if (!session || session->cancelled.load(std::memory_order_acquire)) return;
 
             std::vector<uint32_t> involvedSceneIds;
-            std::vector<uint32_t> activeSceneIds;
             collectInvolvedScenes(sceneId, involvedSceneIds);
-            collectStartActiveScenes(sceneId, activeSceneIds);
 
             std::vector<size_t> currentStackIndices;
 
@@ -8476,29 +8474,6 @@ void editor::Project::registerSceneManager() {
 
                 if (entry.runtime && entry.runtime->scene) {
                     SceneManager::setScenePtr(entry.sourceSceneId, entry.runtime->scene);
-                }
-            }
-
-            std::vector<size_t> activeStackIndices;
-            for (uint32_t activeSceneId : activeSceneIds) {
-                auto it = std::find_if(session->runtimeScenes.begin(), session->runtimeScenes.end(),
-                    [activeSceneId](const PlayRuntimeScene& entry) {
-                        return entry.sourceSceneId == activeSceneId;
-                    });
-
-                if (it != session->runtimeScenes.end()) {
-                    activeStackIndices.push_back(std::distance(session->runtimeScenes.begin(), it));
-                }
-            }
-
-            for (size_t entryIndex : activeStackIndices) {
-                PlayRuntimeScene& entry = session->runtimeScenes[entryIndex];
-                if (!entry.runtime || !entry.runtime->scene) {
-                    continue;
-                }
-
-                if (entry.sourceSceneId != sceneId) {
-                    Engine::addSceneLayer(entry.runtime->scene);
                 }
             }
         }, stackSceneIds);

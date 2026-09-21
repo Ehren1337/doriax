@@ -126,6 +126,14 @@ bool SceneManager::addChildScene(uint32_t id) {
         }
 
         for (uint32_t sceneId : entry.sceneIds) {
+            if (!getScenePtr(sceneId)) {
+                Log::error("SceneManager: scene id %u could not be created", sceneId);
+                return false;
+            }
+        }
+
+        // In stack order, so the root stays below the layers it owns
+        for (uint32_t sceneId : entry.sceneIds) {
             Engine::addSceneLayer(getScenePtr(sceneId));
         }
 
