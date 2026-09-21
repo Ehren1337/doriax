@@ -8387,32 +8387,38 @@ void editor::Project::registerSceneManager() {
                 }
             }
 
-            // Cleanup scripts for scenes no longer in the current stack
+            // Scenes no longer in the current stack
+            std::vector<size_t> staleIndices;
             {
                 std::scoped_lock lock(playSessionMutex);
-                for (auto& entry : session->runtimeScenes) {
-                    if (!entry.initialized) continue;
+                for (size_t i = 0; i < session->runtimeScenes.size(); i++) {
+                    PlayRuntimeScene& entry = session->runtimeScenes[i];
+                    if (!entry.initialized || !entry.runtime || !entry.runtime->scene) continue;
+                    if (std::find(currentStackIndices.begin(), currentStackIndices.end(), i) != currentStackIndices.end()) continue;
 
-                    bool inCurrentStack = false;
-                    for (size_t idx : currentStackIndices) {
-                        if (&session->runtimeScenes[idx] == &entry) {
-                            inCurrentStack = true;
-                            break;
-                        }
-                    }
+                    entry.initialized = false;
+                    staleIndices.push_back(i);
+                }
+            }
 
-                    if (!inCurrentStack) {
-                        if (conector.isLibraryConnected()) {
-                            conector.cleanup(entry.runtime->scene);
-                        } else {
-                            LuaBinding::cleanupLuaScripts(entry.runtime->scene);
-                        }
-                        entry.initialized = false;
+            // Outside the lock: a C++ script destructor can call back into the editor and
+            // would deadlock on it. Nothing is held across the call for the same reason
+            // runtimeScenes is re-read by index above.
+            for (size_t entryIndex : staleIndices) {
+                // a destructor in an earlier pass may have added this stack back
+                if (session->runtimeScenes[entryIndex].initialized) continue;
 
-                        // The exported load function deletes these scenes and drops their
-                        // pointers, so getScenePtr() must not resolve them here either
-                        SceneManager::removeScenePtr(entry.sourceSceneId);
-                    }
+                uint32_t sourceSceneId = session->runtimeScenes[entryIndex].sourceSceneId;
+                Scene* scene = session->runtimeScenes[entryIndex].runtime->scene;
+
+                // The exported load function deletes these scenes and drops their pointers,
+                // so getScenePtr() must not resolve them here either
+                SceneManager::removeScenePtr(sourceSceneId);
+
+                if (conector.isLibraryConnected()) {
+                    conector.cleanup(scene);
+                } else {
+                    LuaBinding::cleanupLuaScripts(scene);
                 }
             }
         }, [this, sceneId = sceneProject.id]() {
