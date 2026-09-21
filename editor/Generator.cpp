@@ -1456,7 +1456,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             if (sceneDataAux.id == sceneData.id) continue;
             if (std::find(sceneData.involvedScenes.begin(), sceneData.involvedScenes.end(), sceneDataAux.id) != sceneData.involvedScenes.end()) continue;
             std::string sceneName = "_" + Factory::toIdentifier(sceneDataAux.name);
-            mainContent += "    if (" + sceneName + ") {\n";
+            // A script run by initScripts() above may have added a stack of its own through
+            // SceneManager::addChildScene(). Deleting it here would leave the Engine holding a
+            // freed Scene, so a scene that is on screen is left alone.
+            mainContent += "    if (" + sceneName + " && !Engine::isSceneRunning(" + sceneName + ")) {\n";
             mainContent += "        cleanupScripts(" + sceneName + ");\n";
             mainContent += "        SceneManager::removeScenePtr(" + std::to_string(sceneDataAux.id) + ");\n";
             mainContent += "        delete " + sceneName + ";\n";

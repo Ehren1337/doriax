@@ -8396,6 +8396,9 @@ void editor::Project::registerSceneManager() {
                     if (!entry.initialized || !entry.runtime || !entry.runtime->scene) continue;
                     if (std::find(currentStackIndices.begin(), currentStackIndices.end(), i) != currentStackIndices.end()) continue;
 
+                    // a script added this one while the stack was loading, so it stays
+                    if (Engine::isSceneRunning(entry.runtime->scene)) continue;
+
                     entry.initialized = false;
                     staleIndices.push_back(i);
                 }
