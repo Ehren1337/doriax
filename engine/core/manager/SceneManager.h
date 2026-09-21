@@ -58,6 +58,8 @@ namespace doriax {
         // addChildScene() runs it and puts them on screen, so it must be safe to call more
         // than once. A stack registered without one can only be added once something else
         // has created its scenes.
+        // A fourth argument written as {} is ambiguous between the two forms; pass the scene
+        // ids, or use the three-argument overload.
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, const std::vector<uint32_t>& sceneIds);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory);
