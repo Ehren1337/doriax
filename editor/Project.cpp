@@ -8329,12 +8329,15 @@ std::shared_ptr<editor::Project::PlaySession> editor::Project::buildRuntimeScene
 
     for (size_t entryIndex : stackIndices) {
         PlayRuntimeScene& entry = session->runtimeScenes[entryIndex];
-        if (entry.initialized || !entry.runtime || !entry.runtime->scene) {
+        if (entry.initialized || entry.initializing || !entry.runtime || !entry.runtime->scene) {
             continue;
         }
 
-        // Scripts can add another stack, which pushes into runtimeScenes and invalidates
-        // references into it, so the entry is read again by index afterwards
+        // Scripts can add another stack, which re-enters this function and pushes into
+        // runtimeScenes. The flag stops it initializing this scene a second time, and the
+        // entry is read again by index because the push invalidates references into it.
+        entry.initializing = true;
+
         Scene* scene = entry.runtime->scene;
         if (conector.isLibraryConnected()) {
             conector.init(scene);
@@ -8342,6 +8345,7 @@ std::shared_ptr<editor::Project::PlaySession> editor::Project::buildRuntimeScene
             LuaBinding::initializeLuaScripts(scene);
         }
 
+        session->runtimeScenes[entryIndex].initializing = false;
         prepareRuntimeScene(session->runtimeScenes[entryIndex]);
     }
 

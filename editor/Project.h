@@ -336,6 +336,7 @@ namespace doriax::editor{
             SceneProject* runtime = nullptr; // Scene used by the Engine while playing
             bool ownedRuntime = false;       // true when runtime was cloned and must be deleted
             bool initialized = false;        // true when scripts and library are initialized
+            bool initializing = false;       // true while its scripts run, to stop re-entrant init
         };
 
         struct PlaySession {
