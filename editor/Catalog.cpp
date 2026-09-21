@@ -135,6 +135,7 @@ namespace {
         {"material.metallicFactor", SubmeshOverride_MetallicFactor},
         {"material.roughnessFactor", SubmeshOverride_RoughnessFactor},
         {"material.alphaCutoff", SubmeshOverride_AlphaCutoff},
+        {"material.foliageTransmission", SubmeshOverride_FoliageTransmission},
         {"material.alphaMode", SubmeshOverride_AlphaMode},
         {"material.emissiveFactor", SubmeshOverride_EmissiveFactor},
         {"material.baseColorTexture", SubmeshOverride_BaseColorTexture},
@@ -658,6 +659,9 @@ namespace {
             }
             if (propertyName.compare(matFieldPos, 11, "alphaCutoff") == 0 && matFieldPos + 11 == propertyName.size()) {
                 return {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.alphaCutoff, (void*)&sub.material.alphaCutoff};
+            }
+            if (propertyName.compare(matFieldPos, 19, "foliageTransmission") == 0 && matFieldPos + 19 == propertyName.size()) {
+                return {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.foliageTransmission, (void*)&sub.material.foliageTransmission};
             }
             if (propertyName.compare(matFieldPos, 9, "alphaMode") == 0 && matFieldPos + 9 == propertyName.size()) {
                 return {PropertyType::Enum, UpdateFlags_Mesh_Reload, (void*)&defSub.material.alphaMode, (void*)&sub.material.alphaMode};
@@ -2524,6 +2528,7 @@ namespace {
             ps["submeshes[" + idx + "].material.metallicFactor"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.metallicFactor, compRef ? (void*)&sub.material.metallicFactor : nullptr};
             ps["submeshes[" + idx + "].material.roughnessFactor"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.roughnessFactor, compRef ? (void*)&sub.material.roughnessFactor : nullptr};
             ps["submeshes[" + idx + "].material.alphaCutoff"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.alphaCutoff, compRef ? (void*)&sub.material.alphaCutoff : nullptr};
+            ps["submeshes[" + idx + "].material.foliageTransmission"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.foliageTransmission, compRef ? (void*)&sub.material.foliageTransmission : nullptr};
             ps["submeshes[" + idx + "].material.alphaMode"] = {PropertyType::Enum, UpdateFlags_Mesh_Reload, (void*)&defSub.material.alphaMode, compRef ? (void*)&sub.material.alphaMode : nullptr};
             ps["submeshes[" + idx + "].material.emissiveFactor"] = {PropertyType::Vector3, UpdateFlags_None, (void*)&defSub.material.emissiveFactor, compRef ? (void*)&sub.material.emissiveFactor : nullptr};
             ps["submeshes[" + idx + "].material.baseColorTexture"] = {PropertyType::Texture, UpdateFlags_Mesh_Texture, (void*)&defSub.material.baseColorTexture, compRef ? (void*)&sub.material.baseColorTexture : nullptr};

@@ -571,6 +571,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("roughnessFactor", &Material::roughnessFactor)
         .addProperty("alphaMode", &Material::alphaMode)
         .addProperty("alphaCutoff", &Material::alphaCutoff)
+        .addProperty("foliageTransmission", &Material::foliageTransmission)
         .addProperty("emissiveFactor", &Material::emissiveFactor)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)

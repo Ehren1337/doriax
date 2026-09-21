@@ -28,7 +28,7 @@ namespace doriax{
         float alphaCutoff = 0.5f;
         uint8_t _pad_28[4];
         Vector3 emissiveFactor = Vector3(0.0f, 0.0f, 0.0f);  // linear color
-        uint8_t _pad_44[4];
+        float foliageTransmission = 0.0f; // thin-leaf backlighting, 0 disables
         // --- end shader part
 
         Texture baseColorTexture;
@@ -57,6 +57,7 @@ namespace doriax{
                    roughnessFactor == other.roughnessFactor &&
                    alphaCutoff == other.alphaCutoff &&
                    emissiveFactor == other.emissiveFactor &&
+                   foliageTransmission == other.foliageTransmission &&
                    baseColorTexture == other.baseColorTexture &&
                    emissiveTexture == other.emissiveTexture &&
                    metallicRoughnessTexture == other.metallicRoughnessTexture &&

@@ -824,6 +824,7 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.submeshes[" << idx << "].material.metallicFactor = " << formatFloat(mesh.submeshes[s].material.metallicFactor) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].material.roughnessFactor = " << formatFloat(mesh.submeshes[s].material.roughnessFactor) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].material.alphaCutoff = " << formatFloat(mesh.submeshes[s].material.alphaCutoff) << ";\n";
+        code << ind << "mesh.submeshes[" << idx << "].material.foliageTransmission = " << formatFloat(mesh.submeshes[s].material.foliageTransmission) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].material.alphaMode = static_cast<MaterialAlphaMode>(" << static_cast<int>(mesh.submeshes[s].material.alphaMode) << ");\n";
         code << ind << "mesh.submeshes[" << idx << "].material.emissiveFactor = " << formatVector3(mesh.submeshes[s].material.emissiveFactor) << ";\n";
 

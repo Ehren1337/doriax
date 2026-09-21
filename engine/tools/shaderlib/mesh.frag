@@ -86,6 +86,7 @@ uniform u_fs_pbrParams {
     #endif
     #ifndef MATERIAL_UNLIT
         vec3 emissiveFactor;
+        float foliageTransmission;
     #endif
 } pbrParams;
 
@@ -412,6 +413,15 @@ void main() {
                         }
                     #endif
 
+                    if (pbrParams.foliageTransmission > 0.0) {
+                        // Thin-leaf approximation. Use the same shadow visibility as
+                        // direct lighting, so closed canopy does not glow in the dark.
+                        float backlight = max(dot(-n, l), 0.0);
+                        float forwardScatter = 0.35 + 0.65 * pow(max(dot(-l, v), 0.0), 3.0);
+                        f_diffuse += shadow * getLighIntensity(light, pointToLight, i)
+                            * materialInfo.albedoColor * clamp(pbrParams.foliageTransmission, 0.0, 1.0)
+                            * backlight * forwardScatter;
+                    }
                     if (NdotL > 0.0 || NdotV > 0.0){
                         // Calculation of analytical light
                         // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB

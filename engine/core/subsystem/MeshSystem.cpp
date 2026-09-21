@@ -245,6 +245,7 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
     if (fields & SubmeshOverride_MetallicFactor)  material.metallicFactor  = savedMaterial.metallicFactor;
     if (fields & SubmeshOverride_RoughnessFactor) material.roughnessFactor = savedMaterial.roughnessFactor;
     if (fields & SubmeshOverride_AlphaCutoff)     material.alphaCutoff     = savedMaterial.alphaCutoff;
+    if (fields & SubmeshOverride_FoliageTransmission) material.foliageTransmission = savedMaterial.foliageTransmission;
     if (fields & SubmeshOverride_EmissiveFactor)  material.emissiveFactor  = savedMaterial.emissiveFactor;
     if (fields & SubmeshOverride_AlphaMode)       material.alphaMode       = savedMaterial.alphaMode;
     if (fields & SubmeshOverride_MaterialName)    material.name            = savedMaterial.name;
@@ -4663,6 +4664,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     mat->emissiveFactor[0],
                     mat->emissiveFactor[1],
                     mat->emissiveFactor[2]);
+                // leaf backlighting is authored as a glTF extra, there is no core material slot for it
+                if (mat->extras.IsObject() && mat->extras.Has("doriax_foliage_transmission")) {
+                    const auto& value = mat->extras.Get("doriax_foliage_transmission");
+                    if (value.IsNumber() && std::isfinite(value.GetNumberAsDouble()))
+                        mesh.submeshes[i].material.foliageTransmission = std::clamp((float)value.GetNumberAsDouble(), 0.0f, 1.0f);
+                }
             }
 
             // Alpha-masked glTF materials need the base-color alpha in the depth

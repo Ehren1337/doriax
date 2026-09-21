@@ -3403,6 +3403,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     node["metallicFactor"] = material.metallicFactor;
     node["roughnessFactor"] = material.roughnessFactor;
     node["alphaCutoff"] = material.alphaCutoff;
+    node["foliageTransmission"] = material.foliageTransmission;
     node["alphaMode"] = materialAlphaModeToString(material.alphaMode);
     node["emissiveFactor"] = encodeVector3(material.emissiveFactor);
 
@@ -3451,6 +3452,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.metallicFactor = decodeFinite(node["metallicFactor"], material.metallicFactor);
     material.roughnessFactor = decodeFinite(node["roughnessFactor"], material.roughnessFactor);
     material.alphaCutoff = decodeFinite(node["alphaCutoff"], material.alphaCutoff);
+    material.foliageTransmission = std::clamp(decodeFinite(node["foliageTransmission"], material.foliageTransmission), 0.0f, 1.0f);
     if (node["alphaMode"]) {
         material.alphaMode = stringToMaterialAlphaMode(node["alphaMode"].as<std::string>());
     }

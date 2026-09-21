@@ -45,13 +45,15 @@ namespace doriax{
         SubmeshOverride_FaceCulling              = 1 << 12,
         SubmeshOverride_TextureShadow            = 1 << 13,
         SubmeshOverride_PrimitiveType            = 1 << 14,
+        SubmeshOverride_FoliageTransmission      = 1 << 15,
 
         SubmeshOverride_Material = SubmeshOverride_BaseColorFactor | SubmeshOverride_MetallicFactor |
                                    SubmeshOverride_RoughnessFactor | SubmeshOverride_AlphaCutoff |
                                    SubmeshOverride_EmissiveFactor | SubmeshOverride_AlphaMode |
                                    SubmeshOverride_MaterialName | SubmeshOverride_BaseColorTexture |
                                    SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
-                                   SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture
+                                   SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture |
+                                   SubmeshOverride_FoliageTransmission
     };
 
     struct DORIAX_API Submesh{
