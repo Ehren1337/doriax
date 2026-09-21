@@ -54,9 +54,13 @@ namespace doriax {
         // The load factory must call Engine::setScene() / Engine::addSceneLayer() to set up
         // the scene hierarchy. It should also call Engine::removeAllScenes() first if
         // a scene transition is desired (this is done automatically by loadScene()).
-        // The add factory only creates the scenes and registers them with setScenePtr();
-        // addChildScene() puts them on screen. Without one the stack cannot be added as a child.
-        static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory = nullptr);
+        // The add factory creates the scenes and registers them with setScenePtr();
+        // addChildScene() runs it and puts them on screen, so it must be safe to call more
+        // than once. A stack registered without one can only be added once something else
+        // has created its scenes.
+        static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory);
+        static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, const std::vector<uint32_t>& sceneIds);
+        static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory, const std::vector<uint32_t>& sceneIds);
 
         // Load a scene stack by name. Calls Engine::removeAllScenes() then invokes the
