@@ -11,6 +11,7 @@
 #include <map>
 #include <optional>
 #include <cstdint>
+#include <initializer_list>
 
 namespace doriax {
 
@@ -58,10 +59,11 @@ namespace doriax {
         // addChildScene() runs it and puts them on screen, so it must be safe to call more
         // than once. A stack registered without one can only be added once something else
         // has created its scenes.
-        // A fourth argument written as {} is ambiguous between the two forms; pass the scene
-        // ids, or use the three-argument overload.
+        // The initializer list overload is what keeps a braced fourth argument unambiguous
+        // between the scene ids and the add factory.
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, const std::vector<uint32_t>& sceneIds);
+        static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::initializer_list<uint32_t> sceneIds);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory, const std::vector<uint32_t>& sceneIds);
 

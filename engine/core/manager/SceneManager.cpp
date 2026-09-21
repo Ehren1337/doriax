@@ -40,6 +40,10 @@ void SceneManager::registerScene(uint32_t id, const std::string& name, std::func
     registerScene(id, name, std::move(loadFactory), nullptr, sceneIds);
 }
 
+void SceneManager::registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::initializer_list<uint32_t> sceneIds) {
+    registerScene(id, name, std::move(loadFactory), nullptr, std::vector<uint32_t>(sceneIds));
+}
+
 void SceneManager::registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory) {
     registerScene(id, name, std::move(loadFactory), std::move(addFactory), std::vector<uint32_t>{id});
 }
