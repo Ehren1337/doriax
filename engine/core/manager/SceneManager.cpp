@@ -73,10 +73,13 @@ void SceneManager::runFactory(uint32_t id) {
     SceneEntry* entry = findEntry(id);
     if (!entry) return;
 
+    // Copied for the same reason as in addChildScene: the factory runs scripts
+    std::function<void()> loadFactory = entry->loadFactory;
+
     Engine::removeAllScenes();
 
     currentId = id;
-    entry->loadFactory();
+    loadFactory();
 }
 
 bool SceneManager::loadScene(uint32_t id) {
@@ -121,27 +124,17 @@ bool SceneManager::addChildScene(uint32_t id) {
     std::vector<uint32_t> sceneIds = entry->sceneIds;
     std::function<void()> addFactory = entry->addFactory;
 
-    bool loaded = true;
-    for (uint32_t sceneId : sceneIds) {
-        if (!getScenePtr(sceneId)) {
-            loaded = false;
-            break;
-        }
+    // Even when the scenes exist: a registered pointer does not mean the stack is ready to
+    // show. The editor keeps the pointers of a stack it switched away from after tearing its
+    // scripts down, and only the factory puts them back. Both factories are idempotent.
+    if (addFactory) {
+        addFactory();
     }
 
-    if (!loaded) {
-        if (!addFactory) {
-            Log::error("SceneManager: scene id %u has no add factory", id);
+    for (uint32_t sceneId : sceneIds) {
+        if (!getScenePtr(sceneId)) {
+            Log::error("SceneManager: scene id %u is not loaded", sceneId);
             return false;
-        }
-
-        addFactory();
-
-        for (uint32_t sceneId : sceneIds) {
-            if (!getScenePtr(sceneId)) {
-                Log::error("SceneManager: scene id %u could not be created", sceneId);
-                return false;
-            }
         }
     }
 

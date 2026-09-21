@@ -77,7 +77,10 @@ namespace doriax {
         static void applyPendingLoad();
 
         // Add a child scene stack on top of the running scenes, keeping the main scene.
-        // Scenes already created are reused; a stack not loaded yet is built by its add factory.
+        // Runs the stack's add factory, which creates the scenes that are missing and restores
+        // the scripts of any that were torn down, then adds them in stack order. Unlike
+        // loadScene() this takes effect at once, including inside a frame, as nothing is
+        // destroyed: the scenes added run and draw from the same frame on.
         static bool addChildScene(uint32_t id);
         static bool addChildScene(const std::string& name);
 
