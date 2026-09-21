@@ -290,7 +290,7 @@ void editor::ShaderBuilder::applyShaderBackend(shadercompiler::args_t& args, Sha
         case ShaderBackend::MetalMacOS:
         case ShaderBackend::MetalIOS:
             args.lang = shadercompiler::LANG_MSL;
-            args.version = 21;
+            args.version = 20100; // SPIRV-Cross MSL 2.1, as MMmmpp
             args.platform = (backend == ShaderBackend::MetalIOS)
                 ? shadercompiler::SHADER_IOS : shadercompiler::SHADER_MACOS;
             break;
