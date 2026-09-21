@@ -18,17 +18,18 @@ namespace doriax {
 
     // SceneManager allows registering named scene stacks and switching between them at runtime.
     // A "scene stack" corresponds to an editor SceneProject: one main Scene plus zero or more
-    // layer Scenes. The factory function is responsible for calling Engine::setScene() and
-    // Engine::addSceneLayer() for each scene in the stack.
+    // layer Scenes. The load factory replaces the running scenes with the stack; the add
+    // factory only creates them, for a stack shown on top of the running one.
     //
     // Usage from C++ (standalone generated code):
-    //   SceneManager::registerScene("Level1", load_Level1);
+    //   SceneManager::registerScene(1, "Level1", load_Level1, add_Level1);
     //   SceneManager::loadScene("Level1");     // by name
-    //   SceneManager::loadScene(0);            // by index (registration order)
+    //   SceneManager::loadScene(1);            // by id
+    //   SceneManager::addChildScene("Hud");    // on top of Level1
     //
     // Usage from Lua script:
     //   SceneManager.loadScene("Level1")
-    //   SceneManager.loadScene(0)
+    //   SceneManager.addChildScene("Hud")
 
     class DORIAX_API SceneManager {
     private:
@@ -50,9 +51,11 @@ namespace doriax {
 
     public:
         // Register a named scene stack.
-        // The factory must call Engine::setScene() / Engine::addSceneLayer() to set up
+        // The load factory must call Engine::setScene() / Engine::addSceneLayer() to set up
         // the scene hierarchy. It should also call Engine::removeAllScenes() first if
         // a scene transition is desired (this is done automatically by loadScene()).
+        // The add factory only creates the scenes and registers them with setScenePtr();
+        // addChildScene() puts them on screen. Without one the stack cannot be added as a child.
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory = nullptr);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory, const std::vector<uint32_t>& sceneIds);
 
@@ -73,8 +76,8 @@ namespace doriax {
         // Runs the deferred transition. Called by Engine before the scenes update.
         static void applyPendingLoad();
 
-        // Add an already-created child scene stack. Scene id/name overloads use the
-        // pointers registered with setScenePtr(), so all scenes in the stack must already be loaded.
+        // Add a child scene stack on top of the running scenes, keeping the main scene.
+        // Scenes already created are reused; a stack not loaded yet is built by its add factory.
         static bool addChildScene(uint32_t id);
         static bool addChildScene(const std::string& name);
 
