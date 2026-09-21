@@ -63,6 +63,7 @@ void main() {
     frag_depth = encodeDepth(0.5 * v_projZW[0] / v_projZW[1] + 0.5);
 
     vec3 n = normalize(v_normal);
+    if (!gl_FrontFacing) n = -n;
 
     #ifdef HAS_TERRAIN_PBR
         // the same evaluation the color pass runs, so SSR sees the surface it shades

@@ -1,4 +1,5 @@
 #version 450
+#include "includes/instance_normal.glsl"
 
 // G-buffer geometry pass (vertex). Mirrors depth.vert's position pipeline
 // (skinning / morph / terrain / instancing) and additionally carries the surface
@@ -83,9 +84,9 @@ void main() {
     #ifdef HAS_INSTANCING
         mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * objPos;
-        // instance matrix sits between model and object; fold its rotation in
-        // before the (model+view) normal matrix (assumes rigid instance transform)
-        v_normal = normalize(mat3(gbufferParams.normalMatrix) * (mat3(instanceMatrix) * objNormal));
+        // instance matrix sits between model and object; fold it in before the
+        // (model+view) normal matrix
+        v_normal = normalize(mat3(gbufferParams.normalMatrix) * instanceNormal(mat3(instanceMatrix), objNormal));
     #else
         vec4 pos = objPos;
         v_normal = normalize(mat3(gbufferParams.normalMatrix) * objNormal);

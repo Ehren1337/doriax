@@ -106,6 +106,7 @@ in vec3 a_position;
 #endif
 
 #include "includes/skinning.glsl"
+#include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
 #ifdef HAS_TERRAIN
     #include "includes/terrain_vs.glsl"
@@ -178,9 +179,16 @@ void main() {
     #endif
 
     #ifdef HAS_NORMALS
-        vec3 worldNormal = normalize(vec3(pbrParams.normalMatrix * vec4(getNormal(boneTransform, pos), 0.0)));
+        vec3 objectNormal = getNormal(boneTransform, pos);
+        #ifdef HAS_INSTANCING
+            objectNormal = instanceNormal(mat3(instanceMatrix), objectNormal);
+        #endif
+        vec3 worldNormal = normalize(vec3(pbrParams.normalMatrix * vec4(objectNormal, 0.0)));
     #ifdef HAS_TANGENTS
         vec3 tangent = getTangent(boneTransform);
+        #ifdef HAS_INSTANCING
+            tangent = mat3(instanceMatrix) * tangent;
+        #endif
         vec3 tangentW = normalize(vec3(pbrParams.modelMatrix * vec4(tangent, 0.0)));
         vec3 bitangentW = cross(worldNormal, tangentW) * a_tangent.w;
         v_tbn = mat3(tangentW, bitangentW, worldNormal);

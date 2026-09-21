@@ -116,6 +116,15 @@ NormalInfo getNormalInfo(){
     #else
         n = ng;
     #endif
+    // Double-sided glTF materials shade the reverse side with reversed normals.
+    // Face culling already removes backfaces for single-sided materials.
+    if (!gl_FrontFacing) {
+        n = -n;
+        ng = -ng;
+        t = -t;
+        b = -b;
+    }
+    n = normalize(n);
     NormalInfo info;
     info.ng = ng;
     info.t = t;
