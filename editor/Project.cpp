@@ -4010,7 +4010,9 @@ void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<
             continue;
         }
 
-        prepareRuntimeScene(entry);
+        if (!entry.initialized) {
+            prepareRuntimeScene(entry);
+        }
 
         bool isActiveScene = std::find(activeSceneIds.begin(), activeSceneIds.end(), entry.sourceSceneId) != activeSceneIds.end();
         if (sceneProject != mainSceneProject && isActiveScene) {
@@ -8258,13 +8260,24 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 Engine::setTextureStrategy(textureStrategy);
                 Engine::systemViewChanged();
 
-                for (const auto& entry : runtimeScenesToInitialize) {
-                    if (!entry.runtime) continue;
+                // By index, and guarded: a script here can call addChildScene(), which
+                // initializes another entry and appends to runtimeScenes. Initializing from
+                // the snapshot above would then run a scene's scripts a second time.
+                for (size_t i = 0; i < session->runtimeScenes.size(); i++) {
+                    PlayRuntimeScene& entry = session->runtimeScenes[i];
+                    if (entry.initialized || entry.initializing) continue;
+                    if (!entry.runtime || !entry.runtime->scene) continue;
+
+                    entry.initializing = true;
+
+                    Scene* scene = entry.runtime->scene;
                     if (hasCppScripts) {
-                        conector.init(entry.runtime->scene);
+                        conector.init(scene);
                     } else {
-                        LuaBinding::initializeLuaScripts(entry.runtime->scene);
+                        LuaBinding::initializeLuaScripts(scene);
                     }
+
+                    session->runtimeScenes[i].initializing = false;
                 }
 
                 finalizeStart(sceneProject, session->runtimeScenes);
