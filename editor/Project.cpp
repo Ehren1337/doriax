@@ -8329,21 +8329,20 @@ std::shared_ptr<editor::Project::PlaySession> editor::Project::buildRuntimeScene
 
     for (size_t entryIndex : stackIndices) {
         PlayRuntimeScene& entry = session->runtimeScenes[entryIndex];
-        if (entry.initialized) {
+        if (entry.initialized || !entry.runtime || !entry.runtime->scene) {
             continue;
         }
 
+        // Scripts can add another stack, which pushes into runtimeScenes and invalidates
+        // references into it, so the entry is read again by index afterwards
+        Scene* scene = entry.runtime->scene;
         if (conector.isLibraryConnected()) {
-            conector.init(entry.runtime->scene);
+            conector.init(scene);
         }else{
-            LuaBinding::initializeLuaScripts(entry.runtime->scene);
+            LuaBinding::initializeLuaScripts(scene);
         }
 
-        prepareRuntimeScene(entry);
-
-        if (entry.runtime && entry.runtime->scene) {
-            SceneManager::setScenePtr(entry.sourceSceneId, entry.runtime->scene);
-        }
+        prepareRuntimeScene(session->runtimeScenes[entryIndex]);
     }
 
     return session;
