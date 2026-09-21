@@ -1402,11 +1402,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
     mainContent += "\n";
 
-    // Per-stack: static scene pointers + load function
-    for (const auto& sceneData : scenes) {
-        std::string stackId = Factory::toIdentifier(sceneData.name);
-        mainContent += "// --- Scene stack: " + sceneData.name + " ---\n";
-        mainContent += "void load_" + stackId + "() {\n";
+    // Shared by both stack functions: create the scenes, register their pointers so
+    // cross-scene references resolve, then build and start the new ones
+    auto emitStackSetup = [&](const SceneBuildInfo& sceneData) {
         for (const auto sceneId : sceneData.involvedScenes) {
             std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
             mainContent += "    bool " + sceneName + "_needsInit = false;\n";
@@ -1434,6 +1432,16 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             mainContent += "        initScripts(" + sceneName + ");\n";
             mainContent += "    }\n";
         }
+    };
+
+    // Per-stack load and add functions. The add one only creates the scenes, leaving the
+    // running stack alone; SceneManager::addChildScene() puts them on screen.
+    for (const auto& sceneData : scenes) {
+        std::string stackId = Factory::toIdentifier(sceneData.name);
+        mainContent += "// --- Scene stack: " + sceneData.name + " ---\n";
+
+        mainContent += "void load_" + stackId + "() {\n";
+        emitStackSetup(sceneData);
         mainContent += "\n";
         for (const auto sceneId : sceneData.activeScenes) {
             std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
@@ -1456,41 +1464,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             mainContent += "    }\n";
         }
         mainContent += "}\n\n";
-    }
 
-    // The add function only creates the scenes, leaving the running stack alone;
-    // SceneManager::addChildScene() puts them on screen
-    for (const auto& sceneData : scenes) {
-        std::string stackId = Factory::toIdentifier(sceneData.name);
-        mainContent += "// --- Scene stack: " + sceneData.name + " ---\n";
         mainContent += "void add_" + stackId + "() {\n";
-        for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
-            mainContent += "    bool " + sceneName + "_needsInit = false;\n";
-        }
-        mainContent += "\n";
-        for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
-            mainContent += "    if (!" + sceneName + "){\n";
-            mainContent += "        " + sceneName + " = new Scene();\n";
-            mainContent += "        SceneManager::setScenePtr(" + std::to_string(sceneId) + ", " + sceneName + ");\n";
-            mainContent += "        " + sceneName + "_needsInit = true;\n";
-            mainContent += "    }\n";
-        }
-        mainContent += "\n";
-        for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
-            mainContent += "    if (" + sceneName + "_needsInit) {\n";
-            mainContent += "        create" + sceneName + "(" + sceneName + ");\n";
-            mainContent += "    }\n";
-        }
-        mainContent += "\n";
-        for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
-            mainContent += "    if (" + sceneName + "_needsInit) {\n";
-            mainContent += "        initScripts(" + sceneName + ");\n";
-            mainContent += "    }\n";
-        }
+        emitStackSetup(sceneData);
         mainContent += "}\n\n";
     }
 

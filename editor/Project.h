@@ -351,6 +351,7 @@ namespace doriax::editor{
 
         SceneProject* createRuntimeCloneFromSource(const SceneProject* source);
         void prepareRuntimeScene(PlayRuntimeScene& entry);
+        std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);
 
