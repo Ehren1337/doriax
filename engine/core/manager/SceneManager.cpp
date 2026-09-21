@@ -111,37 +111,46 @@ void SceneManager::applyPendingLoad() {
 }
 
 bool SceneManager::addChildScene(uint32_t id) {
-    for (const auto& entry : entries) {
-        if (entry.id != id) {
-            continue;
+    SceneEntry* entry = findEntry(id);
+    if (!entry) {
+        Log::error("SceneManager: scene id %u not found", id);
+        return false;
+    }
+
+    // The factory runs scripts, which can register scenes and reallocate entries
+    std::vector<uint32_t> sceneIds = entry->sceneIds;
+    std::function<void()> addFactory = entry->addFactory;
+
+    bool loaded = true;
+    for (uint32_t sceneId : sceneIds) {
+        if (!getScenePtr(sceneId)) {
+            loaded = false;
+            break;
+        }
+    }
+
+    if (!loaded) {
+        if (!addFactory) {
+            Log::error("SceneManager: scene id %u has no add factory", id);
+            return false;
         }
 
-        for (uint32_t sceneId : entry.sceneIds) {
-            Scene* scene = getScenePtr(sceneId);
-            if (!scene) {
-                Log::warn("SceneManager: scene id %u is not loaded. Loading child scene...", sceneId);
+        addFactory();
 
-                entry.addFactory();
-            }
-        }
-
-        for (uint32_t sceneId : entry.sceneIds) {
+        for (uint32_t sceneId : sceneIds) {
             if (!getScenePtr(sceneId)) {
                 Log::error("SceneManager: scene id %u could not be created", sceneId);
                 return false;
             }
         }
-
-        // In stack order, so the root stays below the layers it owns
-        for (uint32_t sceneId : entry.sceneIds) {
-            Engine::addSceneLayer(getScenePtr(sceneId));
-        }
-
-        return true;
     }
 
-    Log::error("SceneManager: scene id %u not found", id);
-    return false;
+    // In stack order, so the root stays below the layers it owns
+    for (uint32_t sceneId : sceneIds) {
+        Engine::addSceneLayer(getScenePtr(sceneId));
+    }
+
+    return true;
 }
 
 bool SceneManager::addChildScene(const std::string& name) {
