@@ -1242,6 +1242,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "A spawned instance root is named after its .bundle file, extension and directories dropped: `EnemyShip` for `enemies/EnemyShip.bundle`, which createBundle still spawns by the full `enemies/EnemyShip`. "
                      "It carries a `BundleComponent` too, while an instance placed in a scene keeps the name the scene gave it. The bundle's own entities hang under the root, the same in the editor and in an exported build. "
                      "Reach an entity inside an instance with `scene->findEntity(name, root)`, which is also what tells two instances apart when they share a name.\n";
+    agentsContent += "Each bundle header also declares `build_bundle_<name>(scene, root, members)`, the same factory appending the entities it creates to `members` in a fixed order; "
+                     "generated scene sources address instance entities through it, since their ids only exist at runtime. Register and spawn with `create_bundle_<name>`.\n";
     agentsContent += "Only bundles a scene instantiates and the ones listed under `standaloneBundles` in `project.yaml` are built and registered. "
                      "A bundle spawned by script alone must be in that list (Doriax Editor: Project > Bundles), otherwise `createBundle` reports it as not found.\n\n";
     agentsContent += "## Build modes\n\n";
@@ -1283,6 +1285,25 @@ std::vector<editor::BundleInstanceInfo> editor::Generator::writeBundleSources(co
 
     std::vector<BundleInstanceInfo> bundleInstances;
 
+    // members plus every nested subtree, what build_bundle_* appends for that bundle
+    std::map<fs::path, size_t> subtreeSizes;
+    auto subtreeSize = [&](auto&& self, const fs::path& path) -> size_t {
+        auto it = entityBundles.find(path);
+        if (it == entityBundles.end() || !it->second.registry) return 0;
+        auto sizeIt = subtreeSizes.find(path);
+        if (sizeIt != subtreeSizes.end()) return sizeIt->second;
+        subtreeSizes[path] = 0; // also stops a cycle
+        EntityRegistry* registry = it->second.registry.get();
+        size_t total = 0;
+        for (Entity member : Factory::getBundleMemberEntities(registry, it->second.registryEntities)) {
+            total++;
+            BundleComponent* bc = registry->findComponent<BundleComponent>(member);
+            if (bc && !bc->path.empty()) total += self(self, bc->path);
+        }
+        subtreeSizes[path] = total;
+        return total;
+    };
+
     for (const auto& [bundlePath, bundle] : entityBundles) {
         auto sceneIt = bundle.instances.find(sceneId);
         if (sceneIt != bundle.instances.end()) {
@@ -1292,6 +1313,13 @@ std::vector<editor::BundleInstanceInfo> editor::Generator::writeBundleSources(co
                 info.rootEntity = instance.rootEntity;
                 for (const auto& member : instance.members) {
                     info.memberEntities.insert(member.localEntity);
+                }
+                if (bundle.registry) {
+                    for (Entity regEntity : Factory::getBundleMemberEntities(bundle.registry.get(), bundle.registryEntities)) {
+                        info.orderedMembers.push_back(bundle.getLocalEntity(sceneId, instance.instanceId, regEntity));
+                        BundleComponent* bc = bundle.registry->findComponent<BundleComponent>(regEntity);
+                        info.nestedSizes.push_back((bc && !bc->path.empty()) ? subtreeSize(subtreeSize, bc->path) : 0);
+                    }
                 }
 
                 // Build override info from instance overrides

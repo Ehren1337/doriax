@@ -31,6 +31,10 @@ namespace doriax::editor{
         Entity rootEntity;
         std::set<Entity> memberEntities;
         std::vector<BundleOverrideInfo> overrides;
+        // Members in the order build_bundle_* appends them, NULL_ENTITY when missing here
+        std::vector<Entity> orderedMembers;
+        // Entities the nested factory of each member appends, 0 for a plain member
+        std::vector<size_t> nestedSizes;
     };
 
     class Factory{
@@ -85,7 +89,7 @@ namespace doriax::editor{
         static std::string formatTextureFilter(TextureFilter filter);
         static std::string formatTextureWrap(TextureWrap wrap);
         static std::string formatScriptPropertyType(ScriptPropertyType type);
-        static std::string formatScriptPropertyValue(const EntityRegistry* scene, const ScriptPropertyValue& value);
+        static std::string formatScriptPropertyValue(const ScriptPropertyValue& value, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
 
         static std::string formatTexture(int indentSpaces, const Texture& texture, const std::string& variableName, const fs::path& projectPath);
 
@@ -94,14 +98,16 @@ namespace doriax::editor{
         static std::string beginHeapComponentCode(std::ostringstream& code, const std::string& ind, const std::string& componentType, const std::string& varName);
         static void addComponentCode(std::ostringstream& code, const std::string& ind, const std::string& sceneName, const std::string& entityName, Entity entity, const std::string& componentType, const std::string& varName, bool assignExisting = false);
 
-        static std::vector<Entity> getBundleMemberEntities(EntityRegistry* registry, const std::vector<Entity>& registryEntities);
-
     public:
         Factory();
+
+        // Registry members in build_bundle_* order, children of nested roots excluded
+        static std::vector<Entity> getBundleMemberEntities(EntityRegistry* registry, const std::vector<Entity>& registryEntities);
 
         static std::string toIdentifier(const std::string& name);
 
         static std::string bundleToFunctionName(const std::filesystem::path& bundlePath);
+        static std::string bundleToBuildFunctionName(const std::filesystem::path& bundlePath);
         static std::string bundleToFileName(const std::filesystem::path& bundlePath);
 
         static std::string createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
