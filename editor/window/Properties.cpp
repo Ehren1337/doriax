@@ -8973,6 +8973,9 @@ void editor::Properties::drawInstancedMeshComponent(ComponentType cpType, SceneP
     RowSettings cullSettings;
     cullSettings.help = "Skip instances outside the camera and shadow views. Turn off for shaders that move instances away from their bounds.";
     propertyRow(RowPropertyType::Bool, cpType, "cullInstances", "Cull Instances", sceneProject, entities, cullSettings);
+    RowSettings distanceSettings = settingsUInt;
+    distanceSettings.help = "Drop instances farther than this from the main camera, in world units. Zero means unlimited. A hard cut, so hide it with fog. Requires Cull Instances.";
+    propertyRow(RowPropertyType::FloatPositive, cpType, "cullDistance", "Cull Distance", sceneProject, entities, distanceSettings);
     propertyRow(RowPropertyType::Bool, cpType, "distanceFade", "Distance Fade", sceneProject, entities, fadeSettings);
     if (sceneProject->scene->getComponent<InstancedMeshComponent>(entities[0]).distanceFade) {
         propertyRow(RowPropertyType::FloatPositive, cpType, "fadeStart", "Fade Start", sceneProject, entities, settingsUInt);

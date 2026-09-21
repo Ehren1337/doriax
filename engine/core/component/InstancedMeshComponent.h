@@ -50,9 +50,11 @@ namespace doriax{
         bool castShadows = true;
         bool lodEnabled = true;
         float lodBias = 1;
+        float cullDistance = 0;
 
         bool operator!=(const InstanceViewSettings& o) const{
-            return cull != o.cull || castShadows != o.castShadows || lodEnabled != o.lodEnabled || lodBias != o.lodBias;
+            return cull != o.cull || castShadows != o.castShadows || lodEnabled != o.lodEnabled ||
+                   lodBias != o.lodBias || cullDistance != o.cullDistance;
         }
     };
 
@@ -70,6 +72,10 @@ namespace doriax{
         InstanceViewRange views[1 + MAX_SHADOW_ATLAS_SLOTS];
         InstanceViewSettings viewSettings; // the views were built with these
         bool cullInstances = true; // off for shaders that move instances away from their bounds
+
+        // world-space distance from the main camera past which instances are dropped from
+        // the culled views (0 = unlimited); a hard cut, so hide it with fog
+        float cullDistance = 0;
 
         // Instances shrink to nothing between fadeStart and fadeEnd, both model-space distances.
         // distanceFade picks the shader variant, so an empty range disables it without a rebuild.

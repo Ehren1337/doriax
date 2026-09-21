@@ -3585,8 +3585,9 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
 
         // the main camera keeps the order where it is the layering: blended batches and 2D
         bool keepOrder = mesh->transparent || !sortsByDistance(mainCamera);
+        const Vector3& eye = mainCameraTransform.worldPosition;
         buildInstanceView(0, instmesh, *mesh, *transform, mainCamera.farClip, mainCamera.frustumPlanes, mainLodView,
-            mainCameraTransform.worldPosition, Vector3::ZERO, keepOrder);
+            eye, eye, Vector3::ZERO, keepOrder);
 
         for (const ShadowSlot& shadow : shadowSlots){
             if (!mesh->castShadows){
@@ -3597,7 +3598,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
             LodView lodView = shadowLodView(*shadow.light, shadow.cameraIndex, shadow.slot);
             Vector3 direction = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
             buildInstanceView(1 + shadow.slot, instmesh, *mesh, *transform, lightCamera.nearFar.y, lightCamera.frustumPlanes, lodView,
-                lodView.origin, direction, false);
+                eye, lodView.origin, direction, false);
         }
     }
 
@@ -3606,8 +3607,9 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
     }
 }
 
-// instances inside the frustum, nearest first (along direction when given), grouped by level
-void RenderSystem::buildInstanceView(int viewIndex, InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& origin, const Vector3& direction, bool keepOrder){
+// instances inside the frustum and the cull distance from the eye, nearest first (along
+// direction when given), grouped by level
+void RenderSystem::buildInstanceView(int viewIndex, InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, bool keepOrder){
     struct Candidate{
         unsigned int index;
         unsigned int lod;
@@ -3623,13 +3625,18 @@ void RenderSystem::buildInstanceView(int viewIndex, InstancedMeshComponent& inst
 
     const Vector3& worldScale = transform.worldScale;
     const float entityScale = std::max(std::abs(worldScale.x), std::max(std::abs(worldScale.y), std::abs(worldScale.z)));
+    const bool limitDistance = std::isfinite(instmesh.cullDistance) && instmesh.cullDistance > 0.0f;
 
     for (unsigned int i = 0; i < instmesh.numVisible; i++){
         const InstanceBounds& bounds = instmesh.renderBounds[i];
         const Vector3 center = transform.modelMatrix * bounds.center;
         const float radius = bounds.radius * entityScale;
-        if (instmesh.cullInstances && !isInsideCamera(cameraFar, frustumPlanes, center, radius))
-            continue;
+        if (instmesh.cullInstances){
+            if (!isInsideCamera(cameraFar, frustumPlanes, center, radius))
+                continue;
+            if (limitDistance && (center - eye).length() - radius > instmesh.cullDistance)
+                continue;
+        }
 
         Candidate candidate;
         candidate.index = i;
@@ -7525,7 +7532,7 @@ void RenderSystem::update(double dt){
 
                 instmesh->needUpdateInstances = false;
 
-                InstanceViewSettings viewSettings = {instmesh->cullInstances, mesh.castShadows, mesh.lodEnabled, mesh.lodBias};
+                InstanceViewSettings viewSettings = {instmesh->cullInstances, mesh.castShadows, mesh.lodEnabled, mesh.lodBias, instmesh->cullDistance};
                 if (transform.needUpdate || viewSettings != instmesh->viewSettings){
                     instmesh->viewSettings = viewSettings;
                     instanceViewsDirty = true;

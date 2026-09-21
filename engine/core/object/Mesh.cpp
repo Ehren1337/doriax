@@ -597,6 +597,18 @@ void Mesh::setFadeRange(float fadeStart, float fadeEnd){
     setFadeEnd(fadeEnd);
 }
 
+void Mesh::setCullDistance(float distance){
+    if (hasInstancedMesh()){
+        getComponent<InstancedMeshComponent>().cullDistance = distance;
+    }else{
+        Log::error("There is no instanced mesh component in this mesh");
+    }
+}
+
+float Mesh::getCullDistance() const{
+    return hasInstancedMesh() ? getComponent<InstancedMeshComponent>().cullDistance : 0.0f;
+}
+
 void Mesh::setFadeStart(float fadeStart){
     if (hasInstancedMesh()){
         InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();

@@ -7602,6 +7602,7 @@ YAML::Node editor::Stream::encodeInstancedMeshComponent(const InstancedMeshCompo
     node["maxInstances"] = instmesh.maxInstances;
     node["cullInstances"] = instmesh.cullInstances;
     node["distanceFade"] = instmesh.distanceFade;
+    node["cullDistance"] = instmesh.cullDistance;
     node["fadeStart"] = instmesh.fadeStart;
     node["fadeEnd"] = instmesh.fadeEnd;
     node["instancedBillboard"] = instmesh.instancedBillboard;
@@ -7630,6 +7631,7 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
     if (node["maxInstances"]) instmesh.maxInstances = node["maxInstances"].as<unsigned int>();
     if (node["cullInstances"]) instmesh.cullInstances = node["cullInstances"].as<bool>();
     if (node["distanceFade"]) instmesh.distanceFade = node["distanceFade"].as<bool>();
+    instmesh.cullDistance = std::max(0.0f, decodeFinite(node["cullDistance"], instmesh.cullDistance));
     instmesh.fadeStart = decodeFinite(node["fadeStart"], instmesh.fadeStart);
     instmesh.fadeEnd = decodeFinite(node["fadeEnd"], instmesh.fadeEnd);
     if (node["instancedBillboard"]) instmesh.instancedBillboard = node["instancedBillboard"].as<bool>();

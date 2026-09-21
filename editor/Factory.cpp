@@ -2883,6 +2883,7 @@ std::string editor::Factory::createInstancedMeshComponent(int indentSpaces, Enti
     code << ind << "instmesh.maxInstances = " << formatUInt(p.maxInstances) << ";\n";
     code << ind << "instmesh.cullInstances = " << formatBool(p.cullInstances) << ";\n";
     code << ind << "instmesh.distanceFade = " << formatBool(p.distanceFade) << ";\n";
+    code << ind << "instmesh.cullDistance = " << formatFloat(p.cullDistance) << ";\n";
     code << ind << "instmesh.fadeStart = " << formatFloat(p.fadeStart) << ";\n";
     code << ind << "instmesh.fadeEnd = " << formatFloat(p.fadeEnd) << ";\n";
     code << ind << "instmesh.instancedBillboard = " << formatBool(p.instancedBillboard) << ";\n";

@@ -1623,6 +1623,7 @@ namespace {
         if (propertyName == "distanceFade") return {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.distanceFade, &comp->distanceFade};
         if (propertyName == "cullInstances") return {PropertyType::Bool, UpdateFlags_Instanced_Mesh, &def.cullInstances, &comp->cullInstances};
         if (propertyName == "fadeStart") return {PropertyType::Float, UpdateFlags_None, &def.fadeStart, &comp->fadeStart};
+        if (propertyName == "cullDistance") return {PropertyType::Float, UpdateFlags_None, &def.cullDistance, &comp->cullDistance};
         if (propertyName == "fadeEnd") return {PropertyType::Float, UpdateFlags_None, &def.fadeEnd, &comp->fadeEnd};
         if (propertyName == "instancedBillboard") return {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.instancedBillboard, &comp->instancedBillboard};
         if (propertyName == "instancedCylindricalBillboard") return {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.instancedCylindricalBillboard, &comp->instancedCylindricalBillboard};
@@ -1675,6 +1676,7 @@ namespace {
         ps["distanceFade"] = {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.distanceFade, comp ? &comp->distanceFade : nullptr};
         ps["cullInstances"] = {PropertyType::Bool, UpdateFlags_Instanced_Mesh, &def.cullInstances, comp ? &comp->cullInstances : nullptr};
         ps["fadeStart"] = {PropertyType::Float, UpdateFlags_None, &def.fadeStart, comp ? &comp->fadeStart : nullptr};
+        ps["cullDistance"] = {PropertyType::Float, UpdateFlags_None, &def.cullDistance, comp ? &comp->cullDistance : nullptr};
         ps["fadeEnd"] = {PropertyType::Float, UpdateFlags_None, &def.fadeEnd, comp ? &comp->fadeEnd : nullptr};
         ps["instancedBillboard"] = {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.instancedBillboard, comp ? &comp->instancedBillboard : nullptr};
         ps["instancedCylindricalBillboard"] = {PropertyType::Bool, UpdateFlags_Mesh_Reload, &def.instancedCylindricalBillboard, comp ? &comp->instancedCylindricalBillboard : nullptr};

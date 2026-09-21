@@ -140,6 +140,8 @@ namespace doriax{
 
         void setCullInstances(bool cullInstances);
         bool isCullInstances() const;
+        void setCullDistance(float distance);
+        float getCullDistance() const;
 
         void addInstance(InstanceData instance);
         void addInstance(Vector3 position);
