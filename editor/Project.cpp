@@ -8405,16 +8405,24 @@ void editor::Project::registerSceneManager() {
             }
 
             // Scenes no longer in the current stack
+            std::vector<uint32_t> preservedSceneIds;
             std::vector<size_t> staleIndices;
             {
                 std::scoped_lock lock(playSessionMutex);
+                for (const PlayRuntimeScene& entry : session->runtimeScenes) {
+                    if (entry.runtime && entry.runtime->scene && Engine::isSceneRunning(entry.runtime->scene)) {
+                        collectInvolvedScenes(entry.sourceSceneId, preservedSceneIds);
+                    }
+                }
+
                 for (size_t i = 0; i < session->runtimeScenes.size(); i++) {
                     PlayRuntimeScene& entry = session->runtimeScenes[i];
                     if (!entry.initialized || !entry.runtime || !entry.runtime->scene) continue;
                     if (std::find(currentStackIndices.begin(), currentStackIndices.end(), i) != currentStackIndices.end()) continue;
 
-                    // a script added this one while the stack was loading, so it stays
-                    if (Engine::isSceneRunning(entry.runtime->scene)) continue;
+                    // a script added this scene's stack while this one was loading, so it
+                    // stays - along with the involved scenes that stack did not display
+                    if (std::find(preservedSceneIds.begin(), preservedSceneIds.end(), entry.sourceSceneId) != preservedSceneIds.end()) continue;
 
                     entry.initialized = false;
                     staleIndices.push_back(i);

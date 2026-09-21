@@ -1456,10 +1456,18 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             if (sceneDataAux.id == sceneData.id) continue;
             if (std::find(sceneData.involvedScenes.begin(), sceneData.involvedScenes.end(), sceneDataAux.id) != sceneData.involvedScenes.end()) continue;
             std::string sceneName = "_" + Factory::toIdentifier(sceneDataAux.name);
+
             // A script run by initScripts() above may have added a stack of its own through
-            // SceneManager::addChildScene(). Deleting it here would leave the Engine holding a
-            // freed Scene, so a scene that is on screen is left alone.
-            mainContent += "    if (" + sceneName + " && !Engine::isSceneRunning(" + sceneName + ")) {\n";
+            // SceneManager::addChildScene(). Deleting any of its scenes here would leave a
+            // freed Scene behind, in the Engine or in a cross-scene reference, so the scene is
+            // kept while any stack that involves it is on screen. Only the stack's active
+            // scenes are shown, which is why its own pointer is not enough to decide.
+            std::string guard = sceneName;
+            for (const auto& owner : scenes) {
+                if (std::find(owner.involvedScenes.begin(), owner.involvedScenes.end(), sceneDataAux.id) == owner.involvedScenes.end()) continue;
+                guard += " && !Engine::isSceneRunning(_" + Factory::toIdentifier(owner.name) + ")";
+            }
+            mainContent += "    if (" + guard + ") {\n";
             mainContent += "        cleanupScripts(" + sceneName + ");\n";
             mainContent += "        SceneManager::removeScenePtr(" + std::to_string(sceneDataAux.id) + ");\n";
             mainContent += "        delete " + sceneName + ";\n";
