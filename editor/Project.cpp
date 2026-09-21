@@ -8535,10 +8535,12 @@ void editor::Project::registerBundleManager() {
                 };
 
                 if (oldName.empty()) {
+                    // the plain stem, not a unique one: a "Bundle 2" is a name the same script
+                    // would not find in the export, which names the root by the stem
                     std::string rootName = capturableBundlePath.stem().string();
                     if (rootName.empty())
                         rootName = "Bundle";
-                    scene->setEntityName(root, ProjectUtils::makeUniqueEntityName(scene, sceneProject->entities, rootName));
+                    scene->setEntityName(root, rootName);
                 }
 
                 if (addedBundle) {

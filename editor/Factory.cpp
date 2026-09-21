@@ -2666,6 +2666,21 @@ std::string editor::Factory::createBundle(const fs::path& bundlePath, EntityRegi
     // Function definition
     out << "bool " << funcName << "(Scene* scene, Entity root) {\n";
 
+    // BundleManager hands the factory a bare root, so name and tag it the way
+    // registerBundleManager does; an instance placed in a scene already carries both
+    const std::string stem = bundlePath.stem().string();
+    const std::string rootName = stem.empty() ? "Bundle" : stem;
+
+    out << ind1 << "if (scene->getEntityName(root).empty())\n";
+    out << ind1 << "    scene->setEntityName(root, " << formatString(rootName) << ");\n\n";
+
+    out << ind1 << "if (!scene->findComponent<BundleComponent>(root)) {\n";
+    out << ind1 << "    BundleComponent bundle;\n";
+    out << ind1 << "    bundle.name = " << formatString(stem) << ";\n";
+    out << ind1 << "    bundle.path = " << formatString(bundlePath.string()) << ";\n";
+    out << ind1 << "    scene->addComponent<BundleComponent>(root, bundle);\n";
+    out << ind1 << "}\n\n";
+
     if (rootNeedsTransform) {
         out << ind1 << "if (!scene->findComponent<Transform>(root))\n";
         out << ind1 << "    scene->addComponent<Transform>(root, {});\n\n";

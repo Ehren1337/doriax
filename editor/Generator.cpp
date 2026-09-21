@@ -1239,6 +1239,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "`registerBundle` factories return `bool`. Void-returning factories still register and are treated as success. "
                      "Every createBundle call creates its own instance root, so a bundle can be spawned repeatedly; the third argument is the entity the new root is parented to. "
                      "Entity IDs are scene-local, so parent by name with `createBundle(name, scene, parentName)` to resolve it in that scene.\n";
+    agentsContent += "A spawned instance root is named after its .bundle file, extension and directories dropped: `EnemyShip` for `enemies/EnemyShip.bundle`, which createBundle still spawns by the full `enemies/EnemyShip`. "
+                     "It carries a `BundleComponent` too, while an instance placed in a scene keeps the name the scene gave it. The bundle's own entities hang under the root, the same in the editor and in an exported build. "
+                     "Reach an entity inside an instance with `scene->findEntity(name, root)`, which is also what tells two instances apart when they share a name.\n";
     agentsContent += "Only bundles a scene instantiates and the ones listed under `standaloneBundles` in `project.yaml` are built and registered. "
                      "A bundle spawned by script alone must be in that list (Doriax Editor: Project > Bundles), otherwise `createBundle` reports it as not found.\n\n";
     agentsContent += "## Build modes\n\n";
