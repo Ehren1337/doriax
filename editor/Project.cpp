@@ -8409,6 +8409,10 @@ void editor::Project::registerSceneManager() {
                             LuaBinding::cleanupLuaScripts(entry.runtime->scene);
                         }
                         entry.initialized = false;
+
+                        // The exported load function deletes these scenes and drops their
+                        // pointers, so getScenePtr() must not resolve them here either
+                        SceneManager::removeScenePtr(entry.sourceSceneId);
                     }
                 }
             }
