@@ -2299,9 +2299,15 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
 
     // all at once, so a bundle factory never allocates an id the scene uses later
     out << ind2 << "// Scene entities\n";
+    Entity lastSceneEntity = NULL_ENTITY;
     for (Entity entity : entities) {
         if (bundleMemberEntities.count(entity)) continue;
         out << ind2 << "scene->recreateEntity(" << entity << ");\n";
+        lastSceneEntity = std::max(lastSceneEntity, entity);
+    }
+    // recreateEntity leaves the allocator where it is, so lift it past those ids by hand
+    if (lastSceneEntity != NULL_ENTITY) {
+        out << ind2 << "scene->setLastEntity(" << lastSceneEntity << ");\n";
     }
     out << "\n";
 

@@ -345,6 +345,12 @@ Entity EntityRegistry::getLastEntity() const{
     return entityManager.getLastUserEntity();
 }
 
+void EntityRegistry::setLastEntity(Entity entity){
+    if (entity > entityManager.getLastUserEntity()){
+        entityManager.setLastUserEntity(entity);
+    }
+}
+
 std::vector<Entity> EntityRegistry::getEntityList() const{
     return entityManager.getEntityList();
 }

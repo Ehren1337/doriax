@@ -125,6 +125,9 @@ namespace doriax {
         size_t findBranchLastIndex(Entity entity);
 
         Entity getLastEntity() const;
+        // Raises the floor createUserEntity counts up from; recreateEntity is not bound by it.
+        // A scene sets it past the ids it recreates, so what it creates next stays clear of them.
+        void setLastEntity(Entity entity); // for internal editor use only
         std::vector<Entity> getEntityList() const;
 
         void setDefaultEntityPool(EntityPool pool);
