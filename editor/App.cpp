@@ -2689,7 +2689,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      bad uniform can no longer produce an unbounded loop (a GPU hang).
     // v27: per-layer PBR terrain (HAS_TERRAIN_PBR) — layer maps are slices of the detail
     //      array driven by u_fs_terrainLayers, in the color pass and the G-buffer alike.
-    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v30";
+    // v28: paired bilinear shadow PCF taps; depth.vert takes a prebuilt mvpMatrix and
+    //      gl_Position is invariant, so a depth prepass matches the color pass; instanced
+    //      normals use the cofactor matrix; backfaces flip the shading normal; leaf
+    //      transmission adds foliageTransmission to u_fs_pbrParams.
+    return App::getUserCacheBaseDir() / "doriax" / "shaders" / "v28";
 }
 
 void editor::App::pushTabNotificationStyle(){
