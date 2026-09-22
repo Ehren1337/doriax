@@ -8828,8 +8828,9 @@ void editor::Properties::drawScriptComponent(ComponentType cpType, SceneProject*
 
             ImGui::SameLine();
 
-            // Resolve source path
-            std::filesystem::path srcPath = script.path;
+            // Resolve source path: Lua sources are stored relative to the Lua root
+            std::filesystem::path srcPath = script.type == ScriptType::LUA
+                ? project->resolveLuaPath(script.path) : std::filesystem::path(script.path);
             if (srcPath.is_relative()) srcPath = projectPath / srcPath;
             bool srcExists = !script.path.empty() && std::filesystem::exists(srcPath);
             ImGui::BeginDisabled(!srcExists);
