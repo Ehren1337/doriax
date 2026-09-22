@@ -2347,14 +2347,6 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
         }
     }
 
-    if (!topLevelRoots.empty()) {
-        out << ind2 << "// Bundle instance members, by index\n";
-        for (Entity root : topLevelRoots) {
-            out << ind2 << "std::vector<Entity> " << membersVar(root) << ";\n";
-        }
-        out << "\n";
-    }
-
     // a component reading a vector not filled yet is added with those references
     // cleared and assigned again once every instance exists
     std::set<Entity> builtRoots;
@@ -2367,8 +2359,9 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
         return false;
     };
 
-    auto emitEntityComponents = [&](Entity entity) {
-        out << ind3 << "// Entity components initialization\n";
+    auto entityComponents = [&](Entity entity) {
+        std::ostringstream code;
+        code << ind3 << "// Entity components initialization\n";
         bool first = true;
         for (ComponentType compType : Catalog::findComponents(scene, entity)) {
             std::string componentCode = createComponent(indentSpaces+8, scene, entity, compType, projectPath, "scene", "", false, &memberVarNames);
@@ -2377,72 +2370,37 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
                 componentCode = createComponent(indentSpaces+8, scene, entity, compType, projectPath, "scene", "", false, &builtVarNames);
                 deferredComponents.push_back({entity, compType});
             }
-            if (!first) out << "\n";
-            out << componentCode;
+            if (!first) code << "\n";
+            code << componentCode;
             first = false;
         }
+        return code.str();
     };
 
-    bool firstEntity = true;
-
+    // everything that could read a vector is generated first, so only the instances
+    // something references get one
+    std::vector<std::pair<Entity, std::string>> entityBlocks;
     for (Entity entity : entities) {
-        // Skip bundle member entities - they are created by bundle functions
-        if (bundleMemberEntities.count(entity)) {
-            continue;
-        }
-
-        if (!firstEntity) {
-            out << "\n";
-        }
-        firstEntity = false;
-
+        if (bundleMemberEntities.count(entity)) continue;
+        entityBlocks.push_back({entity, entityComponents(entity)});
         if (bundleRoots.count(entity)) {
-            // Bundle root entity - create root and call bundle function
-            const BundleInstanceInfo* bi = rootToInstance[entity];
-            std::string buildFuncName = bundleToBuildFunctionName(bi->bundlePath);
-
-            out << ind2 << "{\n";
-            std::string entityName = scene->getEntityName(entity);
-            out << ind3 << "// Bundle instance: " << bi->bundlePath.string() << " (" << entityName << ")\n";
-            out << ind3 << "scene->setEntityName(" << entity << ", " << formatString(entityName) << ");\n\n";
-
-            // Create root entity components (from scene data)
-            emitEntityComponents(entity);
-
-            out << "\n";
-            out << ind3 << buildFuncName << "(scene, " << entity << ", " << membersVar(entity) << ");\n";
-            out << ind2 << "}\n";
-
             builtRoots.insert(entity);
             for (Entity member : rootMembers[entity]) {
                 builtVarNames[member] = memberVarNames[member];
             }
-        } else {
-            // Normal entity - unchanged
-            out << ind2 << "{\n";
-            std::string entityName = scene->getEntityName(entity);
-            out << ind3 << "// Entity " << entity << " (" << entityName << ")\n";
-            out << ind3 << "scene->setEntityName(" << entity << ", " << formatString(entityName) << ");\n\n";
-
-            // Create and set all components
-            emitEntityComponents(entity);
-            out << ind2 << "}\n";
         }
     }
 
-    if (!deferredComponents.empty()) {
-        out << "\n";
-        out << ind2 << "// References to members of instances built after the entity\n";
-        for (const auto& [entity, compType] : deferredComponents) {
-            out << ind2 << "{\n";
-            out << ind3 << "// Entity " << entity << " (" << scene->getEntityName(entity) << ")\n";
-            out << createComponent(indentSpaces+8, scene, entity, compType, projectPath, "scene", std::to_string(entity), true, &memberVarNames);
-            out << ind2 << "}\n";
-        }
+    std::ostringstream deferred;
+    for (const auto& [entity, compType] : deferredComponents) {
+        deferred << ind2 << "{\n";
+        deferred << ind3 << "// Entity " << entity << " (" << scene->getEntityName(entity) << ")\n";
+        deferred << createComponent(indentSpaces+8, scene, entity, compType, projectPath, "scene", std::to_string(entity), true, &memberVarNames);
+        deferred << ind2 << "}\n";
     }
 
     // overrides wait until every instance exists, nested ones included
-    bool firstOverride = true;
+    std::ostringstream overrides;
     auto emitInstanceOverrides = [&](auto&& self, const BundleInstanceInfo* bi) -> void {
         for (const auto& ovr : bi->overrides) {
             auto targetIt = memberVarNames.find(ovr.sceneEntity);
@@ -2450,17 +2408,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
                 Out::warning("Override on entity %u (%s) has no member in %s, skipped", ovr.sceneEntity, scene->getEntityName(ovr.sceneEntity).c_str(), bi->bundlePath.string().c_str());
                 continue;
             }
-            if (firstOverride) {
-                out << "\n";
-                out << ind2 << "// Bundle member overrides\n";
-                firstOverride = false;
-            }
-            out << ind2 << "{\n";
-            out << ind3 << "// Override for " << scene->getEntityName(ovr.sceneEntity) << " (" << ovr.sceneEntity << ")\n";
+            overrides << ind2 << "{\n";
+            overrides << ind3 << "// Override for " << scene->getEntityName(ovr.sceneEntity) << " (" << ovr.sceneEntity << ")\n";
             for (ComponentType compType : ovr.overriddenComponents) {
-                out << createComponent(indentSpaces+8, scene, ovr.sceneEntity, compType, projectPath, "scene", targetIt->second, true, &memberVarNames);
+                overrides << createComponent(indentSpaces+8, scene, ovr.sceneEntity, compType, projectPath, "scene", targetIt->second, true, &memberVarNames);
             }
-            out << ind2 << "}\n";
+            overrides << ind2 << "}\n";
         }
         for (Entity member : bi->orderedMembers) {
             auto nestedIt = rootToInstance.find(member);
@@ -2472,50 +2425,112 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     }
 
     // Camera render-to-texture links; deferred so every camera entity already exists
-    {
-        std::ostringstream links;
-        for (Entity entity : entities) {
-            for (ComponentType cpType : Catalog::findComponents(scene, entity)) {
-                std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(scene, entity, cpType);
-                for (auto& [propName, prop] : properties) {
-                    if (prop.type != PropertyType::Texture || !prop.ref)
-                        continue;
+    std::ostringstream links;
+    for (Entity entity : entities) {
+        for (ComponentType cpType : Catalog::findComponents(scene, entity)) {
+            std::map<std::string, PropertyData> properties = Catalog::findEntityProperties(scene, entity, cpType);
+            for (auto& [propName, prop] : properties) {
+                if (prop.type != PropertyType::Texture || !prop.ref)
+                    continue;
 
-                    Texture* texture = static_cast<Texture*>(prop.ref);
-                    Entity cameraEntity = CameraTextureLink::parse(texture->getId());
-                    if (cameraEntity == NULL_ENTITY)
-                        continue;
-                    if (!scene->findComponent<CameraComponent>(cameraEntity))
-                        continue;
+                Texture* texture = static_cast<Texture*>(prop.ref);
+                Entity cameraEntity = CameraTextureLink::parse(texture->getId());
+                if (cameraEntity == NULL_ENTITY)
+                    continue;
+                if (!scene->findComponent<CameraComponent>(cameraEntity))
+                    continue;
 
-                    links << ind2 << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, &memberVarNames) << ")."
-                          << propName << ".setFramebuffer(scene->getComponent<CameraComponent>(" << formatEntity(cameraEntity, &memberVarNames) << ").framebuffer);\n";
-                }
+                links << ind2 << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, &memberVarNames) << ")."
+                      << propName << ".setFramebuffer(scene->getComponent<CameraComponent>(" << formatEntity(cameraEntity, &memberVarNames) << ").framebuffer);\n";
             }
         }
-        std::string linksStr = links.str();
-        if (!linksStr.empty()) {
-            out << "\n";
-            out << ind2 << "// Camera render-to-texture links\n";
-            out << linksStr;
-        }
     }
 
+    std::ostringstream cameraCode;
     if (camera != NULL_ENTITY){
         if (std::find(entities.begin(), entities.end(), camera) == entities.end()) {
-            out << "\n";
-            out << ind2 << "// Default Camera " << camera << "\n";
-            out << ind2 << "Entity cameraEntity = scene->createSystemEntity();\n";
-            out << "\n";
-            std::string componentsCode = createAllComponents(indentSpaces+4, scene, camera, projectPath, "scene", "cameraEntity");
-            out << componentsCode;
+            cameraCode << "\n";
+            cameraCode << ind2 << "// Default Camera " << camera << "\n";
+            cameraCode << ind2 << "Entity cameraEntity = scene->createSystemEntity();\n";
+            cameraCode << "\n";
+            cameraCode << createAllComponents(indentSpaces+4, scene, camera, projectPath, "scene", "cameraEntity");
         }else{
-            out << "\n";
-            out << ind2 << "Entity cameraEntity = " << formatEntity(camera, &memberVarNames) << ";\n";
+            cameraCode << "\n";
+            cameraCode << ind2 << "Entity cameraEntity = " << formatEntity(camera, &memberVarNames) << ";\n";
+        }
+        cameraCode << "\n";
+        cameraCode << ind2 << "scene->setCamera(cameraEntity);\n";
+    }
+
+    const std::string deferredStr = deferred.str();
+    const std::string overridesStr = overrides.str();
+    const std::string linksStr = links.str();
+    const std::string cameraStr = cameraCode.str();
+
+    auto usesMembers = [&](Entity root) {
+        const std::string var = membersVar(root) + "[";
+        auto has = [&](const std::string& code) { return code.find(var) != std::string::npos; };
+        return has(deferredStr) || has(overridesStr) || has(linksStr) || has(cameraStr)
+            || std::any_of(entityBlocks.begin(), entityBlocks.end(), [&](const auto& block) { return has(block.second); });
+    };
+
+    std::set<Entity> usedRoots;
+    for (Entity root : topLevelRoots) {
+        if (usesMembers(root)) usedRoots.insert(root);
+    }
+
+    if (!usedRoots.empty()) {
+        out << ind2 << "// Bundle instance members, by index\n";
+        for (Entity root : topLevelRoots) {
+            if (usedRoots.count(root)) out << ind2 << "std::vector<Entity> " << membersVar(root) << ";\n";
         }
         out << "\n";
-        out << ind2 << "scene->setCamera(cameraEntity);\n";
     }
+
+    bool firstEntity = true;
+    for (const auto& [entity, componentsCode] : entityBlocks) {
+        if (!firstEntity) {
+            out << "\n";
+        }
+        firstEntity = false;
+
+        std::string entityName = scene->getEntityName(entity);
+        out << ind2 << "{\n";
+        if (bundleRoots.count(entity)) {
+            const BundleInstanceInfo* bi = rootToInstance[entity];
+            out << ind3 << "// Bundle instance: " << bi->bundlePath.string() << " (" << entityName << ")\n";
+            out << ind3 << "scene->setEntityName(" << entity << ", " << formatString(entityName) << ");\n\n";
+            out << componentsCode;
+            out << "\n";
+            if (usedRoots.count(entity)) {
+                out << ind3 << bundleToBuildFunctionName(bi->bundlePath) << "(scene, " << entity << ", " << membersVar(entity) << ");\n";
+            } else {
+                out << ind3 << bundleToFunctionName(bi->bundlePath) << "(scene, " << entity << ");\n";
+            }
+        } else {
+            out << ind3 << "// Entity " << entity << " (" << entityName << ")\n";
+            out << ind3 << "scene->setEntityName(" << entity << ", " << formatString(entityName) << ");\n\n";
+            out << componentsCode;
+        }
+        out << ind2 << "}\n";
+    }
+
+    if (!deferredStr.empty()) {
+        out << "\n";
+        out << ind2 << "// References to members of instances built after the entity\n";
+        out << deferredStr;
+    }
+    if (!overridesStr.empty()) {
+        out << "\n";
+        out << ind2 << "// Bundle member overrides\n";
+        out << overridesStr;
+    }
+    if (!linksStr.empty()) {
+        out << "\n";
+        out << ind2 << "// Camera render-to-texture links\n";
+        out << linksStr;
+    }
+    out << cameraStr;
 
     out << "\n";
     out << ind2 << "scene->setBackgroundColor(" << formatVector4(scene->getBackgroundColor()) << ");\n";
@@ -2670,9 +2685,7 @@ std::string editor::Factory::createBundleHeader(const fs::path& bundlePath) {
     out << "#include \"Doriax.h\"\n";
     out << "#include <vector>\n\n";
     out << "using namespace doriax;\n\n";
-    out << "bool " << funcName << "(Scene* scene, Entity root);\n\n";
-    out << "// Also appends every entity it creates to members, this bundle's first and then\n";
-    out << "// each nested bundle's, so scene factories can address them by index.\n";
+    out << "bool " << funcName << "(Scene* scene, Entity root);\n";
     out << "bool " << buildFuncName << "(Scene* scene, Entity root, std::vector<Entity>& members);\n";
     return out.str();
 }
