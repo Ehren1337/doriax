@@ -1839,6 +1839,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (project->getCxxStandard() != Project::defaultCxxStandard) {
         root["cxxStandard"] = project->getCxxStandard();
     }
+    if (project->isPhysics2DEnabled() != Project::defaultPhysics2DEnabled) {
+        root["physics2D"] = project->isPhysics2DEnabled();
+    }
+    if (project->isPhysics3DEnabled() != Project::defaultPhysics3DEnabled) {
+        root["physics3D"] = project->isPhysics3DEnabled();
+    }
     if (project->shouldPackNativeResources() != Project::defaultPackNativeResources) {
         root["packNativeResources"] = project->shouldPackNativeResources();
     }
@@ -2126,6 +2132,15 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["cxxStandard"]) {
         project->setCxxStandard(node["cxxStandard"].as<int>());
+    }
+
+    // Old projects carry no physics keys: both backends default ON, which is how
+    // pre-settings projects must load.
+    if (node["physics2D"]) {
+        project->setPhysics2DEnabled(node["physics2D"].as<bool>());
+    }
+    if (node["physics3D"]) {
+        project->setPhysics3DEnabled(node["physics3D"].as<bool>());
     }
 
     // Backward compatibility: the compiler and job count used to live here before
@@ -6429,15 +6444,19 @@ Body2DComponent editor::Stream::decodeBody2DComponent(const YAML::Node& node, co
                 }
             }
 
+#ifdef DORIAX_PHYSICS_2D
             body.shapes[i].shape = b2_nullShapeId;
             body.shapes[i].chain = b2_nullChainId;
+#endif
         }
     }
 
+#ifdef DORIAX_PHYSICS_2D
     if (oldBody && b2Body_IsValid(oldBody->body)) {
         body.needReloadBody = true;
         body.needUpdateShapes = true;
     }
+#endif
 
     return body;
 }
@@ -6454,17 +6473,17 @@ YAML::Node editor::Stream::encodeBody3DComponent(const Body3DComponent& body) {
     node["sensor"] = body.sensor;
     node["gravityFactor"] = body.gravityFactor;
 
-    // Six booleans instead of Jolt's bit value, so the file stays readable.
+    // Six booleans instead of the runtime bit value, so the file stays readable.
     YAML::Node dofsNode;
-    auto dof = [&](const char* name, JPH::EAllowedDOFs bit) {
-        dofsNode[name] = (body.allowedDOFs & bit) != JPH::EAllowedDOFs::None;
+    auto dof = [&](const char* name, uint8_t bit) {
+        dofsNode[name] = (static_cast<uint8_t>(body.allowedDOFs) & bit) != 0;
     };
-    dof("translationX", JPH::EAllowedDOFs::TranslationX);
-    dof("translationY", JPH::EAllowedDOFs::TranslationY);
-    dof("translationZ", JPH::EAllowedDOFs::TranslationZ);
-    dof("rotationX", JPH::EAllowedDOFs::RotationX);
-    dof("rotationY", JPH::EAllowedDOFs::RotationY);
-    dof("rotationZ", JPH::EAllowedDOFs::RotationZ);
+    dof("translationX", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_X));
+    dof("translationY", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_Y));
+    dof("translationZ", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_Z));
+    dof("rotationX", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_X));
+    dof("rotationY", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_Y));
+    dof("rotationZ", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_Z));
     node["allowedDOFs"] = dofsNode;
 
     node["numShapes"] = static_cast<unsigned int>(body.numShapes);
@@ -6528,20 +6547,21 @@ Body3DComponent editor::Stream::decodeBody3DComponent(const YAML::Node& node, co
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];
-        JPH::EAllowedDOFs dofs = JPH::EAllowedDOFs::None;
+        uint8_t dofs = 0;
         // A present map is authoritative, so a missing key means that axis is locked.
-        auto dof = [&](const char* name, JPH::EAllowedDOFs bit) {
-            if (dofsNode[name] && dofsNode[name].as<bool>()) dofs = dofs | bit;
+        auto dof = [&](const char* name, uint8_t bit) {
+            if (dofsNode[name] && dofsNode[name].as<bool>()) dofs |= bit;
         };
-        dof("translationX", JPH::EAllowedDOFs::TranslationX);
-        dof("translationY", JPH::EAllowedDOFs::TranslationY);
-        dof("translationZ", JPH::EAllowedDOFs::TranslationZ);
-        dof("rotationX", JPH::EAllowedDOFs::RotationX);
-        dof("rotationY", JPH::EAllowedDOFs::RotationY);
-        dof("rotationZ", JPH::EAllowedDOFs::RotationZ);
+        dof("translationX", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_X));
+        dof("translationY", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_Y));
+        dof("translationZ", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_Z));
+        dof("rotationX", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_X));
+        dof("rotationY", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_Y));
+        dof("rotationZ", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_Z));
         // None crashes Jolt on body creation, and a static body is how you freeze
         // everything, so an all-false map falls back to All.
-        body.allowedDOFs = (dofs == JPH::EAllowedDOFs::None) ? JPH::EAllowedDOFs::All : dofs;
+        const uint8_t allowedDOFs = dofs == 0 ? static_cast<uint8_t>(Body3DAllowedDOF::ALL) : dofs;
+        body.allowedDOFs = static_cast<decltype(body.allowedDOFs)>(allowedDOFs);
     }
 
     if (node["numShapes"]) body.numShapes = node["numShapes"].as<unsigned int>();
@@ -6611,14 +6631,18 @@ Body3DComponent editor::Stream::decodeBody3DComponent(const YAML::Node& node, co
                 }
             }
 
+#ifdef DORIAX_PHYSICS_3D
             body.shapes[i].shape = NULL;
+#endif
         }
     }
 
+#ifdef DORIAX_PHYSICS_3D
     if (oldBody && !oldBody->body.IsInvalid()) {
         body.needReloadBody = true;
         body.needUpdateShapes = true;
     }
+#endif
 
     return body;
 }
@@ -6660,9 +6684,11 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
     if (node["autoAnchors"]) joint.autoAnchors = node["autoAnchors"].as<bool>();
     if (node["rope"]) joint.rope = node["rope"].as<bool>();
 
+#ifdef DORIAX_PHYSICS_2D
     if (oldJoint && b2Joint_IsValid(oldJoint->joint)) {
         joint.needUpdateJoint = true;
     }
+#endif
 
     return joint;
 }
@@ -6761,9 +6787,11 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
     if (node["isLooping"]) joint.isLooping = node["isLooping"].as<bool>();
     if (node["autoAnchors"]) joint.autoAnchors = node["autoAnchors"].as<bool>();
 
+#ifdef DORIAX_PHYSICS_3D
     if (oldJoint && oldJoint->joint) {
         joint.needUpdateJoint = true;
     }
+#endif
 
     return joint;
 }

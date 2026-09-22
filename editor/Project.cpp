@@ -1893,6 +1893,22 @@ int editor::Project::getCxxStandard() const{
     return cxxStandard;
 }
 
+void editor::Project::setPhysics2DEnabled(bool enabled){
+    this->physics2DEnabled = enabled;
+}
+
+bool editor::Project::isPhysics2DEnabled() const{
+    return physics2DEnabled;
+}
+
+void editor::Project::setPhysics3DEnabled(bool enabled){
+    this->physics3DEnabled = enabled;
+}
+
+bool editor::Project::isPhysics3DEnabled() const{
+    return physics3DEnabled;
+}
+
 static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
     std::error_code ec;
     std::filesystem::path relativePath = std::filesystem::relative(path, root, ec);
@@ -3817,6 +3833,8 @@ void editor::Project::resetConfigs() {
     luaDir = defaultLuaDir;
     scriptDirs.clear();
     cxxStandard = defaultCxxStandard;
+    physics2DEnabled = defaultPhysics2DEnabled;
+    physics3DEnabled = defaultPhysics3DEnabled;
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
     shaderOverrides = {};
@@ -4856,7 +4874,7 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), isPhysics2DEnabled(), isPhysics3DEnabled(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
 
     Out::info("Scene saved to: \"%s\"", fullPath.string().c_str());
 
@@ -8172,7 +8190,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), isPhysics2DEnabled(), isPhysics3DEnabled(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
 
         // play regenerates the standalone project, so its shaders are ensured here too
         buildStandaloneShaderCache();
