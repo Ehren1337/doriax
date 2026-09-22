@@ -13140,6 +13140,13 @@ void editor::Properties::show(){
             names += scene->getEntityName(entity);
         }
 
+        // Stop destroys what the running scene made, so while playing only authored entities are editable
+        const std::vector<Entity>& authored = sceneProject->entities;
+        const bool isRuntimeSelection = sceneProject->playState != ScenePlayState::STOPPED &&
+            std::any_of(entities.begin(), entities.end(), [&authored](Entity entity) {
+                return std::find(authored.begin(), authored.end(), entity) == authored.end();
+            });
+
         if (entities.size() == 1){
             ImGui::Text("Entity");
         }else{
@@ -13151,7 +13158,7 @@ void editor::Properties::show(){
         static char nameBuffer[128];
         strncpy(nameBuffer, names.c_str(), sizeof(nameBuffer) - 1);
         nameBuffer[sizeof(nameBuffer) - 1] = '\0';
-        ImGui::BeginDisabled(entities.size() != 1);
+        ImGui::BeginDisabled(entities.size() != 1 || isRuntimeSelection);
         if (nameFocusFrames > 0 && entities.size() == 1) ImGui::SetKeyboardFocusHere();
         ImGui::InputText("##input_name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
         if (ImGui::IsItemActive()) nameFocusFrames = 0;
@@ -13166,11 +13173,9 @@ void editor::Properties::show(){
 
         ImGui::Separator();
 
-        bool isReadOnlyComponents = false;
-
         float buttonWidth = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
 
-        ImGui::BeginDisabled(isReadOnlyComponents);
+        ImGui::BeginDisabled(isRuntimeSelection);
         if (ImGui::Button(ICON_FA_SQUARE_PLUS " New component", ImVec2(buttonWidth, 0))) {
             componentAddDialog.open(
                 [this, sceneProject, entities](ComponentType cpType) {
@@ -13330,8 +13335,8 @@ void editor::Properties::show(){
                 ImGui::PopStyleColor();
             }
 
-            // Context menu disabled while playing
-            bool compReadOnly = false;
+            // Context menu and body disabled for a runtime selection
+            const bool compReadOnly = isRuntimeSelection;
             handleComponentMenu(sceneProject, entities, cpType, isBundle, isBundleOverridden, headerOpen, compReadOnly);
 
             // Add hover tooltip for bundle components

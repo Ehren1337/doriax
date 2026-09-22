@@ -102,6 +102,10 @@ std::vector<Entity> editor::Structure::getMovableDraggedEntities(Entity draggedE
     std::vector<Entity> movableEntities;
     movableEntities.reserve(draggedEntities.size());
 
+    if (targetNode.isPlayCreated) {
+        return {};
+    }
+
     for (Entity sourceEntity : draggedEntities) {
         if (sourceEntity == NULL_ENTITY || !scene->isEntityCreated(sourceEntity)) {
             return {};
@@ -1055,6 +1059,12 @@ std::vector<char> editor::Structure::buildEntityPayload(const TreeNode& node) {
     }
 
     std::vector<Entity> draggedEntities = getTopLevelSelectedEntities(node.id);
+    // Stop destroys runtime entities, so none can be moved, referenced or saved as a bundle
+    for (Entity entity : draggedEntities) {
+        if (cachedPlayCreatedEntities.count(entity) > 0) {
+            return {};
+        }
+    }
     std::vector<Entity> exportEntities = draggedEntities;
 
     // Add virtual children (and chained children) of dragged entities
@@ -1184,6 +1194,9 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
     } else if (hasSearch && node.matchesSearch) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.5f, 1.0f)); // Yellow for search matches
         pushedHighlightColor = true;
+    } else if (node.isPlayCreated) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.85f, 0.65f, 1.0f)); // Green: created by the running scene
+        pushedHighlightColor = true;
     } else if (!node.isScene && !node.isChildScene && node.isLocked && node.isBundle) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.67f, 0.74f, 0.85f, 0.95f)); // Muted blue-gray for locked bundle entities
         pushedHighlightColor = true;
@@ -1274,7 +1287,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         }
     }
 
-    if (!node.isChildScene && !isChildSceneEntity) {
+    if (!node.isChildScene && !isChildSceneEntity && !node.isPlayCreated) {
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
             // Add entity drag drop payload for dragging to resources
             if (!node.isScene) {
@@ -1446,7 +1459,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
 
         bool allowResourceDragDrop = false;
         if (const ImGuiPayload* payload = ImGui::GetDragDropPayload()) {
-            if (payload->IsDataType("resource_files")) {
+            if (!node.isPlayCreated && payload->IsDataType("resource_files")) {
                 const char* data = (const char*)payload->Data;
                 size_t dataSize = payload->DataSize;
 
@@ -1609,9 +1622,11 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
             ImGui::Text("Name:");
 
             ImGui::PushItemWidth(200);
+            ImGui::BeginDisabled(node.isPlayCreated);
             if (ImGui::InputText("##ChangeNameInput", nameBuffer, IM_ARRAYSIZE(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)){
                 ImGui::CloseCurrentPopup();
             }
+            ImGui::EndDisabled();
             if (ImGui::IsItemDeactivatedAfterEdit()) {
                 if (nameBuffer[0] != '\0' && strcmp(nameBuffer, node.name.c_str()) != 0) {
                     if (node.isScene){
@@ -1731,7 +1746,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                     }
                 }
             }
-            if (!entityDeleted && node.isParentBundle && !node.isBundleRoot){
+            if (!entityDeleted && !node.isPlayCreated && node.isParentBundle && !node.isBundleRoot){
                 ImGui::Separator();
                 if (ImGui::MenuItem(ICON_FA_LOCK_OPEN"  Remove from bundle", nullptr, false, node.isBundle)){
                     if (node.isBundle){
@@ -1744,7 +1759,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                     }
                 }
             }
-            if (!entityDeleted && node.isBundleRoot && node.hasBundleParent){
+            if (!entityDeleted && !node.isPlayCreated && node.isBundleRoot && node.hasBundleParent){
                 ImGui::Separator();
                 bool isNestedMember = node.isBundle && (node.bundleFilepath != node.nestedBundleFilepath);
                 if (ImGui::MenuItem(ICON_FA_LOCK_OPEN"  Remove from bundle (nested)", nullptr, false, isNestedMember)){
@@ -1754,7 +1769,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                     CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(new AddEntityToBundleCmd(project, project->getSelectedSceneId(), node.id, node.parent));
                 }
             }
-            if (!entityDeleted && !node.isScene && !node.isBundle && !node.isParentBundle){
+            if (!entityDeleted && !node.isPlayCreated && !node.isScene && !node.isBundle && !node.isParentBundle){
                 uint32_t sceneId = project->getSelectedSceneId();
                 const auto& sceneBundles = project->getEntityBundles(sceneId);
 
@@ -1783,7 +1798,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                     }
                 }
             }
-            if (!entityDeleted && (node.hasTransform || node.isScene)){
+            if (!entityDeleted && !node.isPlayCreated && (node.hasTransform || node.isScene)){
                 ImGui::Separator();
                 static bool createBundleChild = false;
                 if (node.isBundle){
@@ -1840,7 +1855,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
                         }
                     } else {
                         bool usedAsTexture = CameraTextureLink::isCameraUsed(sceneProject->scene, node.id);
-                        if (ImGui::MenuItem(ICON_FA_EYE"  Set as Main Camera", nullptr, false, !usedAsTexture)) {
+                        if (ImGui::MenuItem(ICON_FA_EYE"  Set as Main Camera", nullptr, false, !usedAsTexture && !node.isPlayCreated)) {
                             CommandHandle::get(project->getSelectedSceneId())->addCommand(new SetMainCameraCmd(project, project->getSelectedSceneId(), node.id));
                         }
                         if (usedAsTexture && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -2044,6 +2059,13 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
 
     sceneEntitiesSet = std::unordered_set<Entity>(sceneProject->entities.begin(), sceneProject->entities.end());
 
+    // Whatever the scene spawned while running is listed alongside the authored entities, so a
+    // script's object shows up under its parent instead of nowhere. It is never authored, so
+    // it is drawn as read-only and disappears again once Stop destroys it.
+    const std::vector<Entity> playCreated = project->getPlayCreatedEntities(sceneProject);
+    cachedPlayCreatedEntities = std::unordered_set<Entity>(playCreated.begin(), playCreated.end());
+    sceneEntitiesSet.insert(playCreated.begin(), playCreated.end());
+
     Entity mainCamera = sceneProject->mainCamera;
     size_t order = 0;
     std::unordered_map<Entity, TreeNode*> entityNodeMap;
@@ -2157,7 +2179,10 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
     bool separatorAfterChildScenes = hasChildScenes;
 
     // non-hierarchical entities
-    for (auto& entity : sceneProject->entities) {
+    std::vector<Entity> flatEntities = sceneProject->entities;
+    flatEntities.insert(flatEntities.end(), playCreated.begin(), playCreated.end());
+
+    for (auto& entity : flatEntities) {
         Signature signature = sceneProject->scene->getSignature(entity);
 
         if (!signature.test(sceneProject->scene->getComponentId<Transform>())){
@@ -2171,7 +2196,8 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
             child.id = entity;
             child.isMainCamera = (entity == mainCamera);
             child.isBone = signature.test(sceneProject->scene->getComponentId<BoneComponent>());
-            child.isLocked = ProjectUtils::isEntityLocked(sceneProject->scene, entity);
+            child.isPlayCreated = cachedPlayCreatedEntities.count(entity) > 0;
+            child.isLocked = child.isPlayCreated || ProjectUtils::isEntityLocked(sceneProject->scene, entity);
             child.order = order++;
             child.name = sceneProject->scene->getEntityName(entity);
             auto bundleIt = bundleEntityPaths.find(entity);
@@ -2253,7 +2279,9 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
             child.isMainCamera = (entity == mainCamera);
             child.isBone = signature.test(sceneProject->scene->getComponentId<BoneComponent>());
             child.hasTransform = true;
-            child.isLocked = ProjectUtils::isEntityLocked(sceneProject->scene, entity)
+            child.isPlayCreated = cachedPlayCreatedEntities.count(entity) > 0;
+            child.isLocked = child.isPlayCreated
+                || ProjectUtils::isEntityLocked(sceneProject->scene, entity)
                 || ProjectUtils::getModelBranchOwner(sceneProject->scene, entity) != NULL_ENTITY;
             child.canEditModelHierarchy = ProjectUtils::canEditModelBranch(sceneProject->scene, entity, &child.hierarchyReason);
             child.order = order++;
@@ -2267,28 +2295,27 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
                 child.isBundleRoot = true;
                 child.nestedBundleFilepath = sceneProject->scene->getComponent<BundleComponent>(entity).path;
             }
-            if (transform.parent == NULL_ENTITY){
+            auto parentIt = entityNodeMap.find(transform.parent);
+            TreeNode* parent = parentIt != entityNodeMap.end() ? parentIt->second : nullptr;
+            if (parent){
+                child.parent = parent->id;
+                auto parentBundleIt = bundleEntityPaths.find(transform.parent);
+                if (parentBundleIt != bundleEntityPaths.end()) {
+                    child.isParentBundle = true;
+                    child.hasBundleParent = true;
+                    // Locally added bundle roots treated as top-level visually, not nested
+                    if (child.isBundleRoot && child.bundleFilepath != parentBundleIt->second) {
+                        child.isParentBundle = false;
+                    }
+                }
+                parent->children.push_back(child);
+                entityNodeMap[entity] = &parent->children.back();
+            }else if (transform.parent == NULL_ENTITY || (child.isPlayCreated && sceneEntitiesSet.count(transform.parent) == 0)){
+                // a runtime entity can hang from an unlisted one, like the default camera
                 root.children.push_back(child);
                 entityNodeMap[entity] = &root.children.back();
             }else{
-                auto parentIt = entityNodeMap.find(transform.parent);
-                TreeNode* parent = parentIt != entityNodeMap.end() ? parentIt->second : nullptr;
-                if (parent){
-                    child.parent = parent->id;
-                    auto parentBundleIt = bundleEntityPaths.find(transform.parent);
-                    if (parentBundleIt != bundleEntityPaths.end()) {
-                        child.isParentBundle = true;
-                        child.hasBundleParent = true;
-                        // Locally added bundle roots treated as top-level visually, not nested
-                        if (child.isBundleRoot && child.bundleFilepath != parentBundleIt->second) {
-                            child.isParentBundle = false;
-                        }
-                    }
-                    parent->children.push_back(child);
-                    entityNodeMap[entity] = &parent->children.back();
-                }else{
-                    printf("ERROR: Could not find parent of entity %u\n", entity);
-                }
+                printf("ERROR: Could not find parent of entity %u\n", entity);
             }
         }
     }
@@ -2362,8 +2389,8 @@ void editor::Structure::show(){
         return;
     }
 
-    // Rebuild the tree only when it changed. Key = scene + structureVersion + entity
-    // count + child-scene signature; a 0.5s safety rebuild catches anything missed.
+    // Rebuild the tree only when it changed. Key = scene + structureVersion + entity count +
+    // runtime and child-scene signatures; a 0.5s safety rebuild catches anything missed.
     size_t childSignature = 0;
     auto hashCombine = [](size_t& h, size_t v){ h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2); };
     for (const ChildSceneRef& childSceneRef : sceneProject->childScenes) {
@@ -2378,11 +2405,20 @@ void editor::Structure::show(){
         }
     }
 
+    // Runtime entities come and go without touching the authored list. Ids only grow, so the
+    // last one still changes when a frame destroys one entity and creates another.
+    size_t runtimeSignature = 0;
+    if (sceneProject->playState != ScenePlayState::STOPPED) {
+        hashCombine(runtimeSignature, sceneProject->scene->getEntityCount());
+        hashCombine(runtimeSignature, (size_t)sceneProject->scene->getLastEntity());
+    }
+
     const double nowTime = ImGui::GetTime();
     const bool rebuildTree =
         cacheSceneId != sceneProject->id ||
         cacheStructureVersion != sceneProject->structureVersion ||
         cacheEntityCount != sceneProject->entities.size() ||
+        cacheRuntimeSignature != runtimeSignature ||
         cacheChildSignature != childSignature ||
         cacheBuildTime < 0.0 || (nowTime - cacheBuildTime) > 0.5;
 
@@ -2394,6 +2430,7 @@ void editor::Structure::show(){
         cacheSceneId = sceneProject->id;
         cacheStructureVersion = sceneProject->structureVersion;
         cacheEntityCount = sceneProject->entities.size();
+        cacheRuntimeSignature = runtimeSignature;
         cacheChildSignature = childSignature;
         cacheBuildTime = nowTime;
 

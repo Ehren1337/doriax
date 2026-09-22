@@ -14,6 +14,10 @@ editor::EntityNameCmd::EntityNameCmd(Project* project, uint32_t sceneId, Entity 
 
 bool editor::EntityNameCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
+    // A Play-created entity is gone after Stop, and naming it would recreate the id
+    if (!sceneProject || !sceneProject->scene->isEntityCreated(entity)){
+        return false;
+    }
 
     oldName = sceneProject->scene->getEntityName(entity);
     wasModified = project->getScene(sceneId)->isModified;
@@ -30,6 +34,9 @@ bool editor::EntityNameCmd::execute(){
 
 void editor::EntityNameCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene->isEntityCreated(entity)){
+        return;
+    }
 
     if (project->isEntityInBundle(sceneId, entity)){
         project->bundleNameChanged(sceneId, entity, oldName, false);
