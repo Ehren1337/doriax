@@ -323,6 +323,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("currentSceneName", &SceneManager::getCurrentSceneName)
         .addStaticProperty("loadPending", &SceneManager::isLoadPending)
         .addStaticFunction("clearAll", &SceneManager::clearAll)
+        .addStaticFunction("setScenePtr", &SceneManager::setScenePtr)
+        .addStaticFunction("getScenePtr", &SceneManager::getScenePtr)
+        .addStaticFunction("removeScenePtr", &SceneManager::removeScenePtr)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
