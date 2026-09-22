@@ -391,11 +391,11 @@ RayReturn Ray::intersects(const Body3D& body) const{
 
         JPH::ShapeRefC shapeRef = physicsSystem->getBodyInterface3D().GetShape(bodycomp.body);
 
-        JPH::Vec3 normal = shapeRef->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
-
-        size_t shapeIndex = shapeRef->GetSubShapeUserData(hit.mSubShapeID2);
-
         if (shapeRef->CastRay(ray, id_creator, hit)){
+            JPH::Vec3 normal = shapeRef->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
+
+            size_t shapeIndex = shapeRef->GetSubShapeUserData(hit.mSubShapeID2);
+
             return {true, hit.mFraction, getPoint(hit.mFraction), Vector3(normal.GetX(), normal.GetY(), normal.GetZ()), body.getEntity(), shapeIndex};
         }
     }
