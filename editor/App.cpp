@@ -1568,6 +1568,14 @@ void editor::App::show(){
         return;
     }
 
+    // Scripts ran in engineRender, so drop what they destroyed before any window reads the selection
+    for (SceneProject& sceneProject : project.getScenes()) {
+        const bool running = sceneProject.playState == ScenePlayState::PLAYING || sceneProject.playState == ScenePlayState::PAUSED;
+        if (running && sceneProject.scene) {
+            project.deselectDestroyedEntities(&sceneProject);
+        }
+    }
+
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
         if (resourcesWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;

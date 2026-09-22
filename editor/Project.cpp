@@ -4051,21 +4051,48 @@ void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<
     }
 }
 
-// Entities a script spawns while playing are not in the editor list, so without this they
-// stay alive after Stop: drawn in the viewport but missing from Structure and unpickable.
-void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
+// Authored, alive before Play, or foliage chunks that MeshSystem streams in while playing
+static std::set<Entity> getPlayKeptEntities(const editor::SceneProject* sceneProject) {
     Scene* scene = sceneProject->scene;
 
     std::set<Entity> keep = sceneProject->playStateEntities;
     keep.insert(sceneProject->entities.begin(), sceneProject->entities.end());
 
-    // Foliage chunks belong to MeshSystem and are streamed in while playing
     auto meshSystem = scene->getSystem<MeshSystem>();
     auto terrains = scene->getComponentArray<TerrainComponent>();
     for (size_t i = 0; i < terrains->size(); i++) {
         const std::vector<Entity> foliage = meshSystem->getFoliageEntities(terrains->getEntity(i));
         keep.insert(foliage.begin(), foliage.end());
     }
+
+    return keep;
+}
+
+// Engine cameras live in the system range, so only user entities count as made by the game
+std::vector<Entity> editor::Project::getPlayCreatedEntities(const SceneProject* sceneProject) const {
+    if (!sceneProject || !sceneProject->scene ||
+        (sceneProject->playState != ScenePlayState::PLAYING && sceneProject->playState != ScenePlayState::PAUSED)) {
+        return {};
+    }
+
+    const std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+
+    std::vector<Entity> created;
+    for (Entity entity : sceneProject->scene->getEntityList()) {
+        if (entity > EntityManager::lastSystemEntity() && keep.count(entity) == 0) {
+            created.push_back(entity);
+        }
+    }
+
+    return created;
+}
+
+// Entities a script spawns while playing are not in the editor list, so without this they
+// stay alive after Stop: drawn in the viewport but no longer reachable from the Structure.
+void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
+    Scene* scene = sceneProject->scene;
+
+    const std::set<Entity> keep = getPlayKeptEntities(sceneProject);
 
     for (Entity entity : scene->getEntityList()) {
         // an owner's removal can destroy other entities in this list
@@ -4148,6 +4175,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             }
 
             destroyPlayCreatedEntities(sceneProject);
+
+            deselectDestroyedEntities(sceneProject);
 
             // snapshot decode leaves camera-linked textures unresolved (no framebuffer)
             CameraTextureLink::resolve(sceneProject->scene);
@@ -5663,6 +5692,17 @@ bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
     }
 
     return false;
+}
+
+void editor::Project::deselectDestroyedEntities(SceneProject* sceneProject){
+    std::vector<Entity>& selected = sceneProject->selectedEntities;
+    auto destroyed = std::remove_if(selected.begin(), selected.end(), [sceneProject](Entity entity) {
+        return !sceneProject->scene->isEntityCreated(entity);
+    });
+    if (destroyed != selected.end()){
+        selected.erase(destroyed, selected.end());
+        sceneProject->needUpdateRender = true;
+    }
 }
 
 void editor::Project::clearSelectedEntities(uint32_t sceneId){
