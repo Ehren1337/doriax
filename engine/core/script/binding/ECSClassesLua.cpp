@@ -154,7 +154,6 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("removeInstancedMesh", &MeshSystem::removeInstancedMesh)
         .endClass();
 
-#if defined(DORIAX_PHYSICS_2D) || defined(DORIAX_PHYSICS_3D)
     luabridge::getGlobalNamespace(L)
         .beginClass<PhysicsSystem>("PhysicsSystem")
         .addProperty("gravity", (Vector3(PhysicsSystem::*)() const)&PhysicsSystem::getGravity, (void(PhysicsSystem::*)(Vector3))&PhysicsSystem::setGravity)
@@ -182,6 +181,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
 #endif
 #ifdef DORIAX_PHYSICS_3D
         .addProperty("lock3DBodies", &PhysicsSystem::isLock3DBodies, &PhysicsSystem::setLock3DBodies)
+        // True inside a contact callback, where a body can be moved but not created
         .addProperty("steppingWorld3D", &PhysicsSystem::isSteppingWorld3D)
         .addProperty("onBodyActivated3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onBodyActivated3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onBodyActivated3D = L; })
         .addProperty("onBodyDeactivated3D", [] (PhysicsSystem* self, lua_State* L) { return &self->onBodyDeactivated3D; }, [] (PhysicsSystem* self, lua_State* L) { self->onBodyDeactivated3D = L; })
@@ -195,10 +195,13 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("removeBody2D", &PhysicsSystem::removeBody2D)
         .addFunction("loadBody2D", &PhysicsSystem::loadBody2D)
         .addFunction("destroyBody2D", &PhysicsSystem::destroyBody2D)
+        //.addFunction("loadShape2D", &PhysicsSystem::loadShape2D) // has body2d components
         .addFunction("destroyShape2D", &PhysicsSystem::destroyShape2D)
         .addFunction("loadDistanceJoint2D", &PhysicsSystem::loadDistanceJoint2D)
         .addFunction("loadRevoluteJoint2D", &PhysicsSystem::loadRevoluteJoint2D)
         .addFunction("loadPrismaticJoint2D", &PhysicsSystem::loadPrismaticJoint2D)
+        //.addFunction("loadPulleyJoint2D", &PhysicsSystem::loadPulleyJoint2D)
+        //.addFunction("loadGearJoint2D", &PhysicsSystem::loadGearJoint2D)
         .addFunction("loadMouseJoint2D", &PhysicsSystem::loadMouseJoint2D)
         .addFunction("loadWheelJoint2D", &PhysicsSystem::loadWheelJoint2D)
         .addFunction("loadWeldJoint2D", &PhysicsSystem::loadWeldJoint2D)
@@ -210,6 +213,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("removeBody3D", &PhysicsSystem::removeBody3D)
         .addFunction("loadBody3D", &PhysicsSystem::loadBody3D)
         .addFunction("destroyBody3D", &PhysicsSystem::destroyBody3D)
+        //.addFunction("loadShape3D", &PhysicsSystem::loadShape3D) // has jolt components
         .addFunction("destroyShape3D", &PhysicsSystem::destroyShape3D)
         .addFunction("loadFixedJoint3D", &PhysicsSystem::loadFixedJoint3D)
         .addFunction("loadDistanceJoint3D", &PhysicsSystem::loadDistanceJoint3D)
@@ -229,14 +233,6 @@ void LuaBinding::registerECSClasses(lua_State *L){
             luabridge::overload<uint8_t, uint32_t, uint32_t>(&PhysicsSystem::addBroadPhaseLayer3D))
 #endif
         .endClass();
-#else
-    luabridge::getGlobalNamespace(L)
-        .beginClass<PhysicsSystem>("PhysicsSystem")
-        .addProperty("gravity", (Vector3(PhysicsSystem::*)() const)&PhysicsSystem::getGravity, (void(PhysicsSystem::*)(Vector3))&PhysicsSystem::setGravity)
-        .addProperty("gravity2D", (Vector2(PhysicsSystem::*)() const)&PhysicsSystem::getGravity2D, (void(PhysicsSystem::*)(Vector2))&PhysicsSystem::setGravity2D)
-        .addProperty("gravity3D", (Vector3(PhysicsSystem::*)() const)&PhysicsSystem::getGravity3D, (void(PhysicsSystem::*)(Vector3))&PhysicsSystem::setGravity3D)
-        .endClass();
-#endif
 
     luabridge::getGlobalNamespace(L)
         .beginClass<RenderSystem>("RenderSystem")

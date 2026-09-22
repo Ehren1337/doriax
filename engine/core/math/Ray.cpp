@@ -554,15 +554,13 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
     }else
 #endif
     if (raytest == RayFilter::BOUNDS){
-        // BOUNDS is a scene query over existing render bounds. Physics-only filters
-        // have no equivalent on MeshComponent and intentionally do not apply here.
+        // the physics-only filters have no equivalent on MeshComponent
         (void)onlyStatic;
         (void)categoryBits;
         (void)maskBits;
 
         RayReturn closest = NO_HIT;
         auto meshes = scene->getComponentArray<MeshComponent>();
-        if (!meshes) return closest;
 
         for (size_t i = 0; i < meshes->size(); i++){
             Entity entity = meshes->getEntity(i);
@@ -570,10 +568,10 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
                 continue;
             }
 
-            MeshComponent* mesh = meshes->findComponentFromIndex(i);
-            if (!mesh || mesh->worldAABB.isNull()) continue;
+            MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            if (mesh.worldAABB.isNull()) continue;
 
-            RayReturn hit = intersects(mesh->worldAABB);
+            RayReturn hit = intersects(mesh.worldAABB);
             if (hit && (!closest || hit.distance < closest.distance)){
                 hit.body = entity; // For BOUNDS, body stores the hit render entity.
                 closest = hit;

@@ -9,6 +9,14 @@ endif()
 option(DORIAX_PHYSICS_2D "Enable Box2D-based 2D physics" ON)
 option(DORIAX_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
 
+set(DORIAX_PHYSICS_LIBS "")
+if(DORIAX_PHYSICS_2D)
+    list(APPEND DORIAX_PHYSICS_LIBS box2d)
+endif()
+if(DORIAX_PHYSICS_3D)
+    list(APPEND DORIAX_PHYSICS_LIBS joltphysics)
+endif()
+
 # =============================================================
 # STANDALONE PROJECT SETUP
 # Only runs when this file is used as the top-level build
@@ -718,12 +726,9 @@ add_subdirectory(libs/soloud)
 add_subdirectory(libs/tinyobjloader)
 add_subdirectory(libs/tinygltf)
 add_subdirectory(libs/tinyxml2)
-if(DORIAX_PHYSICS_2D)
-    add_subdirectory(libs/box2d)
-endif()
-if(DORIAX_PHYSICS_3D)
-    add_subdirectory(libs/joltphysics)
-endif()
+foreach(lib IN LISTS DORIAX_PHYSICS_LIBS)
+    add_subdirectory(libs/${lib})
+endforeach()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
@@ -737,15 +742,9 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer)
+    harfbuzz sheenbidi meshoptimizer ${DORIAX_PHYSICS_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
-if(DORIAX_PHYSICS_2D)
-    target_compile_options(box2d PRIVATE ${EXTERNAL_WARNING_FLAG})
-endif()
-if(DORIAX_PHYSICS_3D)
-    target_compile_options(joltphysics PRIVATE ${EXTERNAL_WARNING_FLAG})
-endif()
 
 if(DEFINED NO_LUA_INIT)
     add_definitions("-DNO_LUA_INIT=${NO_LUA_INIT}")
@@ -868,6 +867,7 @@ set(DORIAX_SRCS
     core/subsystem/ActionSystem.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
+    core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
     core/texture/Framebuffer.cpp
@@ -884,12 +884,6 @@ set(DORIAX_SRCS
     core/util/UniqueToken.cpp
     core/util/XMLUtils.cpp
 )
-
-if(DORIAX_PHYSICS_2D OR DORIAX_PHYSICS_3D)
-    list(APPEND DORIAX_SRCS core/subsystem/PhysicsSystem.cpp)
-else()
-    list(APPEND DORIAX_SRCS core/subsystem/PhysicsSystemDisabled.cpp)
-endif()
 
 if(DORIAX_PHYSICS_2D)
     list(APPEND DORIAX_SRCS
@@ -948,13 +942,8 @@ target_link_libraries(
     PUBLIC
 
     sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer
+    ${DORIAX_PHYSICS_LIBS}
 )
-if(DORIAX_PHYSICS_2D)
-    target_link_libraries(doriax PUBLIC box2d)
-endif()
-if(DORIAX_PHYSICS_3D)
-    target_link_libraries(doriax PUBLIC joltphysics)
-endif()
 
 # Checked after the marker above, so the value the Exporter injects is validated too
 if(NOT DORIAX_CXX_STANDARD IN_LIST DORIAX_CXX_STANDARDS)

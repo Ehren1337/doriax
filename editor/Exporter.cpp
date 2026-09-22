@@ -1386,6 +1386,35 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
             }
 
+            // A disabled backend drops its components from the generated sources, and
+            // the export would otherwise succeed with the bodies silently gone.
+            std::string dropped2D;
+            std::string dropped3D;
+            for (size_t i = 0; i < scenes.size(); i++) {
+                Scene* scene = scenes[i].scene;
+                if (!scene) {
+                    continue;
+                }
+                if (!project->isPhysics2DEnabled()
+                        && (scene->getComponentArray<Body2DComponent>()->size() > 0
+                            || scene->getComponentArray<Joint2DComponent>()->size() > 0)) {
+                    if (!dropped2D.empty()) dropped2D += ", ";
+                    dropped2D += scenes[i].name;
+                }
+                if (!project->isPhysics3DEnabled()
+                        && (scene->getComponentArray<Body3DComponent>()->size() > 0
+                            || scene->getComponentArray<Joint3DComponent>()->size() > 0)) {
+                    if (!dropped3D.empty()) dropped3D += ", ";
+                    dropped3D += scenes[i].name;
+                }
+            }
+            if (!dropped2D.empty()) {
+                Out::warning("2D Physics is off, so Box2D bodies and joints are left out of the export. Scenes using them: %s", dropped2D.c_str());
+            }
+            if (!dropped3D.empty()) {
+                Out::warning("3D Physics is off, so Jolt bodies and joints are left out of the export. Scenes using them: %s", dropped3D.c_str());
+            }
+
             // Unload all scenes that were not loaded before export
             for (uint32_t sceneId : temporarilyLoaded) {
                 SceneProject* sp = project->getScene(sceneId);
@@ -2527,9 +2556,8 @@ bool editor::Exporter::writeAppleProjectSettings() {
     std::string xcodeProject;
     if (!readText(projectFile, xcodeProject)) return false;
 
-    // The Apple workspace builds the engine from an explicit Xcode file list,
-    // not through engine/CMakeLists.txt. Mirror the project physics switches so
-    // disabled backends are neither compiled nor linked there either.
+    // This workspace builds the engine from its own file list, not engine/CMakeLists.txt,
+    // so the physics switches have to be mirrored here too.
     auto removeProjectLinesContaining = [&](const std::string& needle) {
         size_t match = 0;
         while ((match = xcodeProject.find(needle, match)) != std::string::npos) {
@@ -2583,32 +2611,76 @@ bool editor::Exporter::writeAppleProjectSettings() {
         return true;
     };
 
+    // Object ids drift whenever the workspace is edited in Xcode, so they are looked
+    // up through the names Xcode keeps in the trailing comments.
+    auto leadingObjectId = [](const std::string& line) {
+        const size_t idStart = line.find_first_not_of(" \t");
+        if (idStart == std::string::npos) return std::string();
+        const size_t idEnd = line.find(' ', idStart);
+        if (idEnd == std::string::npos) return std::string();
+        return line.substr(idStart, idEnd - idStart);
+    };
+    auto collectBackendObjectIds = [&](const std::string& backendTarget) {
+        // "<id> /* libjoltphysics-macos.a in Frameworks */ = {isa = PBXBuildFile; ...}"
+        const std::string libraryComment = "/* lib" + backendTarget + "-";
+        // "target = <id> /* joltphysics-macos */;" inside a PBXTargetDependency object
+        const std::string targetComment = "/* " + backendTarget + "-";
+
+        std::vector<std::string> ids;
+        std::string pendingDependencyId;
+        size_t lineStart = 0;
+        while (lineStart < xcodeProject.size()) {
+            size_t lineEnd = xcodeProject.find('\n', lineStart);
+            if (lineEnd == std::string::npos) lineEnd = xcodeProject.size();
+            const std::string line = xcodeProject.substr(lineStart, lineEnd - lineStart);
+            lineStart = lineEnd + 1;
+
+            if (line.find(libraryComment) != std::string::npos
+                && line.find(".a in Frameworks */ = {isa = PBXBuildFile;") != std::string::npos) {
+                const std::string id = leadingObjectId(line);
+                if (!id.empty()) ids.push_back(id);
+                continue;
+            }
+            if (line.find("/* PBXTargetDependency */ = {") != std::string::npos) {
+                pendingDependencyId = leadingObjectId(line);
+                continue;
+            }
+            if (pendingDependencyId.empty()) continue;
+            if (line.find("target = ") != std::string::npos && line.find(targetComment) != std::string::npos) {
+                ids.push_back(pendingDependencyId);
+                pendingDependencyId.clear();
+            } else if (line.find("};") != std::string::npos) {
+                pendingDependencyId.clear();
+            }
+        }
+        return ids;
+    };
+    auto unlinkBackend = [&](const std::string& backendTarget) {
+        const std::vector<std::string> ids = collectBackendObjectIds(backendTarget);
+        if (ids.empty()) {
+            setError("Apple export template has no " + backendTarget + " link or dependency entries to remove");
+            return false;
+        }
+        for (const std::string& id : ids) {
+            if (!removeProjectEntriesWithId(id)) return false;
+        }
+        return true;
+    };
+
     std::vector<std::string> excludedPhysicsSources;
     if (!project->isPhysics2DEnabled()) {
         removeProjectLinesContaining("DORIAX_PHYSICS_2D,");
         excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
             "Body2D.cpp", "Contact2D.cpp", "Joint2D.cpp", "Manifold2D.cpp"
         });
-        for (const char* id : {"71E8247F2A9C22E100C8E6F2", "71E824822A9C235A00C8E6F2",
-                               "71E8247E2A9C22D000C8E6F2", "71E824812A9C22F100C8E6F2"}) {
-            if (!removeProjectEntriesWithId(id)) return false;
-        }
+        if (!unlinkBackend("box2d")) return false;
     }
     if (!project->isPhysics3DEnabled()) {
         removeProjectLinesContaining("DORIAX_PHYSICS_3D,");
         excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
             "Body3D.cpp", "CollideShapeResult3D.cpp", "Contact3D.cpp", "Joint3D.cpp"
         });
-        for (const char* id : {"7105CEAA2AD62363007C91BA", "7105CEAD2AD62381007C91BA",
-                               "7105CEA92AD62350007C91BA", "7105CEAC2AD62376007C91BA"}) {
-            if (!removeProjectEntriesWithId(id)) return false;
-        }
-    }
-
-    if (project->isPhysics2DEnabled() || project->isPhysics3DEnabled()) {
-        excludedPhysicsSources.push_back("PhysicsSystemDisabled.cpp");
-    } else {
-        excludedPhysicsSources.push_back("PhysicsSystem.cpp");
+        if (!unlinkBackend("joltphysics")) return false;
     }
 
     std::string excludedSources;
@@ -2616,9 +2688,10 @@ bool editor::Exporter::writeAppleProjectSettings() {
         if (!excludedSources.empty()) excludedSources += " ";
         excludedSources += source;
     }
-    replaceAll(xcodeProject,
-        "EXCLUDED_SOURCE_FILE_NAMES = PhysicsSystemDisabled.cpp;",
-        "EXCLUDED_SOURCE_FILE_NAMES = \"" + excludedSources + "\";");
+    if (!excludedSources.empty()) {
+        replaceAll(xcodeProject, "EXCLUDED_SOURCE_FILE_NAMES = \"\";",
+            "EXCLUDED_SOURCE_FILE_NAMES = \"" + excludedSources + "\";");
+    }
 
     size_t blockStart = 0;
     while ((blockStart = xcodeProject.find("buildSettings = {", blockStart)) != std::string::npos) {

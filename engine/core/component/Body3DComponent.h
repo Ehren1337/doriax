@@ -42,14 +42,15 @@ namespace doriax{
         LINEAR_CAST
     };
 
-    enum class Body3DAllowedDOF : uint8_t{
-        TRANSLATION_X = 1 << 0,
-        TRANSLATION_Y = 1 << 1,
-        TRANSLATION_Z = 1 << 2,
-        ROTATION_X = 1 << 3,
-        ROTATION_Y = 1 << 4,
-        ROTATION_Z = 1 << 5,
-        ALL = 0x3F
+    // Same bits as JPH::EAllowedDOFs, so the backend takes them with a plain cast.
+    enum Body3DAllowedDOFFlags : uint8_t {
+        Body3DAllowedDOF_TranslationX = 1 << 0,
+        Body3DAllowedDOF_TranslationY = 1 << 1,
+        Body3DAllowedDOF_TranslationZ = 1 << 2,
+        Body3DAllowedDOF_RotationX    = 1 << 3,
+        Body3DAllowedDOF_RotationY    = 1 << 4,
+        Body3DAllowedDOF_RotationZ    = 1 << 5,
+        Body3DAllowedDOF_All          = 0x3F
     };
 
     struct DORIAX_API Shape3D{
@@ -101,11 +102,7 @@ namespace doriax{
         BodyType type = BodyType::STATIC;
         Body3DMotionQuality motionQuality = Body3DMotionQuality::DISCRETE;
         float gravityFactor = 1.0f;
-#ifdef DORIAX_PHYSICS_3D
-        JPH::EAllowedDOFs allowedDOFs = JPH::EAllowedDOFs::All;
-#else
-        uint8_t allowedDOFs = static_cast<uint8_t>(Body3DAllowedDOF::ALL);
-#endif
+        uint8_t allowedDOFs = Body3DAllowedDOF_All;
         bool sensor = false;
         bool newBody = true;
         Vector3 loadedScale = Vector3::UNIT_SCALE;

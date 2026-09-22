@@ -225,9 +225,6 @@ float PhysicsSystem::maxScaleXYZ(const Vector3& scale){
     return std::max(scale.x, std::max(scale.y, scale.z));
 }
 
-#endif
-
-#ifdef DORIAX_PHYSICS_3D
 JPH::Quat PhysicsSystem::toValidatedJoltRotation(const Quaternion& rotation, Entity entity, int shapeIndex){
     const double w = rotation.w;
     const double x = rotation.x;
@@ -311,9 +308,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     this->gravity3D = settingsDefaults.gravity3D;
 #ifdef DORIAX_PHYSICS_2D
     this->pointsToMeterScale2D = 64.0;
-#endif
 
-#ifdef DORIAX_PHYSICS_2D
     // The Box2D world is created lazily (see ensureWorld2D): Box2D's global b2_worlds[] pool is
     // capped at B2_MAX_WORLDS (128) and is not thread-safe. Editor preview/thumbnail/gizmo scenes
     // (and pure-3D scenes) have no 2D bodies, so they must not consume a world slot.
@@ -1315,7 +1310,7 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, Body3DComponent& body, 
     settings.mMotionQuality = getBody3DMotionQualityToJolt(body.motionQuality);
     settings.mIsSensor = body.sensor;
     settings.mGravityFactor = body.gravityFactor;
-    settings.mAllowedDOFs = body.allowedDOFs;
+    settings.mAllowedDOFs = static_cast<JPH::EAllowedDOFs>(body.allowedDOFs);
 
     JPH::BodyInterface &body_interface = getBodyInterface3D();
 
@@ -1411,9 +1406,6 @@ b2BodyId PhysicsSystem::getBody(Entity entity){
     return b2_nullBodyId;
 }
 
-#endif
-
-#ifdef DORIAX_PHYSICS_2D
 bool PhysicsSystem::loadBody2D(Entity entity){
     ensureWorld2D();
     if (!b2World_IsValid(world2D)){

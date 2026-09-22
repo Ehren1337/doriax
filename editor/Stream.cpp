@@ -2134,8 +2134,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setCxxStandard(node["cxxStandard"].as<int>());
     }
 
-    // Old projects carry no physics keys: both backends default ON, which is how
-    // pre-settings projects must load.
+    // A project from before the setting has no key and loads with both backends on.
     if (node["physics2D"]) {
         project->setPhysics2DEnabled(node["physics2D"].as<bool>());
     }
@@ -6473,17 +6472,17 @@ YAML::Node editor::Stream::encodeBody3DComponent(const Body3DComponent& body) {
     node["sensor"] = body.sensor;
     node["gravityFactor"] = body.gravityFactor;
 
-    // Six booleans instead of the runtime bit value, so the file stays readable.
+    // Six booleans instead of the bit mask, so the file stays readable.
     YAML::Node dofsNode;
     auto dof = [&](const char* name, uint8_t bit) {
-        dofsNode[name] = (static_cast<uint8_t>(body.allowedDOFs) & bit) != 0;
+        dofsNode[name] = (body.allowedDOFs & bit) != 0;
     };
-    dof("translationX", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_X));
-    dof("translationY", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_Y));
-    dof("translationZ", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_Z));
-    dof("rotationX", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_X));
-    dof("rotationY", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_Y));
-    dof("rotationZ", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_Z));
+    dof("translationX", Body3DAllowedDOF_TranslationX);
+    dof("translationY", Body3DAllowedDOF_TranslationY);
+    dof("translationZ", Body3DAllowedDOF_TranslationZ);
+    dof("rotationX", Body3DAllowedDOF_RotationX);
+    dof("rotationY", Body3DAllowedDOF_RotationY);
+    dof("rotationZ", Body3DAllowedDOF_RotationZ);
     node["allowedDOFs"] = dofsNode;
 
     node["numShapes"] = static_cast<unsigned int>(body.numShapes);
@@ -6552,16 +6551,15 @@ Body3DComponent editor::Stream::decodeBody3DComponent(const YAML::Node& node, co
         auto dof = [&](const char* name, uint8_t bit) {
             if (dofsNode[name] && dofsNode[name].as<bool>()) dofs |= bit;
         };
-        dof("translationX", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_X));
-        dof("translationY", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_Y));
-        dof("translationZ", static_cast<uint8_t>(Body3DAllowedDOF::TRANSLATION_Z));
-        dof("rotationX", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_X));
-        dof("rotationY", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_Y));
-        dof("rotationZ", static_cast<uint8_t>(Body3DAllowedDOF::ROTATION_Z));
+        dof("translationX", Body3DAllowedDOF_TranslationX);
+        dof("translationY", Body3DAllowedDOF_TranslationY);
+        dof("translationZ", Body3DAllowedDOF_TranslationZ);
+        dof("rotationX", Body3DAllowedDOF_RotationX);
+        dof("rotationY", Body3DAllowedDOF_RotationY);
+        dof("rotationZ", Body3DAllowedDOF_RotationZ);
         // None crashes Jolt on body creation, and a static body is how you freeze
         // everything, so an all-false map falls back to All.
-        const uint8_t allowedDOFs = dofs == 0 ? static_cast<uint8_t>(Body3DAllowedDOF::ALL) : dofs;
-        body.allowedDOFs = static_cast<decltype(body.allowedDOFs)>(allowedDOFs);
+        body.allowedDOFs = dofs == 0 ? Body3DAllowedDOF_All : dofs;
     }
 
     if (node["numShapes"]) body.numShapes = node["numShapes"].as<unsigned int>();

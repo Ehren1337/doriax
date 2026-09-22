@@ -4,10 +4,6 @@
 #ifndef BODY3D_H
 #define BODY3D_H
 
-// Backend-only public API. This header is available only when the Jolt
-// backend is enabled with DORIAX_PHYSICS_3D.
-#ifdef DORIAX_PHYSICS_3D
-
 #include "EntityHandle.h"
 #include "math/Vector2.h"
 #include "component/Body3DComponent.h"
@@ -161,5 +157,4 @@ namespace doriax{
     };
 }
 
-#endif // DORIAX_PHYSICS_3D
 #endif //BODY3D_H

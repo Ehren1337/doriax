@@ -810,7 +810,7 @@ std::string editor::Generator::getEditorPluginAbiCheck() {
     return cmakeContent;
 }
 
-void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, bool physics2DEnabled, bool physics3DEnabled) {
+void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::BundleSceneInfo>& bundles, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard) {
     fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
     fs::path engineApiRelativePath = relativeInternalPath / "engine-api";
 
@@ -951,22 +951,15 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "# Build mode: when ON, build as Doriax Editor plugin (shared library)\n";
     cmakeContent += "option(DORIAX_EDITOR_PLUGIN \"Build as Doriax Editor plugin\" OFF)\n";
 
-    // Play plugins link the editor's engine library and must match its physics ABI.
-    // Exported projects rebuild the engine and use the project's physics settings.
-    cmakeContent += "if(DORIAX_EDITOR_PLUGIN)\n";
+    // Both modes link the engine library beside the editor, so both must match the
+    // macros it was built with: they change Body2DComponent/Body3DComponent layouts.
+    // The project's own setting belongs to the export, which rebuilds the engine.
 #ifdef DORIAX_PHYSICS_2D
-    cmakeContent += "    add_compile_definitions(DORIAX_PHYSICS_2D)\n";
+    cmakeContent += "add_compile_definitions(DORIAX_PHYSICS_2D)\n";
 #endif
 #ifdef DORIAX_PHYSICS_3D
-    cmakeContent += "    add_compile_definitions(DORIAX_PHYSICS_3D)\n";
+    cmakeContent += "add_compile_definitions(DORIAX_PHYSICS_3D)\n";
 #endif
-    cmakeContent += "endif()\n";
-    if (physics2DEnabled || physics3DEnabled) {
-        cmakeContent += "if(NOT DORIAX_EDITOR_PLUGIN)\n";
-        if (physics2DEnabled) cmakeContent += "    add_compile_definitions(DORIAX_PHYSICS_2D)\n";
-        if (physics3DEnabled) cmakeContent += "    add_compile_definitions(DORIAX_PHYSICS_3D)\n";
-        cmakeContent += "endif()\n";
-    }
     cmakeContent += "\n";
 
     cmakeContent += getEditorPluginAbiCheck();
@@ -1055,26 +1048,16 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += ")\n\n";
 
 #if defined(DORIAX_PHYSICS_2D) || defined(DORIAX_PHYSICS_3D)
-    cmakeContent += "if(DORIAX_EDITOR_PLUGIN)\n";
-    cmakeContent += "    target_include_directories(" + libName + " ${DORIAX_LIB_SYSTEM} PRIVATE\n";
+    // Same reason as the definitions above: these back the linked library's layouts.
+    cmakeContent += "target_include_directories(" + libName + " ${DORIAX_LIB_SYSTEM} PRIVATE\n";
 #ifdef DORIAX_PHYSICS_2D
-    cmakeContent += "        " + engineApiPathStr + "/libs/box2d/include\n";
+    cmakeContent += "    " + engineApiPathStr + "/libs/box2d/include\n";
 #endif
 #ifdef DORIAX_PHYSICS_3D
-    cmakeContent += "        " + engineApiPathStr + "/libs/joltphysics\n";
+    cmakeContent += "    " + engineApiPathStr + "/libs/joltphysics\n";
 #endif
-    cmakeContent += "    )\n";
-    cmakeContent += "endif()\n";
+    cmakeContent += ")\n\n";
 #endif
-    if (physics2DEnabled || physics3DEnabled) {
-        cmakeContent += "if(NOT DORIAX_EDITOR_PLUGIN)\n";
-        cmakeContent += "    target_include_directories(" + libName + " ${DORIAX_LIB_SYSTEM} PRIVATE\n";
-        if (physics2DEnabled) cmakeContent += "        " + engineApiPathStr + "/libs/box2d/include\n";
-        if (physics3DEnabled) cmakeContent += "        " + engineApiPathStr + "/libs/joltphysics\n";
-        cmakeContent += "    )\n";
-        cmakeContent += "endif()\n";
-    }
-    cmakeContent += "\n";
 
     cmakeContent += "# libdoriax is searched in DORIAX_LIB_DIR; by default it points to the Doriax editor\n";
     cmakeContent += "# executable directory, which differs per machine and so comes from LocalPaths.cmake.\n";
@@ -1288,6 +1271,10 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "## Build modes\n\n";
     agentsContent += "- **Editor mode** (`DORIAX_EDITOR_PLUGIN=ON`): builds as a shared library; `main.cpp` and Factory-generated scene sources are excluded. Used by the editor to hot-reload the project.\n";
     agentsContent += "- **Standalone mode** (`DORIAX_EDITOR_PLUGIN=OFF`, default): builds as an executable; includes `main.cpp` and all Factory sources. This standalone build is for local testing only — production distribution uses the editor's separate export pipeline.\n";
+
+    agentsContent += "\nBoth modes link the engine library beside the editor, always built with Box2D and Jolt, so `Body2D` and `Body3D` work in either. "
+                     "Project Settings > Build > 2D/3D Physics (`physics2D`/`physics3D` in `project.yaml`) applies to the export, which rebuilds the engine without the disabled backend. "
+                     "Scene sources and any code that must survive it guard on `DORIAX_PHYSICS_2D`/`DORIAX_PHYSICS_3D`; `RayFilter::BOUNDS` is a ray cast that needs neither.\n";
     agentsContent += "\n" + agentsEnd;
 
     // Only replace our marked section. Unmarked files may contain user edits,
@@ -1427,7 +1414,7 @@ void editor::Generator::clearSceneSource(const std::string& sceneName, const fs:
     }
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, bool physics2DEnabled, bool physics3DEnabled, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -1626,7 +1613,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     const fs::path mainFile = generatedPath / "main.cpp";
     FileUtils::writeIfChanged(mainFile, mainContent);
 
-    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard, physics2DEnabled, physics3DEnabled);
+    writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, bundles, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard);
 }
 
 std::string editor::Generator::resolveCMakePath(const std::string& userPath) {

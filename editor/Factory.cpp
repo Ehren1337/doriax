@@ -763,6 +763,14 @@ void editor::Factory::addComponentCode(std::ostringstream& code, const std::stri
     }
 }
 
+// A disabled backend never registers its components, so adding one would throw. The
+// same sources feed the standalone build and the export, which disagree on what is
+// enabled, so the choice has to survive until compile time.
+std::string editor::Factory::guardPhysicsCode(const std::string& code, const char* backendMacro) {
+    if (code.empty()) return code;
+    return "#ifdef " + std::string(backendMacro) + "\n" + code + "#endif // " + backendMacro + "\n";
+}
+
 std::string editor::Factory::createTransform(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool skipParent, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<Transform>(entity)) return "";
     Transform& transform = scene->getComponent<Transform>(entity);
@@ -1737,8 +1745,7 @@ std::string editor::Factory::createBody3DComponent(int indentSpaces, EntityRegis
     code << ind << "body3d.sensor = " << formatBool(body.sensor) << ";\n";
     code << ind << "body3d.gravityFactor = " << formatFloat(body.gravityFactor) << ";\n";
     // The bit mask, rather than six OR'd enumerators in the generated source.
-    code << ind << "body3d.allowedDOFs = static_cast<decltype(body3d.allowedDOFs)>("
-         << static_cast<unsigned int>(body.allowedDOFs) << ");\n";
+    code << ind << "body3d.allowedDOFs = " << static_cast<unsigned int>(body.allowedDOFs) << ";\n";
     code << ind << "body3d.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";
     code << ind << "body3d.needUpdateShapes = " << formatBool(body.needUpdateShapes) << ";\n";
     code << ind << "body3d.newBody = " << formatBool(body.newBody) << ";\n";
@@ -2200,10 +2207,10 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::SoundComponent: return createSoundComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::SkyComponent: return createSkyComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::Body2DComponent: return createBody2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::Body3DComponent: return createBody3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::Joint2DComponent: return createJoint2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::Joint3DComponent: return createJoint3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::Body2DComponent: return guardPhysicsCode(createBody2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "DORIAX_PHYSICS_2D");
+        case ComponentType::Body3DComponent: return guardPhysicsCode(createBody3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "DORIAX_PHYSICS_3D");
+        case ComponentType::Joint2DComponent: return guardPhysicsCode(createJoint2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "DORIAX_PHYSICS_2D");
+        case ComponentType::Joint3DComponent: return guardPhysicsCode(createJoint3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "DORIAX_PHYSICS_3D");
         case ComponentType::ActionComponent: return createActionComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TimedActionComponent: return createTimedActionComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PositionActionComponent: return createPositionActionComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

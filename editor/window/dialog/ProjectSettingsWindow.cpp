@@ -1238,13 +1238,13 @@ void ProjectSettingsWindow::drawBuildSettings() {
             m_physics2DEnabled = Project::defaultPhysics2DEnabled;
         }
         ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
-        endSettingsRow("Box2D-based 2D physics. When off, Box2D is not compiled or linked into exported builds.");
+        endSettingsRow("Box2D-based 2D physics. When off, Box2D is left out of exported builds, along with any 2D bodies and joints the scenes still use. Play always runs with both backends available.");
 
         if (beginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
             m_physics3DEnabled = Project::defaultPhysics3DEnabled;
         }
         ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
-        endSettingsRow("Jolt-based 3D physics. When off, Jolt is not compiled or linked into exported builds.");
+        endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any 3D bodies and joints the scenes still use. Play always runs with both backends available.");
 
         drawComboSetting("C++ Standard", "##CxxStandard", cxxStandardNames, cxxStandardCount, m_cxxStandardIndex,
             findCxxStandardIndex(Project::defaultCxxStandard),

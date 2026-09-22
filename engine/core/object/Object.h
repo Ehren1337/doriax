@@ -77,13 +77,10 @@ namespace doriax{
 
         void updateTransform();
 
-        // 2D physics
 #ifdef DORIAX_PHYSICS_2D
         Body2D getBody2D();
         void removeBody2D();
 #endif
-
-        // 3D physics
 #ifdef DORIAX_PHYSICS_3D
         Body3D getBody3D();
         void removeBody3D();

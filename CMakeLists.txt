@@ -439,7 +439,7 @@ include_directories (${SHADERCOMPILER_ROOT}/src)
 
 add_subdirectory(${DORIAX_ROOT})
 
-# The engine declares the physics options, including their defaults.
+# The physics options come from the engine, so these follow its add_subdirectory.
 if(DORIAX_PHYSICS_2D)
     include_directories (SYSTEM ${DORIAX_ROOT}/libs/box2d/include)
 endif()

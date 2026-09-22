@@ -26,6 +26,9 @@ namespace doriax {
     enum class RayFilter{
         BODY_2D,
         BODY_3D,
+        // MeshComponent::worldAABB, so it needs no physics backend. Coarser than a
+        // collider cast, covers meshes and anything built on one, and ignores the
+        // onlyStatic/categoryBits/maskBits arguments.
         BOUNDS
     };
 

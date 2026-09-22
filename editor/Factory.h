@@ -101,6 +101,7 @@ namespace doriax::editor{
 
         static std::string beginHeapComponentCode(std::ostringstream& code, const std::string& ind, const std::string& componentType, const std::string& varName);
         static void addComponentCode(std::ostringstream& code, const std::string& ind, const std::string& sceneName, const std::string& entityName, Entity entity, const std::string& componentType, const std::string& varName, bool assignExisting = false);
+        static std::string guardPhysicsCode(const std::string& code, const char* backendMacro);
 
     public:
         Factory();
