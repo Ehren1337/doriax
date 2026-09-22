@@ -145,3 +145,4 @@ namespace doriax::editor {
         std::future<void> cancelBuild();
     };
 }
+

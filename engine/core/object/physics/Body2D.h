@@ -4,6 +4,10 @@
 #ifndef BODY2D_H
 #define BODY2D_H
 
+#ifndef DORIAX_PHYSICS_2D
+#error "Body2D needs 2D Physics, enabled in Project Settings > Build"
+#endif
+
 #include "EntityHandle.h"
 #include "math/Vector2.h"
 #include "component/Body2DComponent.h"

@@ -16,20 +16,13 @@
 namespace doriax {
 
     class Scene;
-#ifdef DORIAX_PHYSICS_2D
     class Body2D;
-#endif
-#ifdef DORIAX_PHYSICS_3D
     class Body3D;
-#endif
 
     enum class RayFilter{
         BODY_2D,
         BODY_3D,
-        // MeshComponent::worldAABB, so it needs no physics backend. Coarser than a
-        // collider cast, covers meshes and anything built on one, and ignores the
-        // onlyStatic/categoryBits/maskBits arguments.
-        BOUNDS
+        BOUNDS // mesh world AABBs, needs no physics backend; ignores onlyStatic and the collision bits
     };
 
     struct RayReturn{

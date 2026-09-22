@@ -4,9 +4,7 @@
 #include "Object.h"
 
 #include "subsystem/RenderSystem.h"
-#if defined(DORIAX_PHYSICS_2D) || defined(DORIAX_PHYSICS_3D)
 #include "subsystem/PhysicsSystem.h"
-#endif
 
 using namespace doriax;
 

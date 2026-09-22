@@ -9,14 +9,6 @@ endif()
 option(DORIAX_PHYSICS_2D "Enable Box2D-based 2D physics" ON)
 option(DORIAX_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
 
-set(DORIAX_PHYSICS_LIBS "")
-if(DORIAX_PHYSICS_2D)
-    list(APPEND DORIAX_PHYSICS_LIBS box2d)
-endif()
-if(DORIAX_PHYSICS_3D)
-    list(APPEND DORIAX_PHYSICS_LIBS joltphysics)
-endif()
-
 # =============================================================
 # STANDALONE PROJECT SETUP
 # Only runs when this file is used as the top-level build
@@ -709,12 +701,18 @@ include_directories(SYSTEM libs/soloud/include)
 include_directories(SYSTEM libs/tinyobjloader)
 include_directories(SYSTEM libs/tinygltf)
 include_directories(SYSTEM libs/tinyxml2)
+
+# Built after the standalone block, so it sees the physics switches the Exporter injects there
+set(DORIAX_PHYSICS_LIBS "")
 if(DORIAX_PHYSICS_2D)
+    list(APPEND DORIAX_PHYSICS_LIBS box2d)
     include_directories(SYSTEM libs/box2d/include)
 endif()
 if(DORIAX_PHYSICS_3D)
+    list(APPEND DORIAX_PHYSICS_LIBS joltphysics)
     include_directories(SYSTEM libs/joltphysics)
 endif()
+
 include_directories(SYSTEM libs/harfbuzz)
 include_directories(SYSTEM libs/sheenbidi/Headers)
 include_directories(SYSTEM libs/meshoptimizer)

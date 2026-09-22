@@ -763,9 +763,7 @@ void editor::Factory::addComponentCode(std::ostringstream& code, const std::stri
     }
 }
 
-// A disabled backend never registers its components, so adding one would throw. The
-// same sources feed the standalone build and the export, which disagree on what is
-// enabled, so the choice has to survive until compile time.
+// Exports can drop a physics backend, whose components are then never registered
 std::string editor::Factory::guardPhysicsCode(const std::string& code, const char* backendMacro) {
     if (code.empty()) return code;
     return "#ifdef " + std::string(backendMacro) + "\n" + code + "#endif // " + backendMacro + "\n";

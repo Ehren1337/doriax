@@ -1386,33 +1386,27 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
             }
 
-            // A disabled backend drops its components from the generated sources, and
-            // the export would otherwise succeed with the bodies silently gone.
-            std::string dropped2D;
-            std::string dropped3D;
-            for (size_t i = 0; i < scenes.size(); i++) {
-                Scene* scene = scenes[i].scene;
-                if (!scene) {
-                    continue;
+            // A disabled backend silently drops its components from the generated sources
+            auto warnDroppedPhysics = [&](const char* backend, auto usesBackend) {
+                std::string names;
+                for (const auto& sceneProject : scenes) {
+                    if (sceneProject.scene && usesBackend(sceneProject.scene)) {
+                        names += (names.empty() ? "" : ", ") + sceneProject.name;
+                    }
                 }
-                if (!project->isPhysics2DEnabled()
-                        && (scene->getComponentArray<Body2DComponent>()->size() > 0
-                            || scene->getComponentArray<Joint2DComponent>()->size() > 0)) {
-                    if (!dropped2D.empty()) dropped2D += ", ";
-                    dropped2D += scenes[i].name;
+                if (!names.empty()) {
+                    Out::warning("%s Physics is off, so its bodies and joints are left out of the export. Scenes using them: %s", backend, names.c_str());
                 }
-                if (!project->isPhysics3DEnabled()
-                        && (scene->getComponentArray<Body3DComponent>()->size() > 0
-                            || scene->getComponentArray<Joint3DComponent>()->size() > 0)) {
-                    if (!dropped3D.empty()) dropped3D += ", ";
-                    dropped3D += scenes[i].name;
-                }
+            };
+            if (!project->isPhysics2DEnabled()) {
+                warnDroppedPhysics("2D", [](Scene* scene) {
+                    return scene->getComponentArray<Body2DComponent>()->size() > 0 || scene->getComponentArray<Joint2DComponent>()->size() > 0;
+                });
             }
-            if (!dropped2D.empty()) {
-                Out::warning("2D Physics is off, so Box2D bodies and joints are left out of the export. Scenes using them: %s", dropped2D.c_str());
-            }
-            if (!dropped3D.empty()) {
-                Out::warning("3D Physics is off, so Jolt bodies and joints are left out of the export. Scenes using them: %s", dropped3D.c_str());
+            if (!project->isPhysics3DEnabled()) {
+                warnDroppedPhysics("3D", [](Scene* scene) {
+                    return scene->getComponentArray<Body3DComponent>()->size() > 0 || scene->getComponentArray<Joint3DComponent>()->size() > 0;
+                });
             }
 
             // Unload all scenes that were not loaded before export
@@ -2070,8 +2064,6 @@ bool editor::Exporter::copyEngine() {
             projectSettings += indent + "set(DORIAX_WINDOW_ICON ON)";
         }
         projectSettings += indent + "set(DORIAX_CXX_STANDARD " + std::to_string(project->getCxxStandard()) + ")";
-        // Normal variables set before add_subdirectory(engine) shadow the engine
-        // option() cache entries, so toggling physics only needs a re-configure.
         projectSettings += indent + std::string("set(DORIAX_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(DORIAX_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);

@@ -106,14 +106,12 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .endNamespace();
 #endif
 
-#if defined(DORIAX_PHYSICS_2D) || defined(DORIAX_PHYSICS_3D)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("BodyType")
         .addVariable("STATIC", BodyType::STATIC)
         .addVariable("KINEMATIC", BodyType::KINEMATIC)
         .addVariable("DYNAMIC", BodyType::DYNAMIC)
         .endNamespace();
-#endif
 
 #ifdef DORIAX_PHYSICS_3D
     luabridge::getGlobalNamespace(L)

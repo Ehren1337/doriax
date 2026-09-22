@@ -4,6 +4,10 @@
 #ifndef BODY3D_H
 #define BODY3D_H
 
+#ifndef DORIAX_PHYSICS_3D
+#error "Body3D needs 3D Physics, enabled in Project Settings > Build"
+#endif
+
 #include "EntityHandle.h"
 #include "math/Vector2.h"
 #include "component/Body3DComponent.h"

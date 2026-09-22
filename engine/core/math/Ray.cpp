@@ -471,6 +471,25 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
 }
 
 RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities) const{
+    if (raytest == RayFilter::BOUNDS){
+        RayReturn closest = NO_HIT;
+        auto meshes = scene->getComponentArray<MeshComponent>();
+
+        for (size_t i = 0; i < meshes->size(); i++){
+            Entity entity = meshes->getEntity(i);
+            if (ignoreEntities && std::find(ignoreEntities->begin(), ignoreEntities->end(), entity) != ignoreEntities->end()){
+                continue;
+            }
+
+            RayReturn hit = intersects(meshes->getComponentFromIndex(i).worldAABB);
+            if (hit && (!closest || hit.distance < closest.distance)){
+                hit.body = entity;
+                closest = hit;
+            }
+        }
+        return closest;
+    }
+
 #ifdef DORIAX_PHYSICS_2D
     if (raytest == RayFilter::BODY_2D){
 
@@ -521,8 +540,9 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
             return {true, closestFraction, point, normal, entity, shapeIndex};
         }
 
-    }else
+    }
 #endif
+
 #ifdef DORIAX_PHYSICS_3D
     if (raytest == RayFilter::BODY_3D){
 
@@ -551,34 +571,8 @@ RayReturn Ray::intersects(Scene* scene, RayFilter raytest, bool onlyStatic, uint
             }
         }
 
-    }else
-#endif
-    if (raytest == RayFilter::BOUNDS){
-        // the physics-only filters have no equivalent on MeshComponent
-        (void)onlyStatic;
-        (void)categoryBits;
-        (void)maskBits;
-
-        RayReturn closest = NO_HIT;
-        auto meshes = scene->getComponentArray<MeshComponent>();
-
-        for (size_t i = 0; i < meshes->size(); i++){
-            Entity entity = meshes->getEntity(i);
-            if (ignoreEntities && std::find(ignoreEntities->begin(), ignoreEntities->end(), entity) != ignoreEntities->end()){
-                continue;
-            }
-
-            MeshComponent& mesh = meshes->getComponentFromIndex(i);
-            if (mesh.worldAABB.isNull()) continue;
-
-            RayReturn hit = intersects(mesh.worldAABB);
-            if (hit && (!closest || hit.distance < closest.distance)){
-                hit.body = entity; // For BOUNDS, body stores the hit render entity.
-                closest = hit;
-            }
-        }
-        return closest;
     }
+#endif
 
     return NO_HIT;
 }

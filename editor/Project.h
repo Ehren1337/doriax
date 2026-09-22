@@ -297,8 +297,8 @@ namespace doriax::editor{
         std::filesystem::path luaDir;
         std::vector<std::filesystem::path> scriptDirs;  // extra C++ include and source roots
         int cxxStandard;  // C++ standard for Play and exported builds
-        bool physics2DEnabled;  // Enable 2D physics (Box2D)
-        bool physics3DEnabled;  // Enable 3D physics (Jolt)
+        bool physics2DEnabled;  // Box2D in exported builds; Play always has it
+        bool physics3DEnabled;  // Jolt in exported builds; Play always has it
         bool packNativeResources;
         bool versionControlMetadata;
         ShaderOverrides shaderOverrides;

@@ -2134,7 +2134,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setCxxStandard(node["cxxStandard"].as<int>());
     }
 
-    // A project from before the setting has no key and loads with both backends on.
     if (node["physics2D"]) {
         project->setPhysics2DEnabled(node["physics2D"].as<bool>());
     }
@@ -6443,19 +6442,15 @@ Body2DComponent editor::Stream::decodeBody2DComponent(const YAML::Node& node, co
                 }
             }
 
-#ifdef DORIAX_PHYSICS_2D
             body.shapes[i].shape = b2_nullShapeId;
             body.shapes[i].chain = b2_nullChainId;
-#endif
         }
     }
 
-#ifdef DORIAX_PHYSICS_2D
     if (oldBody && b2Body_IsValid(oldBody->body)) {
         body.needReloadBody = true;
         body.needUpdateShapes = true;
     }
-#endif
 
     return body;
 }
@@ -6629,18 +6624,14 @@ Body3DComponent editor::Stream::decodeBody3DComponent(const YAML::Node& node, co
                 }
             }
 
-#ifdef DORIAX_PHYSICS_3D
             body.shapes[i].shape = NULL;
-#endif
         }
     }
 
-#ifdef DORIAX_PHYSICS_3D
     if (oldBody && !oldBody->body.IsInvalid()) {
         body.needReloadBody = true;
         body.needUpdateShapes = true;
     }
-#endif
 
     return body;
 }
@@ -6682,11 +6673,9 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
     if (node["autoAnchors"]) joint.autoAnchors = node["autoAnchors"].as<bool>();
     if (node["rope"]) joint.rope = node["rope"].as<bool>();
 
-#ifdef DORIAX_PHYSICS_2D
     if (oldJoint && b2Joint_IsValid(oldJoint->joint)) {
         joint.needUpdateJoint = true;
     }
-#endif
 
     return joint;
 }
@@ -6785,11 +6774,9 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
     if (node["isLooping"]) joint.isLooping = node["isLooping"].as<bool>();
     if (node["autoAnchors"]) joint.autoAnchors = node["autoAnchors"].as<bool>();
 
-#ifdef DORIAX_PHYSICS_3D
     if (oldJoint && oldJoint->joint) {
         joint.needUpdateJoint = true;
     }
-#endif
 
     return joint;
 }

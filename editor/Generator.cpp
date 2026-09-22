@@ -951,16 +951,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "# Build mode: when ON, build as Doriax Editor plugin (shared library)\n";
     cmakeContent += "option(DORIAX_EDITOR_PLUGIN \"Build as Doriax Editor plugin\" OFF)\n";
 
-    // Both modes link the engine library beside the editor, so both must match the
-    // macros it was built with: they change Body2DComponent/Body3DComponent layouts.
-    // The project's own setting belongs to the export, which rebuilds the engine.
-#ifdef DORIAX_PHYSICS_2D
-    cmakeContent += "add_compile_definitions(DORIAX_PHYSICS_2D)\n";
-#endif
-#ifdef DORIAX_PHYSICS_3D
-    cmakeContent += "add_compile_definitions(DORIAX_PHYSICS_3D)\n";
-#endif
-    cmakeContent += "\n";
+    // Both modes link the editor's engine library, which always has both physics backends
+    cmakeContent += "add_compile_definitions(DORIAX_PHYSICS_2D DORIAX_PHYSICS_3D)\n\n";
 
     cmakeContent += getEditorPluginAbiCheck();
     cmakeContent += "if(DORIAX_EDITOR_PLUGIN)\n";
@@ -1022,6 +1014,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += includeDirsBlock + "\n";
     cmakeContent += "    " + engineApiPathStr + "\n";
     cmakeContent += "    " + engineApiPathStr + "/libs/sokol\n";
+    cmakeContent += "    " + engineApiPathStr + "/libs/box2d/include\n";
+    cmakeContent += "    " + engineApiPathStr + "/libs/joltphysics\n";
     cmakeContent += "    " + engineApiPathStr + "/renders\n";
     cmakeContent += "    " + engineApiPathStr + "/core\n";
     cmakeContent += "    " + engineApiPathStr + "/core/action\n";
@@ -1046,18 +1040,6 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    " + engineApiPathStr + "/core/texture\n";
     cmakeContent += "    " + engineApiPathStr + "/core/util\n";
     cmakeContent += ")\n\n";
-
-#if defined(DORIAX_PHYSICS_2D) || defined(DORIAX_PHYSICS_3D)
-    // Same reason as the definitions above: these back the linked library's layouts.
-    cmakeContent += "target_include_directories(" + libName + " ${DORIAX_LIB_SYSTEM} PRIVATE\n";
-#ifdef DORIAX_PHYSICS_2D
-    cmakeContent += "    " + engineApiPathStr + "/libs/box2d/include\n";
-#endif
-#ifdef DORIAX_PHYSICS_3D
-    cmakeContent += "    " + engineApiPathStr + "/libs/joltphysics\n";
-#endif
-    cmakeContent += ")\n\n";
-#endif
 
     cmakeContent += "# libdoriax is searched in DORIAX_LIB_DIR; by default it points to the Doriax editor\n";
     cmakeContent += "# executable directory, which differs per machine and so comes from LocalPaths.cmake.\n";
@@ -1272,9 +1254,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     agentsContent += "- **Editor mode** (`DORIAX_EDITOR_PLUGIN=ON`): builds as a shared library; `main.cpp` and Factory-generated scene sources are excluded. Used by the editor to hot-reload the project.\n";
     agentsContent += "- **Standalone mode** (`DORIAX_EDITOR_PLUGIN=OFF`, default): builds as an executable; includes `main.cpp` and all Factory sources. This standalone build is for local testing only — production distribution uses the editor's separate export pipeline.\n";
 
-    agentsContent += "\nBoth modes link the engine library beside the editor, always built with Box2D and Jolt, so `Body2D` and `Body3D` work in either. "
-                     "Project Settings > Build > 2D/3D Physics (`physics2D`/`physics3D` in `project.yaml`) applies to the export, which rebuilds the engine without the disabled backend. "
-                     "Scene sources and any code that must survive it guard on `DORIAX_PHYSICS_2D`/`DORIAX_PHYSICS_3D`; `RayFilter::BOUNDS` is a ray cast that needs neither.\n";
+    agentsContent += "\nBoth modes link the editor's engine library, which always has Box2D and Jolt. "
+                     "Project Settings > Build > 2D/3D Physics (`physics2D`/`physics3D` in `project.yaml`) only affects the export, which rebuilds the engine without a disabled backend; "
+                     "code that must build either way guards on `DORIAX_PHYSICS_2D`/`DORIAX_PHYSICS_3D`. `RayFilter::BOUNDS` ray casts against mesh bounds and needs neither.\n";
     agentsContent += "\n" + agentsEnd;
 
     // Only replace our marked section. Unmarked files may contain user edits,
