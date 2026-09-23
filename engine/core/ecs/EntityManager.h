@@ -111,10 +111,6 @@ namespace doriax{
             return list;
         }
 
-        size_t getEntityCount() const{
-            return metadata.size();
-        }
-
         void setSignature(Entity entity, Signature signature) {
             if (metadata.count(entity)==0){
                 Log::error("Entity does not exist to set signature");

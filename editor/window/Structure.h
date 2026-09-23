@@ -75,7 +75,6 @@ namespace doriax::editor{
         uint32_t cacheSceneId = NULL_PROJECT_SCENE;
         uint64_t cacheStructureVersion = UINT64_MAX;
         size_t cacheEntityCount = SIZE_MAX;
-        size_t cacheRuntimeSignature = SIZE_MAX;
         size_t cacheChildSignature = SIZE_MAX;
         double cacheBuildTime = -1.0;
 

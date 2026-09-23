@@ -1125,6 +1125,11 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         return;
     }
 
+    // A runtime row waits for the 0.5s rebuild, so it can outlive its entity until then
+    if (node.isPlayCreated && !project->getSelectedScene()->scene->isEntityCreated(node.id)) {
+        return;
+    }
+
     pushNodeImGuiId(node);
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
@@ -2390,7 +2395,7 @@ void editor::Structure::show(){
     }
 
     // Rebuild the tree only when it changed. Key = scene + structureVersion + entity count +
-    // runtime and child-scene signatures; a 0.5s safety rebuild catches anything missed.
+    // child-scene signature; a 0.5s rebuild catches the rest, runtime entities included.
     size_t childSignature = 0;
     auto hashCombine = [](size_t& h, size_t v){ h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2); };
     for (const ChildSceneRef& childSceneRef : sceneProject->childScenes) {
@@ -2405,20 +2410,11 @@ void editor::Structure::show(){
         }
     }
 
-    // Runtime entities come and go without touching the authored list. Ids only grow, so the
-    // last one still changes when a frame destroys one entity and creates another.
-    size_t runtimeSignature = 0;
-    if (sceneProject->playState != ScenePlayState::STOPPED) {
-        hashCombine(runtimeSignature, sceneProject->scene->getEntityCount());
-        hashCombine(runtimeSignature, (size_t)sceneProject->scene->getLastEntity());
-    }
-
     const double nowTime = ImGui::GetTime();
     const bool rebuildTree =
         cacheSceneId != sceneProject->id ||
         cacheStructureVersion != sceneProject->structureVersion ||
         cacheEntityCount != sceneProject->entities.size() ||
-        cacheRuntimeSignature != runtimeSignature ||
         cacheChildSignature != childSignature ||
         cacheBuildTime < 0.0 || (nowTime - cacheBuildTime) > 0.5;
 
@@ -2430,7 +2426,6 @@ void editor::Structure::show(){
         cacheSceneId = sceneProject->id;
         cacheStructureVersion = sceneProject->structureVersion;
         cacheEntityCount = sceneProject->entities.size();
-        cacheRuntimeSignature = runtimeSignature;
         cacheChildSignature = childSignature;
         cacheBuildTime = nowTime;
 

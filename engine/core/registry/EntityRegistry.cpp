@@ -359,10 +359,6 @@ std::vector<Entity> EntityRegistry::getEntityList() const{
     return entityManager.getEntityList();
 }
 
-size_t EntityRegistry::getEntityCount() const{
-    return entityManager.getEntityCount();
-}
-
 void EntityRegistry::setDefaultEntityPool(EntityPool pool) { 
     defaultPool = pool;
 }

@@ -129,7 +129,6 @@ namespace doriax {
         // A scene sets it past the ids it recreates, so what it creates next stays clear of them.
         void setLastEntity(Entity entity); // for internal editor use only
         std::vector<Entity> getEntityList() const;
-        size_t getEntityCount() const;
 
         void setDefaultEntityPool(EntityPool pool);
         EntityPool getDefaultEntityPool() const;
