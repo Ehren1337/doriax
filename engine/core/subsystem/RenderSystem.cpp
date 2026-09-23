@@ -327,6 +327,9 @@ void RenderSystem::load(){
 }
 
 void RenderSystem::destroy(){
+    // View teardown keeps the scene alive; retain CPU assets for its next load.
+    const bool reloadView = !Engine::isViewLoaded();
+
     // Before the transform traversal below, which the camera entities are part of.
     while (!mirrorCameras.empty()){
         destroyMirrorCamera(mirrorCameras.begin()->first);
@@ -375,6 +378,11 @@ void RenderSystem::destroy(){
         SkyComponent& sky = skys->getComponentFromIndex(0);
         Entity entity = skys->getEntity(0);
         if (sky.loaded){
+            if (reloadView){
+                sky.needReload = true;
+                releaseSkyEnvironment(sky);
+                sky.needUpdateEnvironment = true;
+            }
             destroySky(entity, sky);
         }
     }
@@ -401,21 +409,25 @@ void RenderSystem::destroy(){
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
             if (mesh.loaded){
+                if (reloadView) mesh.needReload = true;
                 destroyMesh(entity, mesh);
             }
         }else if (signature.test(scene->getComponentId<UIComponent>())){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
             if (ui.loaded){
+                if (reloadView) ui.needReload = true;
                 destroyUI(entity, ui);
             }
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
             if (points.loaded){
+                if (reloadView) points.needReload = true;
                 destroyPoints(entity, points);
             }
         }else if (signature.test(scene->getComponentId<LinesComponent>())){
             LinesComponent& lines = scene->getComponent<LinesComponent>(entity);
             if (lines.loaded){
+                if (reloadView) lines.needReload = true;
                 destroyLines(entity, lines);
             }
         }else if (signature.test(scene->getComponentId<LightComponent>())){
@@ -425,6 +437,11 @@ void RenderSystem::destroy(){
             CameraComponent& camera = scene->getComponent<CameraComponent>(entity);
             destroyCamera(camera, false);
         }
+    }
+
+    // Cached GPU arrays cannot survive renderer shutdown, even when CPU assets are retained.
+    while (!terrainDetailArrays.empty()){
+        destroyTerrainDetailArray(terrainDetailArrays.begin()->first);
     }
 }
 
