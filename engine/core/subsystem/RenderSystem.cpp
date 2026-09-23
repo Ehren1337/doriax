@@ -1164,11 +1164,14 @@ void RenderSystem::updateSkyEnvironment(SkyComponent& sky){
         std::shared_ptr<TextureRender> irradiance = TexturePool::get(irradianceId);
         std::shared_ptr<TextureRender> prefiltered = TexturePool::get(prefilteredId);
         if (irradiance && prefiltered){
-            releaseSkyEnvironment(sky);
-            sky.irradianceMap = irradiance;
-            sky.prefilteredMap = prefiltered;
-            sky.envMapsLoaded = true;
-            needReloadMeshes();
+            // A hidden sky never clears needUpdateTexture, so this is requested every frame
+            if (sky.irradianceMap != irradiance || sky.prefilteredMap != prefiltered){
+                releaseSkyEnvironment(sky);
+                sky.irradianceMap = irradiance;
+                sky.prefilteredMap = prefiltered;
+                sky.envMapsLoaded = true;
+                needReloadMeshes();
+            }
             sky.needUpdateEnvironment = false;
             return;
         }
@@ -5810,6 +5813,7 @@ bool RenderSystem::loadSky(Entity entity, SkyComponent& sky, uint16_t pipelines)
         return false;
     }
 
+    sky.needReload = false;
     sky.loadCalled = true;
     SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
 
