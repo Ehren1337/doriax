@@ -711,6 +711,8 @@ bool NativeEngine::prepareToRender() {
             const EGLint error = eglGetError();
             doriax::Log::error("NativeEngine: eglMakeCurrent failed, EGL error %d", error);
             handleEglError(error);
+            // Every handle may still be set, which would skip this binding next frame.
+            killSurface();
             return false;
         }
 
@@ -1022,8 +1024,10 @@ void NativeEngine::handleCommand(int32_t cmd) {
         case APP_CMD_LOW_MEMORY:
             // system told us we have low memory. So if we are not visible, let's
             // cooperate by deallocating all of our graphic resources.
+            // The context is no longer current once the window is gone, so GL deletes are
+            // no-ops; destroying the context is what frees the GPU memory.
             if (!mHasWindow) {
-                killGLObjects();
+                killContext();
             }
             break;
         case APP_CMD_WINDOW_INSETS_CHANGED:

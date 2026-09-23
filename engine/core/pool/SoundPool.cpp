@@ -192,6 +192,11 @@ void SoundPool::requestShutdown(){
     pendingBuilds.clear();
 }
 
+void SoundPool::cancelShutdown(){
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    shutdownRequested = false;
+}
+
 void SoundPool::remove(const std::string& id){
     bool removedPending = false;
     {

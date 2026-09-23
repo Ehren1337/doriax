@@ -379,6 +379,11 @@ void TextureDataPool::requestShutdown() {
     pendingBuilds.clear();
 }
 
+void TextureDataPool::cancelShutdown() {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    shutdownRequested = false;
+}
+
 void TextureDataPool::remove(const std::string& id){
     bool removedPending = false;
     {

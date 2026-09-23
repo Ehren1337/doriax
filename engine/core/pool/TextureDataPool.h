@@ -59,6 +59,8 @@ namespace doriax{
         static TextureLoadResult loadFromFile(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces);
 
         static void requestShutdown();
+        // re-allows async loads after a recreated view
+        static void cancelShutdown();
 
         static void remove(const std::string& id);
         static void clear();

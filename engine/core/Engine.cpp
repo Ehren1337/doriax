@@ -970,6 +970,10 @@ void Engine::systemViewLoaded(){
 
     getAsyncThreadDepthStorage() = 0;
 
+    // systemViewDestroyed stopped async loads; a recreated view needs them again
+    SoundPool::cancelShutdown();
+    TextureDataPool::cancelShutdown();
+
     viewLoaded = true;
     onViewLoaded.call();
 

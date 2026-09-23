@@ -44,6 +44,8 @@ namespace doriax{
         static SoundLoadResult loadFromFile(const std::string& id, const std::string& filename);
 
         static void requestShutdown();
+        // re-allows async loads after a recreated view
+        static void cancelShutdown();
 
         static void remove(const std::string& id);
 
