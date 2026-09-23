@@ -256,6 +256,37 @@ def _extract_class_body(text, start):
     return ''
 
 
+RE_ACCESS_SPECIFIER = re.compile(r'(public|protected|private)\s*:(?!:)')
+
+
+def _public_declarations(body, default_public):
+    """Every public section of a class body at its own depth; nested bodies are emptied to '{}'."""
+    out = []
+    public = default_public
+    depth = 0
+    i = 0
+    while i < len(body):
+        c = body[i]
+        if c == '{':
+            if depth == 0 and public:
+                out.append(c)
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0 and public:
+                out.append(c)
+        elif depth == 0:
+            m = RE_ACCESS_SPECIFIER.match(body, i) if c == 'p' else None
+            if m and (i == 0 or not (body[i - 1].isalnum() or body[i - 1] == '_')):
+                public = m.group(1) == 'public'
+                i = m.end()
+                continue
+            if public:
+                out.append(c)
+        i += 1
+    return ''.join(out)
+
+
 def _simplify_param(param):
     """Simplify a C++ parameter to 'Type name' form, stripping const/ref/ptr qualifiers."""
     p = param.strip()
@@ -372,20 +403,10 @@ def parse_cpp_headers(base_dir):
                 if not body:
                     continue
 
-                # Find the public section
-                public_idx = body.find('public:')
-                if public_idx == -1:
+                # A class can reopen 'public:' after a private block (Engine does)
+                public_body = _public_declarations(body, cm.group(0).startswith('struct'))
+                if not public_body.strip():
                     continue
-                protected_idx = body.find('protected:', public_idx + 1)
-                private_idx = body.find('private:', public_idx + 1)
-
-                end_idx = len(body)
-                if protected_idx != -1 and protected_idx < end_idx:
-                    end_idx = protected_idx
-                if private_idx != -1 and private_idx < end_idx:
-                    end_idx = private_idx
-
-                public_body = body[public_idx:end_idx]
 
                 if class_name not in class_methods:
                     class_methods[class_name] = {}
@@ -395,6 +416,9 @@ def parse_cpp_headers(base_dir):
                     method_name = m.group(2)
                     params_raw = m.group(3).strip()
                     if method_name == class_name or method_name.startswith('~'):
+                        continue
+                    # "operator bool()" is a conversion, not a method named "bool"
+                    if re.search(r'\boperator$', ret_type):
                         continue
                     if (class_name, method_name) in EXCLUDED_HEADER_METHODS:
                         continue

@@ -40,6 +40,7 @@ namespace doriax::editor {
         std::string documentation;   // Full documentation
         std::string parentType;      // The class/type this belongs to (if any)
         std::string typeInfo;        // Declared type (for variables/fields)
+        std::string namespaceName;   // Namespace a top-level symbol is reached through ("doriax::")
         SuggestionKind kind;         // Target kind
         int score = 0;               // Resulting score
     };
@@ -55,6 +56,7 @@ namespace doriax::editor {
         bool afterDoubleColon = false;       // Is cursor after '::' (scope resolution)
         bool afterColon = false;             // Is cursor after ':' (Lua method access)
         std::string targetType;      // Inferred type for member completion filtering
+        std::string targetNamespace; // Namespace before '::' — lists its top-level symbols
         std::string enclosingType;   // Class the cursor is inside — its members need no receiver
         bool isCpp = false;          // True if editing C++ (filters out Lua-only properties)
         bool manualInvoke = false;   // True when triggered explicitly (Ctrl+Space) — bypasses min prefix
@@ -80,7 +82,7 @@ namespace doriax::editor {
 
         // Document context
         void UpdateDocumentWords(const std::vector<std::string>& lines);
-        void AddSymbol(const std::string& name, SuggestionKind kind, const std::string& detail = "", const std::string& parentType = "", const std::string& typeInfo = "");
+        void AddSymbol(const std::string& name, SuggestionKind kind, const std::string& detail = "", const std::string& parentType = "", const std::string& typeInfo = "", const std::string& namespaceName = "");
         void ClearSymbols();
 
         // Inheritance
@@ -92,6 +94,9 @@ namespace doriax::editor {
 
         // True if name is a registered Class or Enum symbol (for static access like Engine.foo / Scaling.NATIVE)
         bool IsKnownClassOrEnum(const std::string& name) const;
+
+        // True if some symbol lives in this namespace (for scope access like doriax::Vector3)
+        bool IsKnownNamespace(const std::string& name) const;
 
         // Signature help: find parameter signatures for a function/method
         // Returns list of detail strings like "Mesh:setColor(Vector4 color)"
@@ -119,6 +124,7 @@ namespace doriax::editor {
         std::unordered_set<std::string> documentWords;
         std::vector<SuggestionItem> snippets;
         std::vector<SuggestionItem> symbols;
+        std::unordered_set<std::string> namespaces;
 
         // Inheritance map: className -> parentClassName
         std::unordered_map<std::string, std::string> classParentMap;

@@ -376,6 +376,11 @@ void CustomTextEditor::addEngineAPISuggestions() {
     // "CppMethod" is unbound in Lua: suggesting it there yields a nil call at runtime.
     const bool isLua = (language == SyntaxLanguage::Lua);
 
+    // In C++ the engine's top-level classes and enums are reached through "doriax::"
+    if (!isLua) {
+        suggestions->AddSymbol("doriax", SuggestionKind::Module, "namespace doriax");
+    }
+
     for (const auto& sym : apiSymbols) {
         if (isEngineApiConstructorSymbol(sym)) continue;
         if (isLua && sym.kind && std::string(sym.kind) == "CppMethod") continue;
@@ -383,7 +388,9 @@ void CustomTextEditor::addEngineAPISuggestions() {
         SuggestionKind sk = SuggestionKind::Variable;
         auto it = kindMap.find(sym.kind);
         if (it != kindMap.end()) sk = it->second;
-        suggestions->AddSymbol(sym.name, sk, sym.detail, sym.parent ? sym.parent : "");
+        const bool topLevel = !sym.parent || !sym.parent[0];
+        suggestions->AddSymbol(sym.name, sk, sym.detail, sym.parent ? sym.parent : "", "",
+                               (topLevel && !isLua) ? "doriax" : "");
 
         if (sk == SuggestionKind::Class && sym.detail) {
             suggestions->SetClassParent(sym.name, baseClassFromDetail(sym.detail));
@@ -2201,8 +2208,12 @@ SuggestionContext CustomTextEditor::buildSuggestionContext() const {
 
     const bool memberAccess = ctx.afterDot || ctx.afterArrow || ctx.afterDoubleColon || ctx.afterColon;
     if (memberAccess && !ctx.previousWord.empty()) {
-        // After '::' the previous word already is the type name (Vector3::ZERO)
-        ctx.targetType = ctx.afterDoubleColon ? ctx.previousWord : inferTypeBefore(pos.line, checkCol - 1);
+        if (ctx.afterDoubleColon && ctx.isCpp && suggestions && suggestions->IsKnownNamespace(ctx.previousWord)) {
+            ctx.targetNamespace = ctx.previousWord;
+        } else {
+            // After '::' the previous word already is the type name (Vector3::ZERO)
+            ctx.targetType = ctx.afterDoubleColon ? ctx.previousWord : inferTypeBefore(pos.line, checkCol - 1);
+        }
     } else if (!memberAccess && ctx.isCpp) {
         // Inside a method the class's own members are reached without a receiver.
         // Lua has no such scope, there every member goes through "self"

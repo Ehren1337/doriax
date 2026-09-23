@@ -69,19 +69,23 @@ void SemanticSuggestions::UpdateDocumentWords(const std::vector<std::string>& li
     }
 }
 
-void SemanticSuggestions::AddSymbol(const std::string& name, SuggestionKind kind, const std::string& detail, const std::string& parentType, const std::string& typeInfo) {
+void SemanticSuggestions::AddSymbol(const std::string& name, SuggestionKind kind, const std::string& detail, const std::string& parentType, const std::string& typeInfo, const std::string& namespaceName) {
     SuggestionItem item;
     item.label = name;
     item.insertText = name;
     item.detail = detail;
     item.parentType = parentType;
     item.typeInfo = typeInfo;
+    item.namespaceName = namespaceName;
     item.kind = kind;
     symbols.push_back(item);
+
+    if (!namespaceName.empty()) namespaces.insert(namespaceName);
 }
 
 void SemanticSuggestions::ClearSymbols() {
     symbols.clear();
+    namespaces.clear();
 }
 
 void SemanticSuggestions::SetClassParent(const std::string& className, const std::string& parentClass) {
@@ -129,6 +133,10 @@ bool SemanticSuggestions::IsKnownClassOrEnum(const std::string& name) const {
     return false;
 }
 
+bool SemanticSuggestions::IsKnownNamespace(const std::string& name) const {
+    return namespaces.find(name) != namespaces.end();
+}
+
 std::vector<std::string> SemanticSuggestions::FindSignatures(const std::string& functionName, const std::string& parentType) const {
     std::vector<std::string> results;
     for (const auto& symbol : symbols) {
@@ -167,8 +175,8 @@ std::vector<SuggestionItem> SemanticSuggestions::GetSuggestions(const Suggestion
         return results;
     }
 
-    // If we have a target type, we strictly filter for members of that type (and don't add keywords/globals)
-    bool restrictToType = isMemberAccess && !context.targetType.empty();
+    // If we have a target type or namespace, we strictly filter for its members (and don't add keywords/globals)
+    bool restrictToType = isMemberAccess && (!context.targetType.empty() || !context.targetNamespace.empty());
 
     if (!isMemberAccess) {
         addCandidates(results, keywords, SuggestionKind::Keyword, query);
@@ -201,9 +209,14 @@ std::vector<SuggestionItem> SemanticSuggestions::GetSuggestions(const Suggestion
         if (isMemberAccess) {
             // Members of an unknown type are never shown (word fallback handled above)
             if (!restrictToType) continue;
-            // Only members of the target type or its ancestors
-            if (symbol.parentType.empty()) continue;
-            if (!isTypeOrAncestor(context.targetType, symbol.parentType)) continue;
+            if (!context.targetNamespace.empty()) {
+                // "doriax::" reaches the namespace's own classes, enums and functions
+                if (!symbol.parentType.empty() || symbol.namespaceName != context.targetNamespace) continue;
+            } else {
+                // Only members of the target type or its ancestors
+                if (symbol.parentType.empty()) continue;
+                if (!isTypeOrAncestor(context.targetType, symbol.parentType)) continue;
+            }
             // Lua ':' is method-call syntax — only callables make sense there
             if (context.afterColon &&
                 symbol.kind != SuggestionKind::Method && symbol.kind != SuggestionKind::Function) {
@@ -224,7 +237,7 @@ std::vector<SuggestionItem> SemanticSuggestions::GetSuggestions(const Suggestion
             item.score = score;
 
             // Boost exact parentType match (direct members over inherited)
-            if (restrictToType && symbol.parentType == context.targetType) {
+            if (!context.targetType.empty() && symbol.parentType == context.targetType) {
                 item.score += 50;
             }
 
@@ -261,7 +274,8 @@ std::vector<SuggestionItem> SemanticSuggestions::GetSuggestions(const Suggestion
 
             // Prefer the symbol entry (has detail/doc) over the bare Type candidate of the same name
             if (!isMemberAccess &&
-                (symbol.kind == SuggestionKind::Class || symbol.kind == SuggestionKind::Enum)) {
+                (symbol.kind == SuggestionKind::Class || symbol.kind == SuggestionKind::Enum ||
+                 symbol.kind == SuggestionKind::Module)) {
                 item.score += 9;
             }
 
