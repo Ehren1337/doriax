@@ -1187,8 +1187,10 @@ void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target
         if (particles.particles[i].life > particles.particles[i].time){
             advanceParticle(i, dt, particles, instmesh, sprite, targetTransform);
             existParticles = true;
-        }else{
+        }else if (instmesh.instances[i].visible){
+            // the last particles to die would otherwise stay drawn
             instmesh.instances[i].visible = false;
+            instmesh.needUpdateInstances = true;
         }
     }
 
@@ -1258,8 +1260,10 @@ void ActionSystem::particlesActionUpdate(double dt, Entity entity, Entity target
         if (particles.particles[i].life > particles.particles[i].time){
             advanceParticle(i, dt, particles, points, targetTransform);
             existParticles = true;
-        }else{
+        }else if (points.points[i].visible){
+            // the last particles to die would otherwise stay drawn
             points.points[i].visible = false;
+            points.needUpdate = true;
         }
     }
 
