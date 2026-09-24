@@ -483,7 +483,7 @@ namespace doriax::editor{
         static constexpr unsigned int defaultCanvasWidth = 1280;
         static constexpr unsigned int defaultCanvasHeight = 720;
         static constexpr Scaling defaultScalingMode = Scaling::FITWIDTH;
-        static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::RESIZE;
+        static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr WindowMode defaultWindowMode = WindowMode::WINDOWED;
         static constexpr unsigned int defaultWindowWidth = defaultCanvasWidth;

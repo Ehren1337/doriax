@@ -58,7 +58,7 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
-TextureStrategy Engine::textureStrategy = TextureStrategy::RESIZE;
+TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
 bool Engine::callMouseInTouchEvent = false;
 bool Engine::callTouchInMouseEvent = false;

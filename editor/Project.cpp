@@ -3786,7 +3786,7 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
 
 void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setScalingMode(Scaling::NATIVE);
-    Engine::setTextureStrategy(TextureStrategy::RESIZE);
+    Engine::setTextureStrategy(textureStrategy);
     Engine::setMouseCursor(CursorType::ARROW);
     Engine::setMouseMode(MouseMode::NORMAL);
     // a game may have turned it off
@@ -4613,6 +4613,9 @@ bool editor::Project::loadProject(const std::filesystem::path path, bool updateL
 
         Stream::decodeProject(this, projectNode, workspace);
         setUnresolvedSceneStates(workspace.statesForUnresolvedScenes(this));
+
+        // unlike the other settings it applies while editing too, textures are shared with Play
+        Engine::setTextureStrategy(textureStrategy);
         editor::getEditorHost().reportLoadingProgress("Finishing project load...");
 
         // Guarantee a non-empty name: project.yaml files without a "name" field

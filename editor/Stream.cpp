@@ -904,15 +904,14 @@ std::string editor::Stream::textureStrategyToString(TextureStrategy strategy) {
         case TextureStrategy::FIT: return "fit";
         case TextureStrategy::RESIZE: return "resize";
         case TextureStrategy::NONE: return "none";
-        default: return "resize";
+        default: return "none";
     }
 }
 
 TextureStrategy editor::Stream::stringToTextureStrategy(const std::string& str) {
     if (str == "fit") return TextureStrategy::FIT;
     if (str == "resize") return TextureStrategy::RESIZE;
-    if (str == "none") return TextureStrategy::NONE;
-    return TextureStrategy::RESIZE;
+    return TextureStrategy::NONE;
 }
 
 std::string editor::Stream::windowModeToString(WindowMode mode) {
