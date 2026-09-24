@@ -24,6 +24,7 @@ namespace doriax{
 		static float globalVolume;
 
 		Vector3 cameraLastPosition;
+		bool outputRequested = false;
 
         bool loadSoundSample(SoundComponent& audio);
         void preloadSoundAssets();

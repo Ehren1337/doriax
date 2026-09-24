@@ -227,6 +227,12 @@ void AudioSystem::update(double dt){
 
     auto audios = scene->getComponentArray<SoundComponent>();
 
+    // open the output early, a device started by the first play cuts that sound
+    if (!outputRequested && audios->size() > 0) {
+        outputRequested = true;
+        init();
+    }
+
     // 3D sources are placed against the main camera, so without one they play in 2D
     bool hasListener = scene->findComponent<CameraComponent>(scene->getCamera()) &&
                        scene->findComponent<Transform>(scene->getCamera());
@@ -296,6 +302,8 @@ void AudioSystem::update(double dt){
                             audio.handle = getSoloud().play(*audio.sample);
                         }
                     }
+                    // a new voice starts with the sample defaults
+                    audio.needUpdate = true;
                 }else{
                     getSoloud().setPause(audio.handle, false);
                 }
