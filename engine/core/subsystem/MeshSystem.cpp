@@ -373,8 +373,13 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     float texCutRatioW = 0;
     float texCutRatioH = 0;
     if (texWidth != 0 && texHeight != 0){
-        texCutRatioW = 1.0 / texWidth * sprite.textureScaleFactor;
-        texCutRatioH = 1.0 / texHeight * sprite.textureScaleFactor;
+        // in texels of the frame, as the shader scales these UVs by the texture rect
+        // (mirrored frames have a negative width)
+        const Rect& rect = mesh.submeshes[0].textureRect;
+        float rectWidth = std::fabs(rect.getWidth()) > 0.0f ? std::fabs(rect.getWidth()) : 1.0f;
+        float rectHeight = std::fabs(rect.getHeight()) > 0.0f ? std::fabs(rect.getHeight()) : 1.0f;
+        texCutRatioW = sprite.textureScaleFactor / (texWidth * rectWidth);
+        texCutRatioH = sprite.textureScaleFactor / (texHeight * rectHeight);
     }
 
     if (!sprite.flipY){ 
@@ -772,8 +777,21 @@ void MeshSystem::setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite
         frameRect = normalizeTileRect(frameRect, texture.getWidth(), texture.getHeight());
     }
 
+    if (changesSpriteInset(sprite, mesh.submeshes[0].textureRect, frameRect)){
+        sprite.needUpdateSprite = true;
+    }
+
     sprite.needUpdateFrameRect = false;
     mesh.submeshes[0].textureRect = frameRect;
+}
+
+// createSprite sizes the inset by the frame, mirrored frames only flip the sign
+bool MeshSystem::changesSpriteInset(const SpriteComponent& sprite, const Rect& oldRect, const Rect& newRect){
+    if (sprite.textureScaleFactor == 0)
+        return false;
+
+    return std::fabs(newRect.getWidth()) != std::fabs(oldRect.getWidth()) ||
+           std::fabs(newRect.getHeight()) != std::fabs(oldRect.getHeight());
 }
 
 std::vector<float> MeshSystem::getCylinderSideNormals(float baseRadius, float topRadius, float height, float slices){

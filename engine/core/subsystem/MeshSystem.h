@@ -150,6 +150,8 @@ namespace doriax{
 
         // Frames are authored in pixels, textureRect is in UV space
         static void setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite, Rect frameRect);
+        // true when a frame of another size needs the sprite rebuilt for its texture scale factor
+        static bool changesSpriteInset(const SpriteComponent& sprite, const Rect& oldRect, const Rect& newRect);
 
         bool setFoliagePreviewEntity(Entity entity);
         bool hasPendingFoliageUpdates() const;

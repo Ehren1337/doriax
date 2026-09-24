@@ -138,9 +138,14 @@ void Sprite::setTextureRect(float x, float y, float width, float height){
 
 void Sprite::setTextureRect(Rect textureRect){
     MeshComponent& mesh = getComponent<MeshComponent>();
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+
+    if (MeshSystem::changesSpriteInset(spritecomp, mesh.submeshes[0].textureRect, textureRect)){
+        spritecomp.needUpdateSprite = true;
+    }
 
     // An explicit UV rectangle supersedes a frame waiting for its texture size.
-    getComponent<SpriteComponent>().needUpdateFrameRect = false;
+    spritecomp.needUpdateFrameRect = false;
     mesh.submeshes[0].textureRect = textureRect;
 }
 
