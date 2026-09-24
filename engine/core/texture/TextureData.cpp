@@ -655,6 +655,94 @@ void TextureData::fitSize(int xOffset, int yOffset, int newWidth, int newHeight)
     
 }
 
+void TextureData::fixAlphaBorder(){
+    // rings of transparent pixels colored around visible ones, enough for a few mip levels
+    const int borderSize = 4;
+
+    if (!data || channels != 4 || getBytesPerChannel(color_format) != 1)
+        return;
+
+    unsigned char* pixels = (unsigned char*)data;
+    const int count = width * height;
+
+    // 0 transparent, 1 colored, 2 queued in the next ring
+    std::vector<unsigned char> state(count);
+    bool hasTransparent = false;
+    for (int i = 0; i < count; i++){
+        state[i] = (pixels[i * 4 + 3] > 0) ? 1 : 0;
+        if (state[i] == 0)
+            hasTransparent = true;
+    }
+    if (!hasTransparent)
+        return;
+
+    std::vector<int> ring;
+    std::vector<int> current;
+
+    auto queueNeighbors = [&](int x, int y){
+        for (int ny = std::max(0, y - 1); ny <= std::min(height - 1, y + 1); ny++){
+            for (int nx = std::max(0, x - 1); nx <= std::min(width - 1, x + 1); nx++){
+                int j = ny * width + nx;
+                if (state[j] == 0){
+                    state[j] = 2;
+                    ring.push_back(j);
+                }
+            }
+        }
+    };
+
+    for (int y = 0; y < height; y++){
+        for (int x = 0; x < width; x++){
+            if (state[y * width + x] != 0)
+                continue;
+            bool touchesColor = false;
+            for (int ny = std::max(0, y - 1); ny <= std::min(height - 1, y + 1) && !touchesColor; ny++){
+                for (int nx = std::max(0, x - 1); nx <= std::min(width - 1, x + 1); nx++){
+                    if (state[ny * width + nx] == 1){
+                        touchesColor = true;
+                        break;
+                    }
+                }
+            }
+            if (touchesColor){
+                state[y * width + x] = 2;
+                ring.push_back(y * width + x);
+            }
+        }
+    }
+
+    for (int pass = 0; pass < borderSize && !ring.empty(); pass++){
+        current.swap(ring);
+        ring.clear();
+
+        for (int i : current){
+            int x = i % width;
+            int y = i / width;
+            int color[3] = {0, 0, 0};
+            int n = 0;
+            for (int ny = std::max(0, y - 1); ny <= std::min(height - 1, y + 1); ny++){
+                for (int nx = std::max(0, x - 1); nx <= std::min(width - 1, x + 1); nx++){
+                    int j = ny * width + nx;
+                    if (state[j] == 1){
+                        for (int c = 0; c < 3; c++)
+                            color[c] += pixels[j * 4 + c];
+                        n++;
+                    }
+                }
+            }
+            for (int c = 0; c < 3; c++)
+                pixels[i * 4 + c] = (unsigned char)(color[c] / n);
+        }
+
+        for (int i : current){
+            state[i] = 1;
+        }
+        for (int i : current){
+            queueNeighbors(i % width, i / width);
+        }
+    }
+}
+
 void TextureData::flipVertical(){
     
     int bufsize = width * channels;

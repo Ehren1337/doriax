@@ -283,6 +283,8 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     // Check texture loading state BEFORE clearing the buffer to avoid leaving
     // the mesh with an empty vertex buffer when the texture is still loading.
     Texture& mainTexture = mesh.submeshes[0].material.baseColorTexture;
+    // before the first load, see RenderSystem::loadMesh
+    mainTexture.setAlphaBorderAuto(true);
 
     unsigned int texWidth = 0;
     unsigned int texHeight = 0;
@@ -507,6 +509,11 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     // Calling load() unconditionally would instead re-read every already-uploaded
     // (and released) tile texture from disk on each rebuild, spinning an endless
     // load loop.
+    // before the first load, see RenderSystem::loadMesh
+    for (int s = 0; s < mesh.numSubmeshes; s++){
+        mesh.submeshes[s].material.baseColorTexture.setAlphaBorderAuto(true);
+    }
+
     unsigned int preReserveTiles = tilemap.reserveTiles;
     for (int i = 0; i < (int)tilemap.numTiles; i++){
         if (tilemap.tiles[i].width == 0 && tilemap.tiles[i].height == 0 && preReserveTiles == 0){

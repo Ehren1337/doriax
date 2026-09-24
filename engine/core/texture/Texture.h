@@ -46,6 +46,13 @@ namespace doriax{
             // rasterization scale for SVG sources (1.0 = natural size); ignored for rasters
             float svgScale;
 
+            // see TextureData::fixAlphaBorder, only for files
+            TextureAlphaBorder alphaBorder;
+            // what AUTO means here, set by the system that draws the texture
+            bool alphaBorderAuto;
+
+            void reloadAlphaBorder(bool wasFixed);
+
         public:
             Texture();
             Texture(const std::string& path);
@@ -121,6 +128,12 @@ namespace doriax{
 
             void setSvgScale(float scale);
             float getSvgScale() const;
+
+            void setAlphaBorder(TextureAlphaBorder alphaBorder);
+            TextureAlphaBorder getAlphaBorder() const;
+
+            void setAlphaBorderAuto(bool fix);
+            bool isAlphaBorderFixed() const;
     };
 }
 

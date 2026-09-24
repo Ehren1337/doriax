@@ -10,6 +10,8 @@ using namespace doriax;
 Texture::Texture(){
     this->render = NULL;
     this->framebuffer = NULL;
+    this->alphaBorder = TextureAlphaBorder::AUTO;
+    this->alphaBorderAuto = false;
 
     this->id = "";
     this->type = TextureType::TEXTURE_2D;
@@ -28,6 +30,8 @@ Texture::Texture(){
 Texture::Texture(const std::string& path){
     this->render = NULL;
     this->framebuffer = NULL;
+    this->alphaBorder = TextureAlphaBorder::AUTO;
+    this->alphaBorderAuto = false;
 
     // Legacy form "<path>?svgScale=N" is absorbed into the svgScale field so paths[] always
     // holds a real file path.
@@ -51,6 +55,8 @@ Texture::Texture(const std::string& path){
 Texture::Texture(const std::string& id, TextureData data){
     this->render = NULL;
     this->framebuffer = NULL;
+    this->alphaBorder = TextureAlphaBorder::AUTO;
+    this->alphaBorderAuto = false;
 
     this->id = id;
     this->type = TextureType::TEXTURE_2D;
@@ -73,6 +79,8 @@ Texture::Texture(const std::string& id, TextureData data){
 Texture::Texture(Framebuffer* framebuffer){
     this->render = NULL;
     this->framebuffer = framebuffer;
+    this->alphaBorder = TextureAlphaBorder::AUTO;
+    this->alphaBorderAuto = false;
 
     this->id = "";
     this->type = TextureType::TEXTURE_2D;
@@ -106,6 +114,8 @@ Texture::Texture(const Texture& rhs){
     wrapU = rhs.wrapU;
     wrapV = rhs.wrapV;
     svgScale = rhs.svgScale;
+    alphaBorder = rhs.alphaBorder;
+    alphaBorderAuto = rhs.alphaBorderAuto;
 }
 
 Texture& Texture::operator=(const Texture& rhs){
@@ -127,6 +137,8 @@ Texture& Texture::operator=(const Texture& rhs){
         wrapU = rhs.wrapU;
         wrapV = rhs.wrapV;
         svgScale = rhs.svgScale;
+        alphaBorder = rhs.alphaBorder;
+        alphaBorderAuto = rhs.alphaBorderAuto;
     }
 
     return *this;
@@ -150,7 +162,8 @@ bool Texture::operator == ( const Texture& rhs ) const{
         magFilter == rhs.magFilter &&
         wrapU == rhs.wrapU &&
         wrapV == rhs.wrapV &&
-        svgScale == rhs.svgScale
+        svgScale == rhs.svgScale &&
+        alphaBorder == rhs.alphaBorder
      );
 }
 
@@ -172,7 +185,8 @@ bool Texture::operator != ( const Texture& rhs ) const{
         magFilter != rhs.magFilter ||
         wrapU != rhs.wrapU ||
         wrapV != rhs.wrapV ||
-        svgScale != rhs.svgScale
+        svgScale != rhs.svgScale ||
+        alphaBorder != rhs.alphaBorder
     );
 }
 
@@ -368,10 +382,12 @@ std::string Texture::buildCubeTextureId(const std::string paths[6]) {
 // produce two pool entries. Non-SVG sources keep the plain path as id, and scale 1.0 maps
 // to the plain path too, so ids stay identical to the pre-svgScale-field format.
 std::string Texture::buildPathTextureId() const {
-    if (TextureData::hasSvgExtension(paths[0].c_str())) {
-        return TextureData::buildSvgScalePath(paths[0], svgScale);
+    std::string pathId = TextureData::hasSvgExtension(paths[0].c_str()) ? TextureData::buildSvgScalePath(paths[0], svgScale) : paths[0];
+    // a file loaded with and without the fix is two pool entries
+    if (isAlphaBorderFixed()) {
+        pathId += "|alphaborder";
     }
-    return paths[0];
+    return pathId;
 }
 
 TextureLoadResult Texture::load() {
@@ -423,7 +439,7 @@ TextureLoadResult Texture::load() {
                 ? TextureData::buildSvgScalePath(paths[f], svgScale)
                 : paths[f];
         }
-        result = TextureDataPool::loadFromFile(id, aPaths, numFaces);
+        result = TextureDataPool::loadFromFile(id, aPaths, numFaces, isAlphaBorderFixed());
         if (result && result.data) {
             data = result.data;
             needLoad = false;
@@ -685,6 +701,38 @@ void Texture::setSvgScale(float scale){
 
 float Texture::getSvgScale() const{
     return svgScale;
+}
+
+void Texture::setAlphaBorder(TextureAlphaBorder alphaBorder){
+    bool wasFixed = isAlphaBorderFixed();
+    this->alphaBorder = alphaBorder;
+    reloadAlphaBorder(wasFixed);
+}
+
+TextureAlphaBorder Texture::getAlphaBorder() const{
+    return alphaBorder;
+}
+
+void Texture::setAlphaBorderAuto(bool fix){
+    bool wasFixed = isAlphaBorderFixed();
+    alphaBorderAuto = fix;
+    reloadAlphaBorder(wasFixed);
+}
+
+bool Texture::isAlphaBorderFixed() const{
+    return alphaBorder == TextureAlphaBorder::FIX || (alphaBorder == TextureAlphaBorder::AUTO && alphaBorderAuto);
+}
+
+// Part of the texture identity for file sources, so a change points at another pool entry
+void Texture::reloadAlphaBorder(bool wasFixed){
+    if (wasFixed == isAlphaBorderFixed() || !loadFromPath || type != TextureType::TEXTURE_2D){
+        return;
+    }
+
+    destroy();
+    id = buildPathTextureId();
+    needLoad = true;
+    render = TexturePool::get(id);
 }
 
 TextureWrap Texture::getWrapV() const{

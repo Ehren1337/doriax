@@ -208,6 +208,8 @@ namespace doriax::editor {
 
         static std::string textureWrapToString(TextureWrap wrap);
         static TextureWrap stringToTextureWrap(const std::string& str);
+        static std::string textureAlphaBorderToString(TextureAlphaBorder alphaBorder);
+        static TextureAlphaBorder stringToTextureAlphaBorder(const std::string& str);
 
         static YAML::Node encodeProject(Project* project);
         // The workspace supplies the per-user half of the project (tabs, cameras,

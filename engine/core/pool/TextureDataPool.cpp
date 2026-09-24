@@ -90,7 +90,7 @@ std::shared_ptr<std::array<TextureData,6>> TextureDataPool::get(const std::strin
 	return shared;
 }
 
-TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces) {
+TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder) {
     auto& shared = getMap()[id];
 
     TextureLoadResult result;
@@ -153,22 +153,22 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
         }
 
         // Start new async build
-        std::string textureName = getTextureDisplayName(id);
+        std::string textureName = getTextureDisplayName(paths[0].empty() ? id : paths[0]);
         uint64_t buildId = std::hash<std::string>{}(id);
 
         ResourceProgress::startBuild(buildId, ResourceType::Texture, textureName);
 
         // Use thread pool instead of std::async
         pendingBuilds[id] = ThreadPoolManager::getInstance().enqueue(
-            [id, paths, numFaces, buildId]() {
-                return loadTextureInternal(id, paths, numFaces, true);
+            [id, paths, numFaces, fixAlphaBorder, buildId]() {
+                return loadTextureInternal(id, paths, numFaces, fixAlphaBorder, true);
             }
         );
 
     } else {
         // Synchronous loading remains the same
         try {
-            std::array<TextureData,6> data = loadTextureInternal(id, paths, numFaces, false);
+            std::array<TextureData,6> data = loadTextureInternal(id, paths, numFaces, fixAlphaBorder, false);
             shared = std::make_shared<std::array<TextureData,6>>(data);
 
             result.state = ResourceLoadState::Finished;
@@ -185,7 +185,7 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
     return result;
 }
 
-std::array<TextureData,6> TextureDataPool::loadTextureInternal(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool trackProgress) {
+std::array<TextureData,6> TextureDataPool::loadTextureInternal(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder, bool trackProgress) {
     uint64_t buildId = std::hash<std::string>{}(id);
 
     if (trackProgress) {
@@ -257,6 +257,10 @@ std::array<TextureData,6> TextureDataPool::loadTextureInternal(const std::string
                 Log::error("Failed to load texture face %zu from file: %s", f, paths[f].c_str());
                 throw std::runtime_error("Failed to load texture face " + std::to_string(f) + " from file: " + paths[f]);
             }
+        }
+
+        if (fixAlphaBorder) {
+            data[f].fixAlphaBorder();
         }
 
         // Apply texture strategy

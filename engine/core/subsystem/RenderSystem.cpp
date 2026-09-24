@@ -2627,6 +2627,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[1].material = mesh.submeshes[0].material;
     }
 
+    // sprites, tilemaps and polygons draw images with transparent borders
+    Signature signature = scene->getSignature(entity);
+    if (signature.test(scene->getComponentId<SpriteComponent>()) || signature.test(scene->getComponentId<TilemapComponent>()) || signature.test(scene->getComponentId<MeshPolygonComponent>())){
+        for (int i = 0; i < mesh.numSubmeshes; i++){
+            mesh.submeshes[i].material.baseColorTexture.setAlphaBorderAuto(true);
+        }
+    }
+
     for (int i = 0; i < mesh.numSubmeshes; i++){
 
         ObjectRender& render = mesh.submeshes[i].render;
@@ -5192,6 +5200,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     if (!Engine::isViewLoaded()) 
         return false;
 
+    ui.texture.setAlphaBorderAuto(true);
+
     ObjectRender& render = ui.render;
 
     render.beginLoad(ui.primitiveType);
@@ -5300,6 +5310,7 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
 
         if (ui.needUpdateTexture || ui.texture.isFramebufferOutdated()){
             ShaderData& shaderData = ui.shader.get()->shaderData;
+            ui.texture.setAlphaBorderAuto(true);
             if (TextureRender* textureRender = ui.texture.getRender(&emptyWhite))
                 if (textureRender->isCreated()){
                     ui.render.addTexture(shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureRender);
@@ -5382,6 +5393,8 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     if (!Engine::isViewLoaded()) 
         return false;
+
+    points.texture.setAlphaBorderAuto(true);
 
     ObjectRender& render = points.render;
 
@@ -5593,6 +5606,7 @@ bool RenderSystem::drawPoints(PointsComponent& points, Transform& transform, Cam
 
         if (points.needUpdateTexture || points.texture.isFramebufferOutdated()){
             ShaderData& shaderData = points.shader.get()->shaderData;
+            points.texture.setAlphaBorderAuto(true);
             if (TextureRender* textureRender = points.texture.getRender(&emptyWhite)){
                 if (textureRender->isCreated()){
                     points.render.addTexture(shaderData.getTextureIndex(TextureShaderType::POINTS), ShaderStageType::FRAGMENT, textureRender);

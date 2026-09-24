@@ -43,6 +43,9 @@ UISystem::~UISystem(){
 }
 
 bool UISystem::createImagePatches(ImageComponent& img, UIComponent& ui, UILayoutComponent& layout){
+    // before the first load, see RenderSystem::loadUI
+    ui.texture.setAlphaBorderAuto(true);
+
     unsigned int texWidth = ui.texture.getWidth();
     unsigned int texHeight = ui.texture.getHeight();
 
@@ -636,6 +639,12 @@ void UISystem::applyButtonVisual(ButtonComponent& button, UIComponent& ui){
 
 void UISystem::updateButton(Entity entity, ButtonComponent& button, ImageComponent& img, UIComponent& ui, UILayoutComponent& layout){
     if (!ui.loaded){
+        // resolved here so that the copies swapped into ui.texture already match it
+        button.textureNormal.setAlphaBorderAuto(true);
+        button.textureHovered.setAlphaBorderAuto(true);
+        button.texturePressed.setAlphaBorderAuto(true);
+        button.textureDisabled.setAlphaBorderAuto(true);
+
         if (!button.textureNormal.load()){
             button.textureNormal = ui.texture;
         }

@@ -642,6 +642,20 @@ TextureWrap editor::Stream::stringToTextureWrap(const std::string& str) {
     return TextureWrap::REPEAT;
 }
 
+std::string editor::Stream::textureAlphaBorderToString(TextureAlphaBorder alphaBorder) {
+    switch (alphaBorder) {
+        case TextureAlphaBorder::FIX: return "fix";
+        case TextureAlphaBorder::KEEP: return "keep";
+        default: return "auto";
+    }
+}
+
+TextureAlphaBorder editor::Stream::stringToTextureAlphaBorder(const std::string& str) {
+    if (str == "fix") return TextureAlphaBorder::FIX;
+    if (str == "keep") return TextureAlphaBorder::KEEP;
+    return TextureAlphaBorder::AUTO;
+}
+
 std::string editor::Stream::anchorPresetToString(AnchorPreset preset) {
     switch (preset) {
         case AnchorPreset::NONE: return "NONE";
@@ -1332,6 +1346,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
     node["wrapU"] = textureWrapToString(texture.getWrapU());
     node["wrapV"] = textureWrapToString(texture.getWrapV());
     if (texture.getSvgScale() != 1.0f) node["svgScale"] = texture.getSvgScale();
+    if (texture.getAlphaBorder() != TextureAlphaBorder::AUTO) node["alphaBorder"] = textureAlphaBorderToString(texture.getAlphaBorder());
     node["releaseDataAfterLoad"] = texture.isReleaseDataAfterLoad();
     return node;
 }
@@ -1400,6 +1415,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
         if (node["wrapV"]) texture.setWrapV(stringToTextureWrap(node["wrapV"].as<std::string>()));
         // Old scenes carry the scale inside the path ("?svgScale=N"), absorbed by setPath()
         if (node["svgScale"]) texture.setSvgScale(node["svgScale"].as<float>());
+        if (node["alphaBorder"]) texture.setAlphaBorder(stringToTextureAlphaBorder(node["alphaBorder"].as<std::string>()));
 
         //if (node["isFramebuffer"] && node["isFramebuffer"].as<bool>()) {
         //    texture.setIsFramebuffer(true);

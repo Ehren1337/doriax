@@ -226,6 +226,12 @@ namespace doriax{
         CLAMP_TO_BORDER
     };
 
+    enum class TextureAlphaBorder{
+        AUTO, // fixed for sprites, tilemaps, polygons, UI and particles, kept otherwise
+        FIX,
+        KEEP
+    };
+
     enum PipelineType {
         PIP_DEFAULT     = 1 << 0,
         PIP_RTT         = 1 << 1,

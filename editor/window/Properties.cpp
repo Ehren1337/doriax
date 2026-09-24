@@ -207,6 +207,12 @@ static std::vector<editor::EnumEntry> entriesTextureWrap = {
     { (int)TextureWrap::CLAMP_TO_BORDER, "Clamp to Border" }
 };
 
+static std::vector<editor::EnumEntry> entriesTextureAlphaBorder = {
+    { (int)TextureAlphaBorder::AUTO, "Auto" },
+    { (int)TextureAlphaBorder::FIX, "Fix" },
+    { (int)TextureAlphaBorder::KEEP, "Keep" }
+};
+
 static std::vector<editor::EnumEntry> entriesEmitterShape = {
     { (int)ParticleEmitterShape::Box, "Box" },
     { (int)ParticleEmitterShape::Sphere, "Sphere" },
@@ -1340,12 +1346,13 @@ void editor::Properties::applyCameraTexture(Entity cameraEntity, ComponentType c
     cmd->setNoMerge();
 }
 
-// Popup that lets the user configure the sampler settings (min/mag filter, U/V wrap, and
-// the SVG rasterization scale for vector sources) of a texture property. Laid out with the
-// project's standard "<label> | <input>" property table, including the rotate-left reset
-// button when a row differs from the Catalog default. Each change commits a PropertyCmd
-// that copies the current per-entity Texture and mutates only the chosen field, then
-// invalidates the cached GPU texture so the new sampler is rebuilt on the next getRender().
+// Popup that lets the user configure the sampler settings (min/mag filter, U/V wrap), the
+// alpha border fix and the SVG rasterization scale for vector sources of a texture
+// property. Laid out with the project's standard "<label> | <input>" property table,
+// including the rotate-left reset button when a row differs from the Catalog default. Each
+// change commits a PropertyCmd that copies the current per-entity Texture and mutates only
+// the chosen field, then invalidates the cached GPU texture so the new sampler is rebuilt on
+// the next getRender().
 void editor::Properties::drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     ImGui::SetNextWindowSizeConstraints(ImVec2(19 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
     if (!ImGui::BeginPopup(popupId))
@@ -1443,7 +1450,7 @@ void editor::Properties::drawTextureSettingsPopup(const char* popupId, Component
     ImGui::Text("Texture settings");
     ImGui::Separator();
 
-    beginTable(cpType, getLabelSize("Mag Filter"), "texsettings_" + id);
+    beginTable(cpType, getLabelSize("Alpha Border"), "texsettings_" + id);
 
     struct SamplerRow {
         const char* label;
@@ -1458,6 +1465,7 @@ void editor::Properties::drawTextureSettingsPopup(const char* popupId, Component
         {"Mag Filter", "##texset_mag", &entriesTextureFilter, (int)current->getMagFilter(), (int)defaults.getMagFilter(), [](Texture& t, int v){ t.setMagFilter((TextureFilter)v); }},
         {"Wrap U", "##texset_wrapu", &entriesTextureWrap, (int)current->getWrapU(), (int)defaults.getWrapU(), [](Texture& t, int v){ t.setWrapU((TextureWrap)v); }},
         {"Wrap V", "##texset_wrapv", &entriesTextureWrap, (int)current->getWrapV(), (int)defaults.getWrapV(), [](Texture& t, int v){ t.setWrapV((TextureWrap)v); }},
+        {"Alpha Border", "##texset_alphaborder", &entriesTextureAlphaBorder, (int)current->getAlphaBorder(), (int)defaults.getAlphaBorder(), [](Texture& t, int v){ t.setAlphaBorder((TextureAlphaBorder)v); }},
     };
     for (const SamplerRow& row : samplerRows){
         int chosen = 0;
@@ -1471,7 +1479,7 @@ void editor::Properties::drawTextureSettingsPopup(const char* popupId, Component
     if (isSvg){
         //ImGui::SeparatorText("SVG");
 
-        beginTable(cpType, getLabelSize("Mag Filter"), "texsettings_svg_" + id);
+        beginTable(cpType, getLabelSize("Alpha Border"), "texsettings_svg_" + id);
 
         // "SVG Scale" | drag field; commit only on release so each distinct scale rasterizes
         // a new texture at most once.

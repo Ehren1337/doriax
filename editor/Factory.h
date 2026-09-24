@@ -88,6 +88,7 @@ namespace doriax::editor{
         static std::string formatAttributeDataType(AttributeDataType type);
         static std::string formatTextureFilter(TextureFilter filter);
         static std::string formatTextureWrap(TextureWrap wrap);
+        static std::string formatTextureAlphaBorder(TextureAlphaBorder alphaBorder);
         static std::string formatScriptPropertyType(ScriptPropertyType type);
         static std::string formatScriptPropertyValue(const ScriptPropertyValue& value, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
 

@@ -45,7 +45,7 @@ namespace doriax{
         static bool hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces);
         static size_t getTextureFaces(std::array<TextureData,6>& data);
 
-        static std::array<TextureData,6> loadTextureInternal(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool trackProgress);
+        static std::array<TextureData,6> loadTextureInternal(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder, bool trackProgress);
         static std::string getTextureDisplayName(const std::string& path);
         static std::string validateTextureFaces(std::array<TextureData,6>& data, size_t numFaces);
 
@@ -56,7 +56,7 @@ namespace doriax{
         // textures to the pool). No-op if the id is already cached with pixels. Main-thread only.
         static void put(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data);
 
-        static TextureLoadResult loadFromFile(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces);
+        static TextureLoadResult loadFromFile(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder = false);
 
         static void requestShutdown();
         // re-allows async loads after a recreated view

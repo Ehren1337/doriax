@@ -562,6 +562,14 @@ std::string editor::Factory::formatTextureWrap(TextureWrap wrap) {
     }
 }
 
+std::string editor::Factory::formatTextureAlphaBorder(TextureAlphaBorder alphaBorder) {
+    switch (alphaBorder) {
+        case TextureAlphaBorder::FIX: return "TextureAlphaBorder::FIX";
+        case TextureAlphaBorder::KEEP: return "TextureAlphaBorder::KEEP";
+        default: return "TextureAlphaBorder::AUTO";
+    }
+}
+
 std::string editor::Factory::formatScriptPropertyType(ScriptPropertyType type) {
     switch (type) {
         case ScriptPropertyType::Bool: return "ScriptPropertyType::Bool";
@@ -653,6 +661,9 @@ std::string editor::Factory::formatTexture(int indentSpaces, const Texture& text
     // After setPath, which resets the scale to 1.0
     if (texture.getSvgScale() != 1.0f) {
         code << ind << variableName << ".setSvgScale(" << formatFloat(texture.getSvgScale()) << ");\n";
+    }
+    if (texture.getAlphaBorder() != TextureAlphaBorder::AUTO) {
+        code << ind << variableName << ".setAlphaBorder(" << formatTextureAlphaBorder(texture.getAlphaBorder()) << ");\n";
     }
 
     code << ind << variableName << ".setMinFilter(" << formatTextureFilter(texture.getMinFilter()) << ");\n";

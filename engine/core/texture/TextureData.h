@@ -81,6 +81,10 @@ namespace doriax {
 
         void flipVertical();
 
+        // Gives fully transparent pixels next to visible ones the color of their neighbors,
+        // which linear filtering would otherwise blend in as a dark outline
+        void fixAlphaBorder();
+
         unsigned char getColorComponent(int x, int y, int color);
         
         void setDataOwned(bool dataOwned);

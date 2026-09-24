@@ -135,6 +135,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("TextureAlphaBorder")
+        .addVariable("AUTO", TextureAlphaBorder::AUTO)
+        .addVariable("FIX", TextureAlphaBorder::FIX)
+        .addVariable("KEEP", TextureAlphaBorder::KEEP)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("AdMobRating")
         .addVariable("General", AdMobRating::General)
         .addVariable("ParentalGuidance", AdMobRating::ParentalGuidance)
@@ -535,6 +542,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("wrapU", &Texture::getWrapU, &Texture::setWrapU)
         .addProperty("wrapV", &Texture::getWrapV, &Texture::setWrapV)
         .addProperty("svgScale", &Texture::getSvgScale, &Texture::setSvgScale)
+        .addProperty("alphaBorder", &Texture::getAlphaBorder, &Texture::setAlphaBorder)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
