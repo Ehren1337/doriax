@@ -324,6 +324,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("anchorOffsetRight", &UILayoutComponent::anchorOffsetRight, &UILayoutComponent::anchorOffsetRight)
         .addProperty("anchorOffsetBottom", &UILayoutComponent::anchorOffsetBottom, &UILayoutComponent::anchorOffsetBottom)
         .addProperty("positionOffset", &UILayoutComponent::positionOffset, &UILayoutComponent::positionOffset)
+        .addProperty("pivot", &UILayoutComponent::pivot, &UILayoutComponent::pivot)
         .addProperty("anchorPreset", &UILayoutComponent::anchorPreset, &UILayoutComponent::anchorPreset)
         .addProperty("usingAnchors", &UILayoutComponent::usingAnchors, &UILayoutComponent::usingAnchors)
         .addProperty("panel", &UILayoutComponent::panel)

@@ -209,6 +209,7 @@ namespace {
         makeFastProperty<UILayoutComponent, int, &UILayoutComponent::anchorOffsetRight>("anchorOffsetRight", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<UILayoutComponent, int, &UILayoutComponent::anchorOffsetBottom>("anchorOffsetBottom", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<UILayoutComponent, Vector2, &UILayoutComponent::positionOffset>("positionOffset", PropertyType::Vector2, UpdateFlags_None),
+        makeFastProperty<UILayoutComponent, Vector2, &UILayoutComponent::pivot>("pivot", PropertyType::Vector2, UpdateFlags_Transform),
         makeFastProperty<UILayoutComponent, AnchorPreset, &UILayoutComponent::anchorPreset>("anchorPreset", PropertyType::Enum, UpdateFlags_None),
         makeFastProperty<UILayoutComponent, bool, &UILayoutComponent::usingAnchors>("usingAnchors", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<UILayoutComponent, bool, &UILayoutComponent::ignoreScissor>("ignoreScissor", PropertyType::Bool, UpdateFlags_None),

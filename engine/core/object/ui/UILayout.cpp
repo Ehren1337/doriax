@@ -234,6 +234,27 @@ Vector2 UILayout::getPositionOffset() const{
     return layout.positionOffset;
 }
 
+void UILayout::setPivot(Vector2 pivot){
+    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+    Transform& transform = getComponent<Transform>();
+
+    if (layout.pivot != pivot){
+        layout.pivot = pivot;
+
+        transform.needUpdate = true;
+    }
+}
+
+void UILayout::setPivot(float x, float y){
+    setPivot(Vector2(x, y));
+}
+
+Vector2 UILayout::getPivot() const{
+    UILayoutComponent& layout = getComponent<UILayoutComponent>();
+
+    return layout.pivot;
+}
+
 void UILayout::setAnchorPreset(AnchorPreset anchorPreset){
     UILayoutComponent& layout = getComponent<UILayoutComponent>();
 

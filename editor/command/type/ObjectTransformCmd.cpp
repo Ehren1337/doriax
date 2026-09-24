@@ -9,7 +9,12 @@ editor::ObjectTransformCmd::ObjectTransformCmd(Project* project, size_t sceneId,
     this->project = project;
     this->sceneId = sceneId;
     
-    localMatrix.decomposeStandard(props[entity].newPosition, props[entity].newScale, props[entity].newRotation);
+    TransformCmdValue& value = props[entity];
+    localMatrix.decomposeStandard(value.newPosition, value.newScale, value.newRotation);
+    // the matrix origin of a pivoted UI element is not its position
+    if (UILayoutComponent* layout = project->getScene(sceneId)->scene->findComponent<UILayoutComponent>(entity)){
+        value.newPosition -= getUIPivotShift(*layout, value.newRotation, value.newScale);
+    }
 
     this->wasModified = project->getScene(sceneId)->isModified;
 }

@@ -703,7 +703,7 @@ namespace doriax{
 		bool loadSky(Entity entity, SkyComponent& sky, uint16_t pipelines);
 
 		void updateFramebuffer(CameraComponent& camera);
-		void updateTransform(Transform& transform);
+		void updateTransform(Transform& transform, Entity entity);
 		void updateCamera(CameraComponent& camera, Transform& transform);
 		void updateMirrors(Entity mainCameraEntity);
 		Entity createMirrorCamera(Entity mirrorEntity);

@@ -2497,6 +2497,10 @@ void UISystem::update(double dt){
             }
         }
 
+        bool resized = layout.needUpdateSizes;
+        unsigned int oldWidth = layout.width;
+        unsigned int oldHeight = layout.height;
+
         if (layout.needUpdateSizes){
             if (signature.test(scene->getComponentId<ImageComponent>())){
                 ImageComponent& img = scene->getComponent<ImageComponent>(entity);
@@ -2534,6 +2538,12 @@ void UISystem::update(double dt){
         }
 
         createOrUpdateUiComponent(layout, entity, signature);
+
+        // the pivot is a share of the size, which a text may also have changed
+        resized = resized || layout.width != oldWidth || layout.height != oldHeight;
+        if (resized && layout.pivot != Vector2(0, 0) && signature.test(scene->getComponentId<Transform>())){
+            scene->getComponent<Transform>(entity).needUpdate = true;
+        }
         
     }
 

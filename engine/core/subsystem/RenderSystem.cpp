@@ -6002,8 +6002,15 @@ Rect RenderSystem::getScissorRect(UILayoutComponent& layout, ImageComponent& img
     return intersectScissor(Rect(minX, minY, maxX - minX, maxY - minY), passViewport);
 }
 
-void RenderSystem::updateTransform(Transform& transform){
-    Matrix4 translateMatrix = Matrix4::translateMatrix(transform.position);
+void RenderSystem::updateTransform(Transform& transform, Entity entity){
+    // UI grows around its pivot, so its origin, the top-left corner, moves
+    Vector3 origin = transform.position;
+    UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity);
+    if (layout && layout->pivot != Vector2(0, 0)){
+        origin += getUIPivotShift(*layout, transform.rotation, transform.scale);
+    }
+
+    Matrix4 translateMatrix = Matrix4::translateMatrix(origin);
     Matrix4 rotationMatrix = transform.rotation.getRotationMatrix();
     Matrix4 scaleMatrix = Matrix4::scaleMatrix(transform.scale);
 
@@ -6017,13 +6024,13 @@ void RenderSystem::updateTransform(Transform& transform){
     if (transformParent){
         transform.modelMatrix = transformParent->modelMatrix * transform.localMatrix;
 
-        transform.worldPosition = transformParent->modelMatrix * transform.position;
+        transform.worldPosition = transformParent->modelMatrix * origin;
         transform.worldScale = transformParent->worldScale * transform.scale;
         transform.worldRotation = transformParent->worldRotation * transform.rotation;
     }else{
         transform.modelMatrix = transform.localMatrix;
 
-        transform.worldPosition = transform.position;
+        transform.worldPosition = origin;
         transform.worldScale = transform.scale;
         transform.worldRotation = transform.rotation;
     }
@@ -7226,7 +7233,7 @@ void RenderSystem::updateMVP(size_t index, Transform& transform, CameraComponent
                     if (childTransform.needUpdate){
                         Entity entity = transforms->getEntity(i);
                         parentList.push_back(entity);
-                        updateTransform(childTransform);
+                        updateTransform(childTransform, entity);
                     }
                 }
             }
@@ -7330,7 +7337,7 @@ void RenderSystem::update(double dt){
         }
 
         if (transform.needUpdate){
-            updateTransform(transform);
+            updateTransform(transform, transforms->getEntity(i));
         }
     }
 

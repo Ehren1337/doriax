@@ -6615,6 +6615,11 @@ void editor::Properties::drawUILayoutComponent(ComponentType cpType, SceneProjec
     settingsPositionOffset.stepSize = 1.0f;
     settingsPositionOffset.secondColSize = 6 * ImGui::GetFontSize();
 
+    RowSettings settingsPivot;
+    settingsPivot.stepSize = 0.01f;
+    settingsPivot.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPivot.help = "Scale and rotation center: (0, 0) is the top-left corner, (0.5, 0.5) the center";
+
     beginTable(cpType, getLabelSize("Position Offset"));
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
@@ -6645,6 +6650,7 @@ void editor::Properties::drawUILayoutComponent(ComponentType cpType, SceneProjec
         ImGui::EndDisabled();
     }
     propertyRow(RowPropertyType::Vector2, cpType, "positionOffset", "Position Offset", sceneProject, entities, settingsPositionOffset);
+    propertyRow(RowPropertyType::Vector2, cpType, "pivot", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Bool, cpType, "ignoreScissor", "Ignore Scissor", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "ignoreEvents", "Ignore Events", sceneProject, entities);
     endTable();

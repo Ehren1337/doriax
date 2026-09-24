@@ -38,20 +38,20 @@ namespace {
     }
 
     // world pose of a transform the render pass has not updated yet, parents first
-    void resolveWorldTransform(Scene* scene, Transform& transform, int depth = 0){
+    void resolveWorldTransform(Scene* scene, Transform& transform, Entity entity, int depth = 0){
         if (transform.parent != NULL_ENTITY && depth < 64){
             Transform* parent = scene->findComponent<Transform>(transform.parent);
             if (parent && parent->needUpdate){
-                resolveWorldTransform(scene, *parent, depth + 1);
+                resolveWorldTransform(scene, *parent, transform.parent, depth + 1);
             }
         }
-        scene->getSystem<RenderSystem>()->updateTransform(transform);
+        scene->getSystem<RenderSystem>()->updateTransform(transform, entity);
     }
 
     void resolveWorldPose(Scene* scene, Entity entity){
         Transform* transform = scene->findComponent<Transform>(entity);
         if (transform && transform->needUpdate){
-            resolveWorldTransform(scene, *transform);
+            resolveWorldTransform(scene, *transform, entity);
         }
     }
 

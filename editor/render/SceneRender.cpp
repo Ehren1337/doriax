@@ -1682,6 +1682,12 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     if (size.x < 0) size.x = 0;
                     if (size.y < 0) size.y = 0;
 
+                    if (isLayout){
+                        // the matrix origin of a pivoted UI element is not its position
+                        UILayoutComponent& layout = scene->getComponent<UILayoutComponent>(entity);
+                        pos -= getUIPivotShift(layout.pivot, size, transform->rotation, transform->scale);
+                    }
+
                     if (isText){
                         TextComponent& text = scene->getComponent<TextComponent>(entity);
                         if (text.pivotCentered){

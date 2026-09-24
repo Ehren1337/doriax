@@ -817,6 +817,8 @@ void LuaBinding::registerObjectClasses(lua_State *L){
         .addProperty("positionXOffset", &UILayout::getPositionXOffset, &UILayout::setPositionXOffset)
         .addProperty("positionYOffset", &UILayout::getPositionYOffset, &UILayout::setPositionYOffset)
         .addProperty("positionOffset", &UILayout::getPositionOffset, &UILayout::setPositionOffset)
+        .addProperty("pivot", &UILayout::getPivot, (void(UILayout::*)(Vector2))&UILayout::setPivot)
+        .addFunction("setPivot", (void(UILayout::*)(float, float))&UILayout::setPivot)
         .addProperty("anchorPreset", &UILayout::getAnchorPreset, &UILayout::setAnchorPreset)
         .addProperty("usingAnchors", &UILayout::isUsingAnchors, &UILayout::setUsingAnchors)
         .addProperty("ignoreScissor", &UILayout::isIgnoreScissor, &UILayout::setIgnoreScissor)

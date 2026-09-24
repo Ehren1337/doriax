@@ -5065,6 +5065,7 @@ YAML::Node editor::Stream::encodeUILayoutComponent(const UILayoutComponent& layo
     node["anchorOffsetRight"] = layout.anchorOffsetRight;
     node["anchorOffsetBottom"] = layout.anchorOffsetBottom;
     node["positionOffset"] = encodeVector2(layout.positionOffset);
+    node["pivot"] = encodeVector2(layout.pivot);
     node["anchorPreset"] = anchorPresetToString(layout.anchorPreset);
     node["usingAnchors"] = layout.usingAnchors;
     node["panel"] = layout.panel;
@@ -5097,6 +5098,7 @@ UILayoutComponent editor::Stream::decodeUILayoutComponent(const YAML::Node& node
     if (node["anchorOffsetRight"]) layout.anchorOffsetRight = node["anchorOffsetRight"].as<int>();
     if (node["anchorOffsetBottom"]) layout.anchorOffsetBottom = node["anchorOffsetBottom"].as<int>();
     if (node["positionOffset"]) layout.positionOffset = decodeVector2(node["positionOffset"]);
+    if (node["pivot"]) layout.pivot = decodeVector2(node["pivot"]);
     if (node["anchorPreset"]) layout.anchorPreset = stringToAnchorPreset(node["anchorPreset"].as<std::string>());
     if (node["usingAnchors"]) layout.usingAnchors = node["usingAnchors"].as<bool>();
     if (node["panel"]) layout.panel = node["panel"].as<Entity>();

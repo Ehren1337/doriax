@@ -182,6 +182,10 @@ void Object::setLocalMatrix(Matrix4 localMatrix){
         transform.localMatrix = localMatrix;
 
         localMatrix.decompose(transform.position, transform.scale, transform.rotation);
+        // the matrix origin of a pivoted UI element is not its position
+        if (UILayoutComponent* layout = scene->findComponent<UILayoutComponent>(entity)){
+            transform.position -= getUIPivotShift(*layout, transform.rotation, transform.scale);
+        }
 
         transform.needUpdate = true;
     }
@@ -244,7 +248,7 @@ void Object::moveToBottom(){
 void Object::updateTransform(){
     Transform& transform = getComponent<Transform>();
 
-    scene->getSystem<RenderSystem>()->updateTransform(transform);
+    scene->getSystem<RenderSystem>()->updateTransform(transform, entity);
 }
 
 #ifdef DORIAX_PHYSICS_2D

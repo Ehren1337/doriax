@@ -49,6 +49,8 @@ namespace doriax{
 
         Vector2 positionOffset = Vector2(0, 0); // for anchors
 
+        Vector2 pivot = Vector2(0, 0); // scale and rotation center, (0, 0) top-left to (1, 1) bottom-right
+
         AnchorPreset anchorPreset = AnchorPreset::NONE;
         bool usingAnchors = false;
 
@@ -64,6 +66,16 @@ namespace doriax{
         bool needUpdateSizes = false;
         bool needUpdateAnchorOffsets = false;
     };
+
+    // how far a scaled or rotated element's local origin moves from its position
+    inline Vector3 getUIPivotShift(const Vector2& pivot, const Vector2& size, const Quaternion& rotation, const Vector3& scale){
+        Vector3 point(pivot.x * size.x, pivot.y * size.y, 0);
+        return point - rotation * (scale * point);
+    }
+
+    inline Vector3 getUIPivotShift(const UILayoutComponent& layout, const Quaternion& rotation, const Vector3& scale){
+        return getUIPivotShift(layout.pivot, Vector2(layout.width, layout.height), rotation, scale);
+    }
     
 }
 

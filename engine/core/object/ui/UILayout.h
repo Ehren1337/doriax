@@ -50,6 +50,10 @@ namespace doriax{
         void setPositionOffset(Vector2 positionOffset);
         Vector2 getPositionOffset() const;
 
+        void setPivot(Vector2 pivot);
+        void setPivot(float x, float y);
+        Vector2 getPivot() const;
+
         void setAnchorPreset(AnchorPreset anchorPreset);
         AnchorPreset getAnchorPreset() const;
 

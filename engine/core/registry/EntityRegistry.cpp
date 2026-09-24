@@ -409,6 +409,10 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
             if (changeTransform){
                 // set local position to be the same of world position
                 transformChild.modelMatrix.decompose(transformChild.position, transformChild.scale, transformChild.rotation);
+                // the matrix origin of a pivoted UI element is not its position
+                if (UILayoutComponent* layout = findComponent<UILayoutComponent>(child)){
+                    transformChild.position -= getUIPivotShift(*layout, transformChild.rotation, transformChild.scale);
+                }
             }
         }else{
             Signature parentSignature = entityManager.getSignature(parent);
@@ -425,6 +429,9 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
                     if (changeTransform){
                         Matrix4 localMatrix = transformParent.modelMatrix.inverse() * transformChild.modelMatrix;
                         localMatrix.decompose(transformChild.position, transformChild.scale, transformChild.rotation);
+                        if (UILayoutComponent* layout = findComponent<UILayoutComponent>(child)){
+                            transformChild.position -= getUIPivotShift(*layout, transformChild.rotation, transformChild.scale);
+                        }
                     }
 
                 }

@@ -1152,6 +1152,7 @@ std::string editor::Factory::createUILayoutComponent(int indentSpaces, EntityReg
     code << ind << "layout.anchorOffsetRight = " << formatInt(layout.anchorOffsetRight) << ";\n";
     code << ind << "layout.anchorOffsetBottom = " << formatInt(layout.anchorOffsetBottom) << ";\n";
     code << ind << "layout.positionOffset = " << formatVector2(layout.positionOffset) << ";\n";
+    code << ind << "layout.pivot = " << formatVector2(layout.pivot) << ";\n";
     code << ind << "layout.anchorPreset = " << formatAnchorPreset(layout.anchorPreset) << ";\n";
     code << ind << "layout.usingAnchors = " << formatBool(layout.usingAnchors) << ";\n";
     code << ind << "layout.ignoreScissor = " << formatBool(layout.ignoreScissor) << ";\n";
