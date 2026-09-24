@@ -728,6 +728,7 @@ namespace doriax{
 		void prepareMeshForDataReload(Entity entity, MeshComponent& mesh);
 
 		bool isAllLoaded() const;
+		void getLoadCount(size_t& loaded, size_t& total) const;
 		bool hasPendingMeshLods() const;
 	
 		void load() override;

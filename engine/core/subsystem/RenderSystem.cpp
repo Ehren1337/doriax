@@ -6565,12 +6565,28 @@ void RenderSystem::needReloadSky() {
 }
 
 bool RenderSystem::isAllLoaded() const{
+    size_t loaded;
+    size_t total;
+    getLoadCount(loaded, total);
+
+    return loaded == total;
+}
+
+void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
+    loaded = 0;
+    total = 0;
+
+    auto count = [&](bool isLoaded){
+        total++;
+        if (isLoaded)
+            loaded++;
+    };
+
     // Check MeshComponents
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded)
-            return false;
+        count(mesh.loaded);
     }
 
     // Check UIComponents
@@ -6580,16 +6596,15 @@ bool RenderSystem::isAllLoaded() const{
         // An empty UI never loads: loadUI() retries each frame and nothing sets needReload.
         const size_t uiBufferSize = std::max(ui.buffer.getSize(),
                                              (size_t)ui.minBufferCount * ui.buffer.getStride());
-        if (!ui.loaded && uiBufferSize > 0)
-            return false;
+        if (uiBufferSize > 0)
+            count(ui.loaded);
     }
 
     // Check PointsComponents
     auto pointsArray = scene->getComponentArray<PointsComponent>();
     for (int i = 0; i < pointsArray->size(); i++) {
         const PointsComponent& points = pointsArray->getComponentFromIndex(i);
-        if (!points.loaded)
-            return false;
+        count(points.loaded);
     }
 
     // Check LinesComponents
@@ -6597,19 +6612,16 @@ bool RenderSystem::isAllLoaded() const{
     for (int i = 0; i < linesArray->size(); i++) {
         const LinesComponent& lines = linesArray->getComponentFromIndex(i);
         // An empty Lines never loads: addLine() only sets needReload when maxLines grows.
-        if (!lines.loaded && !lines.lines.empty())
-            return false;
+        if (!lines.lines.empty())
+            count(lines.loaded);
     }
 
     // Check SkyComponents
     auto skyArray = scene->getComponentArray<SkyComponent>();
     for (int i = 0; i < skyArray->size(); i++) {
         const SkyComponent& sky = skyArray->getComponentFromIndex(i);
-        if (!sky.loaded)
-            return false;
+        count(sky.loaded);
     }
-
-    return true;
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){

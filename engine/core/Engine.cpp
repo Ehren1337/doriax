@@ -1174,6 +1174,9 @@ void Engine::systemDraw(){
         }
     }
 
+    // after the draw, so the new scenes are drawn loaded before the loading scene goes
+    SceneManager::updateLoading();
+
     frameRunning = false;
 
     drawSemaphore.release();

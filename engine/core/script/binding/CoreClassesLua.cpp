@@ -326,6 +326,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("currentSceneId", &SceneManager::getCurrentSceneId)
         .addStaticProperty("currentSceneName", &SceneManager::getCurrentSceneName)
         .addStaticProperty("loadPending", &SceneManager::isLoadPending)
+        .addStaticFunction("setLoadingScene",
+            luabridge::overload<uint32_t>(&SceneManager::setLoadingScene),
+            luabridge::overload<const std::string&>(&SceneManager::setLoadingScene))
+        .addStaticProperty("loadingSceneId", &SceneManager::getLoadingSceneId)
+        .addStaticProperty("loadingDelay", &SceneManager::getLoadingDelay, &SceneManager::setLoadingDelay)
+        .addStaticProperty("loading", &SceneManager::isLoading)
+        .addStaticProperty("loadingProgress", &SceneManager::getLoadingProgress)
         .addStaticFunction("clearAll", &SceneManager::clearAll)
         .addStaticFunction("setScenePtr", &SceneManager::setScenePtr)
         .addStaticFunction("getScenePtr", &SceneManager::getScenePtr)

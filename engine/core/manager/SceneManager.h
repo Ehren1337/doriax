@@ -42,13 +42,36 @@ namespace doriax {
             std::vector<uint32_t> sceneIds;
         };
 
+        enum class LoadingState {
+            None,
+            Covering,   // loading scene over the old stack, switch pending
+            Loading     // new stack loading its resources
+        };
+
         static std::vector<SceneEntry> entries;
         static uint32_t currentId;
         static std::optional<uint32_t> pendingId;
+        static bool pendingBetweenFrames;
         static std::map<uint32_t, Scene*> scenePtrs;
+
+        static uint32_t loadingSceneId;
+        static float loadingDelay;
+        static LoadingState loadingState;
+        static bool loadingSceneShown;
+        static bool loadingSceneReady;
+        static double loadingStateTime;
+        static size_t loadingCount;
+        static double loadingProgressTime;
+
         static std::vector<uint32_t> buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds);
         static SceneEntry* findEntry(uint32_t id);
         static void runFactory(uint32_t id);
+
+        static std::vector<Scene*> getRunningScenes(uint32_t id);
+        static bool canShowLoadingScene(uint32_t id);
+        static void raiseLoadingScene();
+        static void beginLoading();
+        static void getLoadCount(size_t& loaded, size_t& total);
 
     public:
         // Register a named scene stack.
@@ -69,9 +92,9 @@ namespace doriax {
 
         // Load a scene stack by name. Calls Engine::removeAllScenes() then invokes the
         // registered factory. Returns false if the name is not found.
-        // Inside a frame (script callback, contact, button press) the transition is deferred
-        // to the next frame, as the factory tears down the running scenes and scripts; the
-        // current scene only changes then.
+        // While a scene is running (script callback, contact, input) the transition is
+        // deferred to the next frame, as the factory tears down the running scenes and
+        // scripts; the current scene only changes then.
         static bool loadScene(const std::string& name);
 
         // Load a scene stack by id.
@@ -83,6 +106,25 @@ namespace doriax {
 
         // Runs the deferred transition. Called by Engine before the scenes update.
         static void applyPendingLoad();
+
+        // Scene stack shown on top while loadScene() switches stacks, until the new stack
+        // has loaded. An empty name or 0 disables it.
+        static bool setLoadingScene(const std::string& name);
+        static bool setLoadingScene(uint32_t id);
+        static uint32_t getLoadingSceneId();
+
+        // Seconds the loading scene covers the old scenes before they are replaced.
+        static void setLoadingDelay(float seconds);
+        static float getLoadingDelay();
+
+        // True from loadScene() until the new stack has loaded its resources.
+        static bool isLoading();
+
+        // Loaded share of the new stack's drawables, from 0 to 1.
+        static float getLoadingProgress();
+
+        // Called by Engine after the scenes draw.
+        static void updateLoading();
 
         // Add a child scene stack on top of the running scenes, keeping the main scene.
         // Runs the stack's add factory, which creates the scenes that are missing and restores

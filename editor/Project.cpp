@@ -3789,6 +3789,8 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setTextureStrategy(TextureStrategy::RESIZE);
     Engine::setMouseCursor(CursorType::ARROW);
     Engine::setMouseMode(MouseMode::NORMAL);
+    // a game may have turned it off
+    Engine::setAsyncLoading(true);
 
     if (executeViewChanged) {
         Engine::systemViewChanged();
