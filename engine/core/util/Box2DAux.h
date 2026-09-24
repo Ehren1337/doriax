@@ -58,12 +58,16 @@ namespace doriax{
             return scene->getSystem<PhysicsSystem>()->preSolve2D.callRet(Body2D(scene, entityA), shapeIndexA, Body2D(scene, entityB), shapeIndexB, Manifold2D(scene, manifold), true);
         }
 
+        // A shape destroyed since the step (a body removed or recreated, or by an earlier
+        // callback) still has its events, so they are skipped
         static void manageEvents(Scene* scene, b2WorldId world){
             b2ContactEvents contactEvents = b2World_GetContactEvents(world);
             b2SensorEvents sensorEvents = b2World_GetSensorEvents(world);
 
             for (int i = 0; i < contactEvents.beginCount; ++i){
                 b2ContactBeginTouchEvent* beginEvent = contactEvents.beginEvents + i;
+                if (!b2Shape_IsValid(beginEvent->shapeIdA) || !b2Shape_IsValid(beginEvent->shapeIdB))
+                    continue;
 
                 size_t shapeIndexA = reinterpret_cast<size_t>(b2Shape_GetUserData(beginEvent->shapeIdA));
                 size_t shapeIndexB = reinterpret_cast<size_t>(b2Shape_GetUserData(beginEvent->shapeIdB));
@@ -79,6 +83,8 @@ namespace doriax{
 
             for (int i = 0; i < contactEvents.endCount; ++i){
                 b2ContactEndTouchEvent* endEvent = contactEvents.endEvents + i;
+                if (!b2Shape_IsValid(endEvent->shapeIdA) || !b2Shape_IsValid(endEvent->shapeIdB))
+                    continue;
 
                 size_t shapeIndexA = reinterpret_cast<size_t>(b2Shape_GetUserData(endEvent->shapeIdA));
                 size_t shapeIndexB = reinterpret_cast<size_t>(b2Shape_GetUserData(endEvent->shapeIdB));
@@ -94,6 +100,8 @@ namespace doriax{
 
             for (int i = 0; i < contactEvents.hitCount; ++i){
                 b2ContactHitEvent* hitEvent = contactEvents.hitEvents + i;
+                if (!b2Shape_IsValid(hitEvent->shapeIdA) || !b2Shape_IsValid(hitEvent->shapeIdB))
+                    continue;
 
                 size_t shapeIndexA = reinterpret_cast<size_t>(b2Shape_GetUserData(hitEvent->shapeIdA));
                 size_t shapeIndexB = reinterpret_cast<size_t>(b2Shape_GetUserData(hitEvent->shapeIdB));
@@ -112,6 +120,8 @@ namespace doriax{
 
             for (int i = 0; i < sensorEvents.beginCount; ++i){
                 b2SensorBeginTouchEvent* beginTouch = sensorEvents.beginEvents + i;
+                if (!b2Shape_IsValid(beginTouch->sensorShapeId) || !b2Shape_IsValid(beginTouch->visitorShapeId))
+                    continue;
 
                 size_t shapeIndexSensor = reinterpret_cast<size_t>(b2Shape_GetUserData(beginTouch->sensorShapeId));
                 size_t shapeIndexVisitor = reinterpret_cast<size_t>(b2Shape_GetUserData(beginTouch->visitorShapeId));
@@ -127,6 +137,8 @@ namespace doriax{
 
             for (int i = 0; i < sensorEvents.endCount; ++i){
                 b2SensorEndTouchEvent* endTouch = sensorEvents.endEvents + i;
+                if (!b2Shape_IsValid(endTouch->sensorShapeId) || !b2Shape_IsValid(endTouch->visitorShapeId))
+                    continue;
 
                 size_t shapeIndexSensor = reinterpret_cast<size_t>(b2Shape_GetUserData(endTouch->sensorShapeId));
                 size_t shapeIndexVisitor = reinterpret_cast<size_t>(b2Shape_GetUserData(endTouch->visitorShapeId));
