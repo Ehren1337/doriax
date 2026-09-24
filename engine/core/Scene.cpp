@@ -43,6 +43,8 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    // sounds of a deleted scene would play on; not in destroy(), which also runs on view recreation
+    getSystem<AudioSystem>()->stopSceneSounds();
     destroy();
 }
 

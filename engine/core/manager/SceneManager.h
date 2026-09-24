@@ -51,7 +51,6 @@ namespace doriax {
         static std::vector<SceneEntry> entries;
         static uint32_t currentId;
         static std::optional<uint32_t> pendingId;
-        static bool pendingBetweenFrames;
         static std::map<uint32_t, Scene*> scenePtrs;
 
         static uint32_t loadingSceneId;

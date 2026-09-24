@@ -19,7 +19,6 @@ static const double LOADING_STALL_TIMEOUT = 5.0;
 std::vector<SceneManager::SceneEntry> SceneManager::entries;
 uint32_t SceneManager::currentId = 0;
 std::optional<uint32_t> SceneManager::pendingId;
-bool SceneManager::pendingBetweenFrames = false;
 std::map<uint32_t, Scene*> SceneManager::scenePtrs;
 
 uint32_t SceneManager::loadingSceneId = 0;
@@ -137,7 +136,6 @@ bool SceneManager::loadScene(uint32_t id) {
             Log::warn("SceneManager: scene %u replaces pending scene %u", id, *pendingId);
         }
         pendingId = id;
-        pendingBetweenFrames = !Engine::isFrameRunning();
         return true;
     }
 
@@ -162,7 +160,6 @@ void SceneManager::applyPendingLoad() {
         loadingSceneReady = false;
         loadingState = LoadingState::Covering;
         loadingStateTime = Engine::getSystemTime();
-        pendingBetweenFrames = false;
         return;
     }
 
@@ -171,10 +168,6 @@ void SceneManager::applyPendingLoad() {
         if (!loadingSceneReady || Engine::getSystemTime() - loadingStateTime < loadingDelay) {
             return;
         }
-    } else if (pendingBetweenFrames) {
-        // one more update for the scenes the input callback ran in, e.g. to start its sound
-        pendingBetweenFrames = false;
-        return;
     }
 
     pendingId.reset();
@@ -445,7 +438,6 @@ void SceneManager::clearAll() {
     entries.clear();
     currentId = 0;
     pendingId.reset();
-    pendingBetweenFrames = false;
     scenePtrs.clear();
 
     loadingSceneId = 0;

@@ -8503,8 +8503,9 @@ void editor::Project::registerSceneManager() {
                 Scene* scene = session->runtimeScenes[entryIndex].runtime->scene;
 
                 // The exported load function deletes these scenes and drops their pointers,
-                // so getScenePtr() must not resolve them here either
+                // so getScenePtr() must not resolve them here either, and their sounds stop
                 SceneManager::removeScenePtr(sourceSceneId);
+                scene->getSystem<AudioSystem>()->stopSceneSounds();
 
                 if (conector.isLibraryConnected()) {
                     conector.cleanup(scene);
