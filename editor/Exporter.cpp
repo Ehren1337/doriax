@@ -619,6 +619,19 @@ fs::path editor::Exporter::getExportProjectRoot() const {
     return config.targetDir / "project";
 }
 
+fs::path editor::Exporter::getAssetsSourceDir() const {
+    fs::path assetsSrc = config.assetsDir;
+    if (assetsSrc.empty()) {
+        assetsSrc = project->getProjectPath();
+    }
+    if (assetsSrc.is_relative()) {
+        assetsSrc = project->getProjectPath() / assetsSrc;
+    }
+
+    std::error_code ec;
+    return fs::weakly_canonical(assetsSrc, ec);
+}
+
 std::string editor::Exporter::getAppName() const {
     if (project->getName().empty()) {
         return "doriax-project";
@@ -1545,17 +1558,9 @@ bool editor::Exporter::copyGenerated() {
 bool editor::Exporter::copyAssets() {
     setProgress("Copying assets...", 0.35f);
 
-    fs::path assetsSrc = config.assetsDir;
-    if (assetsSrc.empty()) {
-        assetsSrc = project->getProjectPath();
-    }
-    if (assetsSrc.is_relative()) {
-        assetsSrc = project->getProjectPath() / assetsSrc;
-    }
+    const fs::path assetsSrc = getAssetsSourceDir();
 
     std::error_code ec;
-    assetsSrc = fs::weakly_canonical(assetsSrc, ec);
-
     if (!fs::exists(assetsSrc, ec)) {
         setError("Assets directory does not exist: " + assetsSrc.string());
         return false;
@@ -1590,6 +1595,24 @@ bool editor::Exporter::copyAssets() {
         // Skip Lua sources already shipped in the lua tree
         if (isLuaSourceFile(entry.path()) && luaCopiedSources.count(entry.path().lexically_normal())) continue;
 
+        // A different file at a path the lua tree already has: Android merges both trees
+        // into one assets root and fails on the duplicate, so only one of them can ship.
+        // Scripts stay in the lua tree; anything else stays here.
+        if (luaExportedPaths.count(relPath.lexically_normal())) {
+            if (isLuaSourceFile(relPath)) {
+                Out::warning("Asset \"%s\" is left out of the export: the Lua script at the same path takes it",
+                             relPath.generic_string().c_str());
+                continue;
+            }
+            fs::remove(getExportProjectRoot() / "lua" / relPath, ec);
+            if (ec) {
+                setError("Failed to remove " + relPath.generic_string() + " from the exported lua directory: " + ec.message());
+                return false;
+            }
+            Out::warning("\"%s\" exists in both the Lua and assets directories; only the asset is exported",
+                         relPath.generic_string().c_str());
+        }
+
         fs::path destPath = assetsDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
@@ -1603,6 +1626,7 @@ bool editor::Exporter::copyLua() {
 
     // Cleared before the early returns: with no lua tree, assets keeps the Lua files
     luaCopiedSources.clear();
+    luaExportedPaths.clear();
 
     fs::path luaSrc = config.luaDir;
     if (luaSrc.empty()) {
@@ -1625,6 +1649,9 @@ bool editor::Exporter::copyLua() {
     // A directory of its own holds only what the scripts need, so all of it ships. With
     // the default "." the Lua root is the project root, where the allowlist filters.
     const bool luaRootIsProjectRoot = (luaSrc == fs::weakly_canonical(project->getProjectPath(), ec));
+    // Sharing the assets root, copyAssets() ships everything but the Lua sources under the
+    // same path; Android merges both trees into one and fails the build on duplicates.
+    const bool luaRootIsAssetsRoot = (luaSrc == getAssetsSourceDir());
 
     for (auto it = fs::recursive_directory_iterator(luaSrc, fs::directory_options::skip_permission_denied, ec);
          it != fs::recursive_directory_iterator(); ++it) {
@@ -1642,12 +1669,16 @@ bool editor::Exporter::copyLua() {
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
 
+        if (luaRootIsAssetsRoot && !isLuaSourceFile(entry.path())) continue;
         if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) continue;
 
         fs::path destPath = luaDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-        if (!ec) luaCopiedSources.insert(entry.path().lexically_normal());
+        if (!ec) {
+            luaCopiedSources.insert(entry.path().lexically_normal());
+            luaExportedPaths.insert(relPath.lexically_normal());
+        }
     }
 
     return true;

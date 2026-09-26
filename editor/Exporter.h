@@ -98,6 +98,9 @@ namespace doriax::editor {
 
         // Lua sources copyLua() shipped, so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
+        // Paths copyLua() wrote, relative to the lua tree, so copyAssets() can keep
+        // Android's merged assets root free of paths both trees would ship
+        std::set<fs::path> luaExportedPaths;
 
         // Scales values passed to setProgress so the generation steps (written
         // for the [0,1] SourceCode range) map into [0, 0.5] for Desktop/Web,
@@ -115,6 +118,8 @@ namespace doriax::editor {
         void resolveShaderKeys();
 
         fs::path getExportProjectRoot() const;
+        // Canonical directory copyAssets() reads from
+        fs::path getAssetsSourceDir() const;
         static bool shouldSkipExportSupportFile(const fs::path& relativePath);
         static bool isCppHeaderFile(const fs::path& path);
         static bool isCppSourceFile(const fs::path& path);
