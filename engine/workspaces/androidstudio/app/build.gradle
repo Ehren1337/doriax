@@ -11,11 +11,11 @@ def doriaxRootAbs = file(doriaxRoot).toString()
 // def platformVersion = 12    //openGLES 2 min api level
 
 android {
-    compileSdk 33
+    compileSdk 36
     defaultConfig {
         applicationId "com.yourcompany.project"
         minSdkVersion 21
-        targetSdkVersion 33
+        targetSdkVersion 36
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"

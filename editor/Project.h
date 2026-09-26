@@ -253,7 +253,7 @@ namespace doriax::editor{
         std::filesystem::path adaptiveIconForeground;
         std::filesystem::path adaptiveIconBackground;
         unsigned int minSdk = 21;
-        unsigned int targetSdk = 33;
+        unsigned int targetSdk = 36;
         AndroidOrientation orientation = AndroidOrientation::Unspecified;
         bool abiArmeabiV7a = true;
         bool abiArm64V8a = true;

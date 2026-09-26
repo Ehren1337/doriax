@@ -2347,8 +2347,8 @@ bool editor::Exporter::writeAndroidProjectSettings() {
 
     std::string gradle;
     if (!readText(buildGradlePath, gradle)) return false;
-    for (const char* marker : {"compileSdk 33", "applicationId \"com.yourcompany.project\"",
-            "minSdkVersion 21", "targetSdkVersion 33", "versionCode 1", "versionName \"1.0\"",
+    for (const char* marker : {"compileSdk 36", "applicationId \"com.yourcompany.project\"",
+            "minSdkVersion 21", "targetSdkVersion 36", "versionCode 1", "versionName \"1.0\"",
             "                abiFilters \"arm64-v8a\"\n"
             "                abiFilters \"x86\"\n"
             "                abiFilters \"armeabi-v7a\"\n"
@@ -2359,11 +2359,11 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         }
     }
 
-    replaceAll(gradle, "compileSdk 33", "compileSdk " + std::to_string(android.targetSdk));
+    replaceAll(gradle, "compileSdk 36", "compileSdk " + std::to_string(android.targetSdk));
     replaceAll(gradle, "applicationId \"com.yourcompany.project\"",
         "applicationId \"" + escapeGradleString(project->getApplicationIdentifier(android.packageName)) + "\"");
     replaceAll(gradle, "minSdkVersion 21", "minSdkVersion " + std::to_string(android.minSdk));
-    replaceAll(gradle, "targetSdkVersion 33", "targetSdkVersion " + std::to_string(android.targetSdk));
+    replaceAll(gradle, "targetSdkVersion 36", "targetSdkVersion " + std::to_string(android.targetSdk));
     replaceAll(gradle, "versionCode 1", "versionCode " + std::to_string(project->getApplicationVersionCode(android.versionCode)));
     replaceAll(gradle, "versionName \"1.0\"",
         "versionName \"" + escapeGradleString(project->getApplicationVersion(android.versionName)) + "\"");
