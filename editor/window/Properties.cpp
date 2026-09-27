@@ -10331,7 +10331,28 @@ void editor::Properties::drawBody2DComponent(ComponentType cpType, SceneProject*
             propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Point A", sceneProject, entities);
             propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointB", "Point B", sceneProject, entities);
         }else if (shape.type == Shape2DType::CHAIN){
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".loop", "Loop", sceneProject, entities);
+            RowSettings loopSettings;
+            loopSettings.help = "An open chain doesn't collide on its first and last edges";
+            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".loop", "Loop", sceneProject, entities, loopSettings);
+
+            propertyHeader("Collision Side");
+            if (ImGui::Button("Reverse")){
+                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+                for (Entity entity : entities){
+                    if (Body2DComponent* bodyComp = sceneProject->scene->findComponent<Body2DComponent>(entity)){
+                        if (s >= bodyComp->numShapes) continue;
+                        Shape2D shapeValue = bodyComp->shapes[s];
+
+                        std::reverse(shapeValue.vertices.data(), shapeValue.vertices.data() + shapeValue.numVertices);
+                        multiCmd->addPropertyCmd<Shape2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
+                    }
+                }
+                multiCmd->setNoMerge();
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+            }
+            if (ImGui::IsItemHovered()){
+                ImGui::SetTooltip("Flip the side that collides, shown by the ticks in the scene");
+            }
 
             propertyHeader("Vertices");
             ImGui::Text("%d", shape.numVertices);

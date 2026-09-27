@@ -370,10 +370,10 @@ const std::vector<ToolDefinition>& cachedTools() {
                 {"point_b", vector2Schema("Second local point for capsule or segment")},
                 {"points", {
                     {"type", "array"},
-                    {"description", "Local points for polygon (at least 3) or chain (at least 4)"},
+                    {"description", "Local points for polygon (at least 3) or chain (at least 4). A chain collides on one side only: counter-clockwise points collide outside, clockwise inside (hollow containers)"},
                     {"items", vector2Schema("Point")}
                 }},
-                {"loop", boolSchema("Whether a chain closes back to its first point; defaults false")},
+                {"loop", boolSchema("Whether a chain closes back to its first point; defaults false. An open chain doesn't collide on its first and last edges")},
                 {"density", numberSchema("Shape density; defaults to 1, NOT the 1000 that 3D bodies default to. 2D mass is area * density, with sizes given in points and scaled to metres by pointsToMeterScale2D (64 by default), so a 100x100 box at the default density weighs about 2.4 kg")},
                 {"friction", numberSchema("Shape friction; defaults to 0.6")},
                 {"restitution", numberSchema("Shape restitution/bounce, 0-1; defaults to 0")}

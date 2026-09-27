@@ -2836,6 +2836,25 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         maxValues.maxTilemapTilesRect = std::max(maxValues.maxTilemapTilesRect, tilemap.numTilesRect);
         maxValues.maxTilemapTiles = std::max(maxValues.maxTilemapTiles, tilemap.numTiles);
     }
+
+    auto bodies2d = sceneProject->scene->getComponentArray<Body2DComponent>();
+    for (size_t i = 0; i < bodies2d->size(); ++i) {
+        const Body2DComponent& body = bodies2d->getComponentFromIndex(i);
+        maxValues.maxShapes2D = std::max(maxValues.maxShapes2D, static_cast<unsigned int>(body.numShapes));
+        for (size_t s = 0; s < body.numShapes; ++s) {
+            maxValues.maxShapePoints2D = std::max(maxValues.maxShapePoints2D, static_cast<unsigned int>(body.shapes[s].numVertices));
+        }
+    }
+
+    auto bodies3d = sceneProject->scene->getComponentArray<Body3DComponent>();
+    for (size_t i = 0; i < bodies3d->size(); ++i) {
+        const Body3DComponent& body = bodies3d->getComponentFromIndex(i);
+        maxValues.maxShapes3D = std::max(maxValues.maxShapes3D, static_cast<unsigned int>(body.numShapes));
+        for (size_t s = 0; s < body.numShapes; ++s) {
+            maxValues.maxShapeVertices3D = std::max(maxValues.maxShapeVertices3D, static_cast<unsigned int>(body.shapes[s].numVertices));
+            maxValues.maxShapeIndices3D = std::max(maxValues.maxShapeIndices3D, static_cast<unsigned int>(body.shapes[s].numIndices));
+        }
+    }
 }
 
 void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {

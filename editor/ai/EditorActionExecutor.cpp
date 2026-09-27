@@ -637,7 +637,7 @@ bool parseVector2Array(const Json& value, HybridArray<Vector2, MAX_SHAPE_POINTS_
         error = "points must be an array of Vector2 objects.";
         return false;
     }
-    if (value.size() > MAX_SHAPE_POINTS_2D) {
+    if (value.size() > UINT8_MAX) {
         error = "points exceeds the maximum number of 2D shape points.";
         return false;
     }
@@ -2651,9 +2651,6 @@ ActionResult EditorActionExecutor::addBody3DShape(const Json& arguments) {
 
     Body3DComponent* body = sceneProject->scene->findComponent<Body3DComponent>(entity);
     const size_t shapeIndex = body ? body->numShapes : 0;
-    if (shapeIndex >= MAX_SHAPES) {
-        return failResult("Body3D already has the maximum number of shapes.");
-    }
 
     auto* multiCmd = new MultiPropertyCmd();
     if (!body) {
@@ -2764,9 +2761,6 @@ ActionResult EditorActionExecutor::addBody2DShape(const Json& arguments) {
 
     Body2DComponent* body = sceneProject->scene->findComponent<Body2DComponent>(entity);
     const size_t shapeIndex = body ? body->numShapes : 0;
-    if (shapeIndex >= MAX_SHAPES) {
-        return failResult("Body2D already has the maximum number of shapes.");
-    }
 
     auto* multiCmd = new MultiPropertyCmd();
     if (!body) {

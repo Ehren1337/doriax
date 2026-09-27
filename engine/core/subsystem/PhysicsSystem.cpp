@@ -920,6 +920,10 @@ bool PhysicsSystem::syncBody2DShapes(Entity entity, Body2DComponent& body){
             for (size_t j = 0; j < shapeData.numVertices; j++){
                 b2vertices[j] = toBox2DPoint(scaledPoint(shapeData.vertices[j]));
             }
+            // mirroring flips the winding, which would swap the colliding side
+            if (entityScale.x * entityScale.y < 0.0f){
+                std::reverse(b2vertices.begin(), b2vertices.end());
+            }
 
             b2ChainDef chainDef = b2DefaultChainDef();
             chainDef.points = &b2vertices[0];
@@ -1624,7 +1628,11 @@ bool PhysicsSystem::loadDistanceJoint2D(Entity entity, Joint2DComponent& joint, 
         jointDef.localAnchorB = b2Body_GetLocalPoint(myBodyB.body, worldPivotB);
         jointDef.length = b2Distance(worldPivotA, worldPivotB);
         if (rope){
+            // a zero-hertz spring frees the length, the limit caps it
+            jointDef.enableSpring = true;
+            jointDef.enableLimit = true;
             jointDef.minLength = 0;
+            jointDef.maxLength = jointDef.length;
         }
         jointDef.userData = reinterpret_cast<void*>((uint64_t)entity);
 

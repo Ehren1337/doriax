@@ -2291,6 +2291,11 @@ std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
         agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
         agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
         agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
+        agg.maxShapes2D         = std::max(agg.maxShapes2D, sceneProject.maxValues.maxShapes2D);
+        agg.maxShapePoints2D    = std::max(agg.maxShapePoints2D, sceneProject.maxValues.maxShapePoints2D);
+        agg.maxShapes3D         = std::max(agg.maxShapes3D, sceneProject.maxValues.maxShapes3D);
+        agg.maxShapeVertices3D  = std::max(agg.maxShapeVertices3D, sceneProject.maxValues.maxShapeVertices3D);
+        agg.maxShapeIndices3D   = std::max(agg.maxShapeIndices3D, sceneProject.maxValues.maxShapeIndices3D);
     }
 
     // Floor each capacity at the engine default declared in core/Engine.h: growing past the
@@ -2313,6 +2318,11 @@ std::string editor::Exporter::buildSceneMaxValuesDefinitions() const {
     out += indent + define("MAX_SPRITE_FRAMES", agg.maxSpriteFrames, MAX_SPRITE_FRAMES);
     out += indent + define("MAX_EXTERNAL_BUFFERS", agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS);
     out += indent + define("MAX_BONES", agg.maxBones, MAX_BONES);
+    out += indent + define("MAX_SHAPES_2D", agg.maxShapes2D, MAX_SHAPES_2D);
+    out += indent + define("MAX_SHAPE_POINTS_2D", agg.maxShapePoints2D, MAX_SHAPE_POINTS_2D);
+    out += indent + define("MAX_SHAPES_3D", agg.maxShapes3D, MAX_SHAPES_3D);
+    out += indent + define("MAX_SHAPE_VERTICES_3D", agg.maxShapeVertices3D, MAX_SHAPE_VERTICES_3D);
+    out += indent + define("MAX_SHAPE_INDICES_3D", agg.maxShapeIndices3D, MAX_SHAPE_INDICES_3D);
     return out;
 }
 

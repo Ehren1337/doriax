@@ -61,7 +61,7 @@ namespace doriax{
         b2BodyId body = b2_nullBodyId;
 #endif
 
-        HybridArray<Shape2D, MAX_SHAPES> shapes;
+        HybridArray<Shape2D, MAX_SHAPES_2D> shapes;
         size_t numShapes = 0;
 
         bool needReloadBody = true;

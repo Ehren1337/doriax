@@ -47,6 +47,7 @@ namespace doriax{
         int createCircleShape(Vector2 center, float radius);
         int createCapsuleShape(Vector2 center1, Vector2 center2, float radius);
         int createSegmentShape(Vector2 point1, Vector2 point2);
+        // one-sided: counter-clockwise collides outside, clockwise inside
         int createChainShape(std::vector<Vector2> vertices, bool loop);
 
         void removeAllShapes();

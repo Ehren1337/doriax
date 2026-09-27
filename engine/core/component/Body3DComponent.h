@@ -89,7 +89,7 @@ namespace doriax{
         JPH::BodyID body;
 #endif
 
-        HybridArray<Shape3D, MAX_SHAPES> shapes;
+        HybridArray<Shape3D, MAX_SHAPES_3D> shapes;
         size_t numShapes = 0;
 
         bool needReloadBody = true;

@@ -71,6 +71,11 @@ namespace doriax::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
+        unsigned int maxShapes2D = 0;
+        unsigned int maxShapePoints2D = 0;
+        unsigned int maxShapes3D = 0;
+        unsigned int maxShapeVertices3D = 0;
+        unsigned int maxShapeIndices3D = 0;
     };
 
     struct ChildSceneRef {

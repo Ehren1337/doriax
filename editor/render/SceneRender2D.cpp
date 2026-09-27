@@ -565,6 +565,27 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
                     bodyLinesObj->addLine(toWorld(scaledPoint(shape.vertices[shape.numVertices - 1])), toWorld(scaledPoint(shape.vertices[0])), bodyColor);
                 }
             }
+
+            // ticks on the colliding side (right of each edge), open chains skip the end edges
+            if (shape.numVertices >= 4){
+                size_t n = shape.numVertices;
+                size_t first = shape.loop ? 0 : 1;
+                size_t end = shape.loop ? n : n - 2;
+                // mirrored chains are reversed in PhysicsSystem, keeping the side
+                float side = (entityScale.x * entityScale.y < 0.0f) ? -1.0f : 1.0f;
+
+                for (size_t j = first; j < end; j++){
+                    Vector2 p0 = scaledPoint(shape.vertices[j]);
+                    Vector2 p1 = scaledPoint(shape.vertices[(j + 1) % n]);
+                    Vector2 dir = p1 - p0;
+                    float length = dir.normalizeL();
+                    if (length > 0.0f){
+                        Vector2 mid = p0.midPoint(p1);
+                        Vector2 normal(dir.y * side, -dir.x * side);
+                        bodyLinesObj->addLine(toWorld(mid), toWorld(mid + normal * std::min(overlayPx(8.0f) * zoom, length * 0.5f)), bodyColor);
+                    }
+                }
+            }
         }
     }
 }

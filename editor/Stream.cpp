@@ -2439,6 +2439,11 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxExternalBuffers"] = sceneProject->maxValues.maxExternalBuffers;
     maxValuesNode["maxSpriteFrames"] = sceneProject->maxValues.maxSpriteFrames;
     maxValuesNode["maxBones"] = sceneProject->maxValues.maxBones;
+    maxValuesNode["maxShapes2D"] = sceneProject->maxValues.maxShapes2D;
+    maxValuesNode["maxShapePoints2D"] = sceneProject->maxValues.maxShapePoints2D;
+    maxValuesNode["maxShapes3D"] = sceneProject->maxValues.maxShapes3D;
+    maxValuesNode["maxShapeVertices3D"] = sceneProject->maxValues.maxShapeVertices3D;
+    maxValuesNode["maxShapeIndices3D"] = sceneProject->maxValues.maxShapeIndices3D;
     root["maxValues"] = maxValuesNode;
 
     YAML::Node shaderKeysNode = encodeShaderKeys(sceneProject->shaderKeys);
@@ -2541,6 +2546,11 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
         if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = maxValuesNode["maxExternalBuffers"].as<unsigned int>();
         if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = maxValuesNode["maxSpriteFrames"].as<unsigned int>();
         if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = maxValuesNode["maxBones"].as<unsigned int>();
+        if (maxValuesNode["maxShapes2D"]) sceneProject->maxValues.maxShapes2D = maxValuesNode["maxShapes2D"].as<unsigned int>();
+        if (maxValuesNode["maxShapePoints2D"]) sceneProject->maxValues.maxShapePoints2D = maxValuesNode["maxShapePoints2D"].as<unsigned int>();
+        if (maxValuesNode["maxShapes3D"]) sceneProject->maxValues.maxShapes3D = maxValuesNode["maxShapes3D"].as<unsigned int>();
+        if (maxValuesNode["maxShapeVertices3D"]) sceneProject->maxValues.maxShapeVertices3D = maxValuesNode["maxShapeVertices3D"].as<unsigned int>();
+        if (maxValuesNode["maxShapeIndices3D"]) sceneProject->maxValues.maxShapeIndices3D = maxValuesNode["maxShapeIndices3D"].as<unsigned int>();
     }
 
     sceneProject->shaderKeys.clear();

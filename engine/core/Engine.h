@@ -111,12 +111,16 @@
 #define MAX_BROADPHASELAYER_3D 6
 #endif
 
-#ifndef MAX_SHAPES
-#define MAX_SHAPES 10
+#ifndef MAX_SHAPES_2D
+#define MAX_SHAPES_2D 10
 #endif
 
 #ifndef MAX_SHAPE_POINTS_2D
 #define MAX_SHAPE_POINTS_2D 16
+#endif
+
+#ifndef MAX_SHAPES_3D
+#define MAX_SHAPES_3D 10
 #endif
 
 #ifndef MAX_SHAPE_VERTICES_3D
