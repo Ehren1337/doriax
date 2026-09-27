@@ -535,6 +535,11 @@ bool editor::Project::cleanupScriptPathsInRegistry(EntityRegistry* registry, con
 }
 
 static bool transformTexturePaths(Texture& texture, const std::function<bool(std::string&)>& transform) {
+    // Framebuffer and camera-linked textures carry an id instead of a file path.
+    if (texture.isFramebuffer()) {
+        return false;
+    }
+
     // Per-face paths only exist on cubemaps, incomplete ones included
     bool hasFacePaths = false;
     for (size_t face = 1; face < 6; face++) {
@@ -588,18 +593,21 @@ static bool transformTexturePaths(Texture& texture, const std::function<bool(std
 }
 
 static bool visitTexturePaths(Texture& texture, const std::function<bool(std::string&)>& transform) {
-    // Framebuffer and camera-linked textures carry an id instead of a file path.
-    if (texture.isFramebuffer()) {
-        return false;
-    }
-
-    // The setters destroy the old GPU texture once no other copy holds it, but renders keep
-    // binding it until the new path loads. Changed on a copy, it stays in the pool instead.
     Texture updated(texture);
     if (!transformTexturePaths(updated, transform)) {
         return false;
     }
 
+    // Renders keep drawing the old GPU texture until the new one exists, so the new path loads
+    // before the old texture is released. Kept in the pool, it would show for a reused name.
+    if (TexturePool::get(texture.getId())) {
+        const bool asyncLoading = Engine::isAsyncLoading();
+        Engine::setAsyncLoading(false);
+        updated.getRender();
+        Engine::setAsyncLoading(asyncLoading);
+    }
+
+    texture.destroy();
     texture = updated;
     return true;
 }
