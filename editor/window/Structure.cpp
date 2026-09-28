@@ -48,6 +48,20 @@ static bool hasScripts(Scene* scene, Entity entity) {
     return scriptComponent && !scriptComponent->scripts.empty();
 }
 
+// Collapsed bundle roots also show the script icon when any child has a script
+static bool markBundleScripts(editor::TreeNode& node) {
+    bool hasChildScript = false;
+    for (editor::TreeNode& child : node.children) {
+        if (markBundleScripts(child)) {
+            hasChildScript = true;
+        }
+    }
+    if (node.isBundleRoot) {
+        node.hasChildScript = hasChildScript;
+    }
+    return node.hasScript || hasChildScript;
+}
+
 std::vector<Entity> editor::Structure::getTopLevelSelectedEntities(Entity draggedEntity) {
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
@@ -1889,7 +1903,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         ImGui::PopStyleColor();
     }
 
-    if (node.hasScript) {
+    if (node.hasScript || (node.hasChildScript && !nodeOpen)) {
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().FramePadding.y * 0.5f);
@@ -2388,6 +2402,8 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
             splicedNew = true;
         }
     } while (splicedNew);
+
+    markBundleScripts(root);
 }
 
 void editor::Structure::show(){
