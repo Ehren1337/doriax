@@ -385,6 +385,10 @@ void Engine::setCanvasSize(int canvasWidth, int canvasHeight){
 
     if (viewLoaded){
         calculateCanvas();
+    }else{
+        // Scenes and scripts can start before the view exists; the screen refines this once it loads
+        Engine::canvasWidth = canvasWidth;
+        Engine::canvasHeight = canvasHeight;
     }
 }
 
