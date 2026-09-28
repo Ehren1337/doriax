@@ -27,6 +27,7 @@ namespace doriax::editor{
         bool hasBundleParent = false;
         bool isParentBundle = false;
         bool isMainCamera = false;
+        bool hasScript = false;
         bool isBone = false;
         bool isLocked = false;
         bool isPlayCreated = false;         // Made by the running scene, gone again on Stop

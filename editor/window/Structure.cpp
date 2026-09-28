@@ -43,6 +43,11 @@
 
 using namespace doriax;
 
+static bool hasScripts(Scene* scene, Entity entity) {
+    ScriptComponent* scriptComponent = scene->findComponent<ScriptComponent>(entity);
+    return scriptComponent && !scriptComponent->scripts.empty();
+}
+
 std::vector<Entity> editor::Structure::getTopLevelSelectedEntities(Entity draggedEntity) {
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
@@ -1884,6 +1889,16 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         ImGui::PopStyleColor();
     }
 
+    if (node.hasScript) {
+        ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().FramePadding.y * 0.5f);
+        ImGui::SetWindowFontScale(0.7f);
+        ImGui::TextUnformatted(ICON_FA_FILE_CODE);
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::PopStyleColor();
+    }
+
     if (instanceCount > 0) {
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.70f, 1.0f));
@@ -2135,6 +2150,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
                     enode.id = entity;
                     enode.entitySceneId = childSceneId;
                     enode.isMainCamera = (entity == childScene->mainCamera);
+                    enode.hasScript = hasScripts(childScene->scene, entity);
                     enode.isBone = signature.test(childScene->scene->getComponentId<BoneComponent>());
                     enode.order = order++;
                     enode.name = childScene->scene->getEntityName(entity);
@@ -2156,6 +2172,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
                     enode.id = entity;
                     enode.entitySceneId = childSceneId;
                     enode.isMainCamera = (entity == childScene->mainCamera);
+                    enode.hasScript = hasScripts(childScene->scene, entity);
                     enode.isBone = signature.test(childScene->scene->getComponentId<BoneComponent>());
                     enode.hasTransform = true;
                     enode.isLocked = ProjectUtils::isEntityLocked(childScene->scene, entity);
@@ -2200,6 +2217,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
             child.icon = getObjectIcon(signature, sceneProject->scene);
             child.id = entity;
             child.isMainCamera = (entity == mainCamera);
+            child.hasScript = hasScripts(sceneProject->scene, entity);
             child.isBone = signature.test(sceneProject->scene->getComponentId<BoneComponent>());
             child.isPlayCreated = cachedPlayCreatedEntities.count(entity) > 0;
             child.isLocked = child.isPlayCreated || ProjectUtils::isEntityLocked(sceneProject->scene, entity);
@@ -2282,6 +2300,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
             child.icon = getObjectIcon(signature, sceneProject->scene);
             child.id = entity;
             child.isMainCamera = (entity == mainCamera);
+            child.hasScript = hasScripts(sceneProject->scene, entity);
             child.isBone = signature.test(sceneProject->scene->getComponentId<BoneComponent>());
             child.hasTransform = true;
             child.isPlayCreated = cachedPlayCreatedEntities.count(entity) > 0;
