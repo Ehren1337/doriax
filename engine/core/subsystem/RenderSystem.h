@@ -234,6 +234,9 @@ namespace doriax{
 		// exported games are unaffected.
 		bool disableFaceCulling = false;
 
+		// editor-only, draws as if the scene had no fog
+		bool disableFog = false;
+
 		// Editor-only override that suppresses the scene's fixed game resolution
 		// (edit-mode viewports render native; play mode re-enables it). Defaults
 		// to false and is never set at runtime, so exported games are unaffected.
@@ -684,6 +687,8 @@ namespace doriax{
 		// Editor-only viewport debug override (see member declaration). Toggling it
 		// reloads every mesh, since cull mode is baked into the pipeline at load time.
 		void setDisableFaceCulling(bool disableFaceCulling);
+
+		void setDisableFog(bool disableFog);
 
 		// Editor-only override (see member declaration). No reload needed: the
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is

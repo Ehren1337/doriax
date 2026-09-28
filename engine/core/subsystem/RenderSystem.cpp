@@ -1110,7 +1110,7 @@ void RenderSystem::processLights2D(){
 
 bool RenderSystem::loadAndProcessFog(){
 
-    FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
+    FogComponent* fog = disableFog ? nullptr : scene->findComponentFromIndex<FogComponent>(0);
     hasFog = false;
     if (fog){
         hasFog = true;
@@ -2506,6 +2506,16 @@ void RenderSystem::setDisableFaceCulling(bool disableFaceCulling){
 
     // Cull mode is baked into the pipeline at creation time, so every mesh must be
     // reloaded for the override to take effect (editor-only debug view).
+    needReloadMeshes();
+}
+
+void RenderSystem::setDisableFog(bool disableFog){
+    if (this->disableFog == disableFog){
+        return;
+    }
+    this->disableFog = disableFog;
+
+    // fog is a shader variant
     needReloadMeshes();
 }
 

@@ -1782,6 +1782,7 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["showGrid3D"]           = ds.showGrid3D;
     sceneNode["hideSelectionOutline"] = ds.hideSelectionOutline;
     sceneNode["disableFaceCulling"]   = ds.disableFaceCulling;
+    sceneNode["disableFog"]           = ds.disableFog;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -1806,6 +1807,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["showGrid3D"])           ds.showGrid3D           = node["showGrid3D"].as<bool>();
     if (node["hideSelectionOutline"]) ds.hideSelectionOutline = node["hideSelectionOutline"].as<bool>();
     if (node["disableFaceCulling"])   ds.disableFaceCulling   = node["disableFaceCulling"].as<bool>();
+    if (node["disableFog"])           ds.disableFog           = node["disableFog"].as<bool>();
     if (node["showGrid2D"])           ds.showGrid2D           = node["showGrid2D"].as<bool>();
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
     if (node["gridSpacing3D"])        ds.gridSpacing3D        = decodePositiveFinite(node["gridSpacing3D"], ds.gridSpacing3D);

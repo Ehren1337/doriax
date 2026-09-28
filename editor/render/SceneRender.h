@@ -33,6 +33,7 @@ namespace doriax::editor{
         bool showGrid3D          = true;
         bool hideSelectionOutline = false;
         bool disableFaceCulling  = false;
+        bool disableFog          = false;
         bool showGrid2D          = false;
         float gridSpacing2D      = 50.0f;
         float gridSpacing3D      = 1.0f;

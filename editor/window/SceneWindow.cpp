@@ -2072,24 +2072,32 @@ void editor::SceneWindow::show() {
                 ImGui::SetItemTooltip("Scene display settings");
 
                 if (ImGui::BeginPopup(sceneSettingsPopupId.c_str())) {
-                    if (ImGui::BeginTable("scene_settings_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
+                    // same table id in every section keeps the columns aligned
+                    auto beginSection = [](const char* title) {
+                        ImGui::SeparatorText(title);
+                        if (!ImGui::BeginTable("scene_settings_table", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
+                            return false;
+                        }
                         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(175.0f));
                         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, Theme::dpi(80.0f));
+                        return true;
+                    };
 
-                        auto drawSettingRow = [this](const char* name, bool& value, bool disabled = false) {
-                            ImGui::TableNextRow();
-                            ImGui::TableSetColumnIndex(0);
-                            if (disabled) ImGui::BeginDisabled();
-                            ImGui::Text("%s", name);
-                            ImGui::TableSetColumnIndex(1);
-                            if (ImGui::Checkbox((std::string("##") + name).c_str(), &value)) {
-                                project->saveWorkspaceFile();
-                            }
-                            if (disabled) ImGui::EndDisabled();
-                        };
+                    auto drawSettingRow = [this](const char* name, bool& value, bool disabled = false) {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(0);
+                        if (disabled) ImGui::BeginDisabled();
+                        ImGui::Text("%s", name);
+                        ImGui::TableSetColumnIndex(1);
+                        if (ImGui::Checkbox((std::string("##") + name).c_str(), &value)) {
+                            project->saveWorkspaceFile();
+                        }
+                        if (disabled) ImGui::EndDisabled();
+                    };
 
-                        bool notStopped = (sceneProject.playState != ScenePlayState::STOPPED);
+                    bool notStopped = (sceneProject.playState != ScenePlayState::STOPPED);
 
+                    if (beginSection("Overlays")) {
                         drawSettingRow(ICON_FA_LINK " Show all joints", sceneProject.displaySettings.showAllJoints, notStopped);
                         drawSettingRow(ICON_FA_BONE " Show all bones", sceneProject.displaySettings.showAllBones, notStopped);
                         drawSettingRow(ICON_FA_CUBES " Show all bodies", sceneProject.displaySettings.showAllBodies, notStopped);
@@ -2100,17 +2108,28 @@ void editor::SceneWindow::show() {
 
                         drawSettingRow(ICON_FA_SQUARE " Hide container guides", sceneProject.displaySettings.hideContainerGuides, sceneProject.sceneType == SceneType::SCENE_3D);
 
-                        if (sceneProject.sceneType == SceneType::SCENE_3D) {
-                            drawSettingRow(ICON_FA_TABLE_CELLS " Show grid", sceneProject.displaySettings.showGrid3D);
-                            drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling);
-                        } else {
+                        if (sceneProject.sceneType != SceneType::SCENE_3D) {
                             drawSettingRow(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT " Show origin axis", sceneProject.displaySettings.showOrigin);
                         }
 
                         drawSettingRow(ICON_FA_OBJECT_GROUP " Hide selection outline", sceneProject.displaySettings.hideSelectionOutline);
-                        drawSettingRow(ICON_FA_MAGNET " Snap to grid", sceneProject.displaySettings.snapToGrid);
 
+                        ImGui::EndTable();
+                    }
+
+                    if (beginSection("Rendering")) {
                         if (sceneProject.sceneType == SceneType::SCENE_3D) {
+                            drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling, notStopped);
+                        }
+                        drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog, notStopped);
+
+                        ImGui::EndTable();
+                    }
+
+                    if (beginSection("Grid & snapping")) {
+                        if (sceneProject.sceneType == SceneType::SCENE_3D) {
+                            drawSettingRow(ICON_FA_TABLE_CELLS " Show grid", sceneProject.displaySettings.showGrid3D);
+
                             ImGui::TableNextRow();
                             ImGui::TableSetColumnIndex(0);
                             ImGui::Text("%s", ICON_FA_TABLE_CELLS " Grid spacing");
@@ -2121,7 +2140,6 @@ void editor::SceneWindow::show() {
                                 project->saveWorkspaceFile();
                             }
                         } else {
-                            drawSettingRow(ICON_FA_BORDER_ALL " Snap tile", sceneProject.displaySettings.snapTile);
                             drawSettingRow(ICON_FA_TABLE_CELLS " Show grid", sceneProject.displaySettings.showGrid2D);
                             if (sceneProject.displaySettings.showGrid2D) {
                                 ImGui::TableNextRow();
@@ -2134,6 +2152,11 @@ void editor::SceneWindow::show() {
                                     project->saveWorkspaceFile();
                                 }
                             }
+                        }
+
+                        drawSettingRow(ICON_FA_MAGNET " Snap to grid", sceneProject.displaySettings.snapToGrid);
+                        if (sceneProject.sceneType != SceneType::SCENE_3D) {
+                            drawSettingRow(ICON_FA_BORDER_ALL " Snap tile", sceneProject.displaySettings.snapTile);
                         }
 
                         drawSettingRow(ICON_FA_ROTATE " Snap rotation", sceneProject.displaySettings.snapRotation);
@@ -2150,67 +2173,69 @@ void editor::SceneWindow::show() {
                         }
                         if (!sceneProject.displaySettings.snapRotation) ImGui::EndDisabled();
 
-                        if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender) {
-                            Camera* editorCamera = sceneProject.sceneRender->getCamera();
+                        ImGui::EndTable();
+                    }
 
-                            auto drawFloatSettingRow = [&](const char* name, const char* id, float value, float defaultValue, float dragSpeed, float minValue, float maxValue, const char* format, auto validate, auto apply) {
-                                ImGui::TableNextRow();
-                                ImGui::TableSetColumnIndex(0);
-                                ImGui::Text("%s", name);
+                    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender && beginSection("Editor camera")) {
+                        Camera* editorCamera = sceneProject.sceneRender->getCamera();
 
-                                bool defChanged = std::fabs(value - defaultValue) > 1e-4f;
-                                if (defChanged) {
-                                    ImGui::SameLine();
-                                    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
-                                    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-                                    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
-                                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                                    if (ImGui::Button((std::string(ICON_FA_ROTATE_LEFT) + "##" + id).c_str())) {
-                                        apply(defaultValue);
-                                        sceneProject.needUpdateRender = true;
-                                        project->saveWorkspaceFile();
-                                    }
-                                    ImGui::PopStyleColor(2);
-                                    ImGui::PopStyleVar(3);
-                                }
+                        auto drawFloatSettingRow = [&](const char* name, const char* id, float value, float defaultValue, float dragSpeed, float minValue, float maxValue, const char* format, auto validate, auto apply) {
+                            ImGui::TableNextRow();
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::Text("%s", name);
 
-                                ImGui::TableSetColumnIndex(1);
-                                ImGui::SetNextItemWidth(-1);
-                                float editedValue = value;
-                                if (ImGui::DragFloat((std::string("##") + id).c_str(), &editedValue, dragSpeed, minValue, maxValue, format)) {
-                                    apply(editedValue);
-                                    validate();
+                            bool defChanged = std::fabs(value - defaultValue) > 1e-4f;
+                            if (defChanged) {
+                                ImGui::SameLine();
+                                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
+                                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+                                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
+                                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+                                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                                if (ImGui::Button((std::string(ICON_FA_ROTATE_LEFT) + "##" + id).c_str())) {
+                                    apply(defaultValue);
                                     sceneProject.needUpdateRender = true;
-                                }
-                                if (ImGui::IsItemDeactivatedAfterEdit()) {
                                     project->saveWorkspaceFile();
                                 }
-                            };
+                                ImGui::PopStyleColor(2);
+                                ImGui::PopStyleVar(3);
+                            }
 
-                            auto validateNearClip = [&]() {
-                                if (editorCamera->getNearClip() >= editorCamera->getFarClip()) {
-                                    editorCamera->setNearClip(editorCamera->getFarClip() - 0.01f);
-                                }
-                            };
-                            auto validateFarClip = [&]() {
-                                if (editorCamera->getFarClip() <= editorCamera->getNearClip()) {
-                                    editorCamera->setFarClip(editorCamera->getNearClip() + 1.0f);
-                                }
-                            };
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::SetNextItemWidth(-1);
+                            float editedValue = value;
+                            if (ImGui::DragFloat((std::string("##") + id).c_str(), &editedValue, dragSpeed, minValue, maxValue, format)) {
+                                apply(editedValue);
+                                validate();
+                                sceneProject.needUpdateRender = true;
+                            }
+                            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                                project->saveWorkspaceFile();
+                            }
+                        };
 
-                            drawFloatSettingRow(
-                                ICON_FA_CAMERA " Editor camera near", "EditorCameraNear",
-                                editorCamera->getNearClip(), DEFAULT_EDITOR_CAMERA_NEAR,
-                                0.01f, 0.01f, 100.0f, "%.2f", validateNearClip,
-                                [&](float v) { editorCamera->setNearClip(v); });
+                        auto validateNearClip = [&]() {
+                            if (editorCamera->getNearClip() >= editorCamera->getFarClip()) {
+                                editorCamera->setNearClip(editorCamera->getFarClip() - 0.01f);
+                            }
+                        };
+                        auto validateFarClip = [&]() {
+                            if (editorCamera->getFarClip() <= editorCamera->getNearClip()) {
+                                editorCamera->setFarClip(editorCamera->getNearClip() + 1.0f);
+                            }
+                        };
 
-                            drawFloatSettingRow(
-                                ICON_FA_CAMERA " Editor camera far", "EditorCameraFar",
-                                editorCamera->getFarClip(), DEFAULT_EDITOR_CAMERA_FAR,
-                                1.0f, 1.0f, 100000.0f, "%.0f", validateFarClip,
-                                [&](float v) { editorCamera->setFarClip(v); });
-                        }
+                        drawFloatSettingRow(
+                            ICON_FA_CAMERA " Editor camera near", "EditorCameraNear",
+                            editorCamera->getNearClip(), DEFAULT_EDITOR_CAMERA_NEAR,
+                            0.01f, 0.01f, 100.0f, "%.2f", validateNearClip,
+                            [&](float v) { editorCamera->setNearClip(v); });
+
+                        drawFloatSettingRow(
+                            ICON_FA_CAMERA " Editor camera far", "EditorCameraFar",
+                            editorCamera->getFarClip(), DEFAULT_EDITOR_CAMERA_FAR,
+                            1.0f, 1.0f, 100000.0f, "%.0f", validateFarClip,
+                            [&](float v) { editorCamera->setFarClip(v); });
 
                         ImGui::EndTable();
                     }
