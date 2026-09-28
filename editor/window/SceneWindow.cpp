@@ -2083,13 +2083,14 @@ void editor::SceneWindow::show() {
                         return true;
                     };
 
-                    auto drawSettingRow = [this](const char* name, bool& value, bool disabled = false) {
+                    auto drawSettingRow = [&](const char* name, bool& value, bool disabled = false) {
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
                         if (disabled) ImGui::BeginDisabled();
                         ImGui::Text("%s", name);
                         ImGui::TableSetColumnIndex(1);
                         if (ImGui::Checkbox((std::string("##") + name).c_str(), &value)) {
+                            sceneProject.needUpdateRender = true;
                             project->saveWorkspaceFile();
                         }
                         if (disabled) ImGui::EndDisabled();
@@ -2135,7 +2136,9 @@ void editor::SceneWindow::show() {
                             ImGui::Text("%s", ICON_FA_TABLE_CELLS " Grid spacing");
                             ImGui::TableSetColumnIndex(1);
                             ImGui::SetNextItemWidth(-1);
-                            ImGui::DragFloat("##GridSpacing3D", &sceneProject.displaySettings.gridSpacing3D, 0.1f, 0.1f, 1000.0f, "%.1f");
+                            if (ImGui::DragFloat("##GridSpacing3D", &sceneProject.displaySettings.gridSpacing3D, 0.1f, 0.1f, 1000.0f, "%.1f")) {
+                                sceneProject.needUpdateRender = true;
+                            }
                             if (ImGui::IsItemDeactivatedAfterEdit()) {
                                 project->saveWorkspaceFile();
                             }
@@ -2147,7 +2150,9 @@ void editor::SceneWindow::show() {
                                 ImGui::Text("%s", ICON_FA_TABLE_CELLS " Grid spacing");
                                 ImGui::TableSetColumnIndex(1);
                                 ImGui::SetNextItemWidth(-1);
-                                ImGui::DragFloat("##GridSpacing2D", &sceneProject.displaySettings.gridSpacing2D, 1.0f, 1.0f, 10000.0f, "%.0f");
+                                if (ImGui::DragFloat("##GridSpacing2D", &sceneProject.displaySettings.gridSpacing2D, 1.0f, 1.0f, 10000.0f, "%.0f")) {
+                                    sceneProject.needUpdateRender = true;
+                                }
                                 if (ImGui::IsItemDeactivatedAfterEdit()) {
                                     project->saveWorkspaceFile();
                                 }
