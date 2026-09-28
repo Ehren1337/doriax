@@ -43,6 +43,11 @@ Object Sound::getObject() const{
 int Sound::loadSound(const std::string& filename){
     SoundComponent& audio = getComponent<SoundComponent>();
 
+    // the loaded sample would keep playing the old file
+    if (!audio.filename.empty() && audio.filename != filename) {
+        scene->getSystem<AudioSystem>()->destroySound(audio);
+    }
+
     audio.filename = filename;
     SoundPool::retry(filename);
 
