@@ -45,6 +45,7 @@ namespace doriax{
 
         bool loadSound(SoundComponent& audio);
 		void destroySound(SoundComponent& audio);
+		void getLoadCount(size_t& loaded, size_t& total) const;
 		void stopSceneSounds();
 		bool seekSound(SoundComponent& audio, double time);
 

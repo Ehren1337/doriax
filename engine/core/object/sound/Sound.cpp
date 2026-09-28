@@ -3,6 +3,7 @@
 
 #include "Sound.h"
 #include "subsystem/AudioSystem.h"
+#include "pool/SoundPool.h"
 
 #include "Log.h"
 
@@ -43,6 +44,7 @@ int Sound::loadSound(const std::string& filename){
     SoundComponent& audio = getComponent<SoundComponent>();
 
     audio.filename = filename;
+    SoundPool::retry(filename);
 
     if (Engine::isViewLoaded())
         return scene->getSystem<AudioSystem>()->loadSound(audio);

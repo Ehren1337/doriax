@@ -35,6 +35,7 @@ namespace doriax{
 
         std::string filename;
         bool loaded = false;
+        bool loadFailed = false;
 
         bool enableClocked = false;
         Vector3 lastPosition = Vector3(0, 0, 0);

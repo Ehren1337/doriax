@@ -68,6 +68,7 @@ bool AudioSystem::loadSoundSample(SoundComponent& audio){
         }
         if (result.state == ResourceLoadState::Failed) {
             audio.loaded = false;
+            audio.loadFailed = true;
             audio.length = 0;
             audio.startTrigger = false;
             audio.state = SoundState::Stopped;
@@ -83,6 +84,7 @@ bool AudioSystem::loadSoundSample(SoundComponent& audio){
 
     audio.length = audio.sample->getLength();
     audio.loaded = true;
+    audio.loadFailed = false;
 
     return true;
 }
@@ -117,6 +119,25 @@ void AudioSystem::preloadSoundAssets(){
     }
 }
 
+void AudioSystem::getLoadCount(size_t& loaded, size_t& total) const{
+    loaded = 0;
+    total = 0;
+
+    auto audios = scene->getComponentArray<SoundComponent>();
+    for (int i = 0; i < audios->size(); i++) {
+        const SoundComponent& audio = audios->getComponentFromIndex(i);
+        if (audio.filename.empty()) {
+            continue;
+        }
+
+        total++;
+        // a missing file must not hold the load
+        if (audio.loaded || audio.loadFailed) {
+            loaded++;
+        }
+    }
+}
+
 void AudioSystem::destroySound(SoundComponent& audio){
     if (inited && audio.handle != 0) {
         getSoloud().stop(audio.handle);
@@ -128,6 +149,7 @@ void AudioSystem::destroySound(SoundComponent& audio){
     audio.pauseTrigger = false;
     audio.stopTrigger = false;
     audio.loaded = false;
+    audio.loadFailed = false;
     audio.length = 0;
     audio.sample.reset();
     if (!audio.filename.empty()) {
@@ -212,6 +234,15 @@ float AudioSystem::getGlobalVolume(){
 }
 
 void AudioSystem::load(){
+    // a file that failed before is tried again by each scene that loads it
+    auto audios = scene->getComponentArray<SoundComponent>();
+    for (int i = 0; i < audios->size(); i++) {
+        const SoundComponent& audio = audios->getComponentFromIndex(i);
+        if (!audio.filename.empty() && !audio.loaded) {
+            SoundPool::retry(audio.filename);
+        }
+    }
+
     preloadSoundAssets();
 }
 

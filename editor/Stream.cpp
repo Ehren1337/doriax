@@ -6097,6 +6097,7 @@ SoundComponent editor::Stream::decodeSoundComponent(const YAML::Node& node, cons
         SoundPool::remove(oldFilename);
     }
     audio.loaded = keepLoadedSample;
+    audio.loadFailed = false;
     audio.length = keepLoadedSample ? oldAudio->length : 0;
     audio.handle = 0;
     audio.playingTime = 0;

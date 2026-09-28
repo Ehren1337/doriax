@@ -344,6 +344,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("loadingProgress", &SceneManager::getLoadingProgress)
         .addStaticFunction("holdLoading", &SceneManager::holdLoading)
         .addStaticFunction("releaseLoading", &SceneManager::releaseLoading)
+        .addStaticFunction("isCoveredByLoading", &SceneManager::isCoveredByLoading)
         .addStaticFunction("clearAll", &SceneManager::clearAll)
         .addStaticFunction("setScenePtr", &SceneManager::setScenePtr)
         .addStaticFunction("getScenePtr", &SceneManager::getScenePtr)

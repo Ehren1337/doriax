@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace SoLoud{
     class Wav;
@@ -34,6 +35,7 @@ namespace doriax{
         static sounds_t& getMap();
 
         static std::unordered_map<std::string, std::future<std::shared_ptr<SoLoud::Wav>>> pendingBuilds;
+        static std::unordered_set<std::string> failedBuilds;
         static std::mutex cacheMutex;
         static std::atomic<bool> shutdownRequested;
 
@@ -42,6 +44,8 @@ namespace doriax{
 
     public:
         static SoundLoadResult loadFromFile(const std::string& id, const std::string& filename);
+        // A failed file is not tried again until this or remove()
+        static void retry(const std::string& id);
 
         static void requestShutdown();
         // re-allows async loads after a recreated view

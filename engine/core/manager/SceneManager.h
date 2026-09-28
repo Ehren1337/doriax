@@ -63,6 +63,7 @@ namespace doriax {
         static double loadingStateTime;
         static size_t loadingCount;
         static double loadingProgressTime;
+        static float loadingProgress;
         static int loadingHolds;
 
         static std::vector<uint32_t> buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds);
@@ -128,7 +129,7 @@ namespace doriax {
         // True from loadScene() until the new stack has loaded and every hold is released.
         static bool isLoading();
 
-        // Loaded share of the new stack's drawables, from 0 to 1.
+        // Loaded share of the new stack's drawables and sounds, from 0 to 1. Never goes back.
         static float getLoadingProgress();
 
         // Keeps the loading scene up after the new stack has loaded, until released.

@@ -18,6 +18,7 @@
 using namespace doriax;
 
 std::unordered_map<std::string, std::future<std::shared_ptr<SoLoud::Wav>>> SoundPool::pendingBuilds;
+std::unordered_set<std::string> SoundPool::failedBuilds;
 std::mutex SoundPool::cacheMutex;
 std::atomic<bool> SoundPool::shutdownRequested{false};
 
@@ -40,6 +41,14 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
         return result;
     }
 
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        if (failedBuilds.count(id)) {
+            result.state = ResourceLoadState::Failed;
+            return result;
+        }
+    }
+
     if (Engine::isAsyncLoading()) {
         std::lock_guard<std::mutex> lock(cacheMutex);
 
@@ -60,6 +69,7 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
                     return result;
                 } catch (const std::exception& e) {
                     pendingBuilds.erase(it);
+                    failedBuilds.insert(id);
 
                     result.state = ResourceLoadState::Failed;
                     result.errorMessage = e.what();
@@ -98,6 +108,11 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
             result.data = shared;
             return result;
         } catch (const std::exception& e) {
+            {
+                std::lock_guard<std::mutex> lock(cacheMutex);
+                failedBuilds.insert(id);
+            }
+
             result.state = ResourceLoadState::Failed;
             result.errorMessage = e.what();
             return result;
@@ -106,6 +121,11 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
 
     result.state = ResourceLoadState::Loading;
     return result;
+}
+
+void SoundPool::retry(const std::string& id){
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    failedBuilds.erase(id);
 }
 
 std::shared_ptr<SoLoud::Wav> SoundPool::loadSoundInternal(const std::string& id, const std::string& filename, bool trackProgress){
@@ -212,6 +232,7 @@ void SoundPool::remove(const std::string& id){
             pendingBuilds.erase(pendingIt);
             removedPending = true;
         }
+        failedBuilds.erase(id);
     }
 
     auto it = getMap().find(id);
@@ -235,6 +256,7 @@ void SoundPool::clear(){
             }
         }
         pendingBuilds.clear();
+        failedBuilds.clear();
     }
     getMap().clear();
 }
@@ -251,6 +273,7 @@ void SoundPool::clearUnused(){
             }
         }
         pendingBuilds.clear();
+        failedBuilds.clear();
     }
 
     std::vector<std::string> ids;

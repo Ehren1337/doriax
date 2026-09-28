@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "Log.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/AudioSystem.h"
 #include "thread/ResourceProgress.h"
 
 #include <algorithm>
@@ -26,6 +27,7 @@ bool SceneManager::loadingSceneReady = false;
 double SceneManager::loadingStateTime = 0.0;
 size_t SceneManager::loadingCount = 0;
 double SceneManager::loadingProgressTime = 0.0;
+float SceneManager::loadingProgress = 0.0f;
 int SceneManager::loadingHolds = 0;
 
 std::vector<uint32_t> SceneManager::buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds) {
@@ -219,6 +221,7 @@ void SceneManager::startLoading(uint32_t id) {
 void SceneManager::resetLoadProgress() {
     loadingCount = 0;
     loadingProgressTime = Engine::getSystemTime();
+    loadingProgress = 0.0f;
 }
 
 bool SceneManager::isLoadProgressing(size_t loaded, double now) {
@@ -238,6 +241,10 @@ void SceneManager::getLoadCount(uint32_t id, size_t& loaded, size_t& total) {
         size_t sceneLoaded = 0;
         size_t sceneTotal = 0;
         scene->getSystem<RenderSystem>()->getLoadCount(sceneLoaded, sceneTotal);
+        loaded += sceneLoaded;
+        total += sceneTotal;
+
+        scene->getSystem<AudioSystem>()->getLoadCount(sceneLoaded, sceneTotal);
         loaded += sceneLoaded;
         total += sceneTotal;
     }
@@ -294,13 +301,9 @@ bool SceneManager::isLoading() {
 
 float SceneManager::getLoadingProgress() {
     if (pendingId || loadingState == LoadingState::Covering) return 0.0f;
-    if (loadingState == LoadingState::None || loadingState == LoadingState::Loaded) return 1.0f;
+    if (loadingState == LoadingState::Loading) return loadingProgress;
 
-    size_t loaded;
-    size_t total;
-    getLoadCount(currentId, loaded, total);
-
-    return (total > 0) ? (float)loaded / (float)total : 1.0f;
+    return 1.0f;
 }
 
 bool SceneManager::holdLoading() {
@@ -348,9 +351,14 @@ void SceneManager::updateLoading() {
         size_t total;
         getLoadCount(currentId, loaded, total);
 
+        // never moves back when the stack creates more to load
+        if (total > 0) {
+            loadingProgress = std::max(loadingProgress, (float)loaded / (float)total);
+        }
+
         if (loaded < total) {
             if (isLoadProgressing(loaded, now)) return;
-            Log::warn("SceneManager: %zu of %zu drawables of '%s' did not load",
+            Log::warn("SceneManager: %zu of %zu resources of '%s' did not load",
                 total - loaded, total, getSceneName(currentId).c_str());
         }
 

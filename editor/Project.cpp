@@ -730,6 +730,7 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
     visitComponents(registry->getComponentArray<SoundComponent>(), [&](SoundComponent& sound) {
         if (!sound.filename.empty() && transform(sound.filename)) {
             sound.loaded = false;
+            sound.loadFailed = false;
             sound.needUpdate = true;
             changed = true;
         }
