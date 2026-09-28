@@ -345,6 +345,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("holdLoading", &SceneManager::holdLoading)
         .addStaticFunction("releaseLoading", &SceneManager::releaseLoading)
         .addStaticFunction("isCoveredByLoading", &SceneManager::isCoveredByLoading)
+        .addStaticFunction("preloadScene",
+            luabridge::overload<uint32_t>(&SceneManager::preloadScene),
+            luabridge::overload<const std::string&>(&SceneManager::preloadScene))
+        .addStaticFunction("getPreloadProgress",
+            luabridge::overload<uint32_t>(&SceneManager::getPreloadProgress),
+            luabridge::overload<const std::string&>(&SceneManager::getPreloadProgress))
+        .addStaticFunction("cancelPreload",
+            luabridge::overload<uint32_t>(&SceneManager::cancelPreload),
+            luabridge::overload<const std::string&>(&SceneManager::cancelPreload))
         .addStaticFunction("clearAll", &SceneManager::clearAll)
         .addStaticFunction("setScenePtr", &SceneManager::setScenePtr)
         .addStaticFunction("getScenePtr", &SceneManager::getScenePtr)

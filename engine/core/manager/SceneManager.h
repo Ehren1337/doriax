@@ -5,10 +5,12 @@
 #define SCENEMANAGER_H
 
 #include "Export.h"
+#include "texture/Texture.h"
 #include <string>
 #include <functional>
 #include <vector>
 #include <map>
+#include <memory>
 #include <optional>
 #include <cstdint>
 #include <initializer_list>
@@ -16,6 +18,13 @@
 namespace doriax {
 
     class Scene;
+
+    // Files a scene loads, known before it is built so preloadScene() can load them
+    struct SceneResources {
+        std::vector<Texture> textures;
+        std::vector<std::string> sounds;
+        std::vector<std::string> models;
+    };
 
     // SceneManager allows registering named scene stacks and switching between them at runtime.
     // A "scene stack" corresponds to an editor SceneProject: one main Scene plus zero or more
@@ -40,6 +49,19 @@ namespace doriax {
             std::function<void()> loadFactory;
             std::function<void()> addFactory;
             std::vector<uint32_t> sceneIds;
+            std::function<SceneResources()> resources;
+        };
+
+        // Files of a preloadScene() still loading, and the loaded ones held in their pools
+        struct Preload {
+            uint32_t id;
+            bool started = false;
+            bool cancelled = false; // kept until the loads in flight end
+            size_t total = 0;
+            SceneResources pending;
+            std::vector<std::shared_ptr<void>> held;
+            // removes a loaded file from its pool when no scene uses it
+            std::vector<std::function<void()>> releases;
         };
 
         enum class LoadingState {
@@ -66,6 +88,8 @@ namespace doriax {
         static float loadingProgress;
         static int loadingHolds;
 
+        static std::vector<Preload> preloads;
+
         static std::vector<uint32_t> buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds);
         static SceneEntry* findEntry(uint32_t id);
         static void runFactory(uint32_t id);
@@ -78,6 +102,11 @@ namespace doriax {
         static bool isLoadProgressing(size_t loaded, double now);
         static void getLoadCount(uint32_t id, size_t& loaded, size_t& total);
 
+        static Preload* findPreload(uint32_t id);
+        static void startPreload(uint32_t id);
+        static void releasePreload(Preload& preload);
+        static void updatePreloads();
+
     public:
         // Register a named scene stack.
         // The load factory must call Engine::setScene() / Engine::addSceneLayer() to set up
@@ -89,11 +118,12 @@ namespace doriax {
         // has created its scenes.
         // The initializer list overload is what keeps a braced fourth argument unambiguous
         // between the scene ids and the add factory.
+        // The resources function lists the files a scene loads, for preloadScene().
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, const std::vector<uint32_t>& sceneIds);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::initializer_list<uint32_t> sceneIds);
         static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory);
-        static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory, const std::vector<uint32_t>& sceneIds);
+        static void registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory, const std::vector<uint32_t>& sceneIds, std::function<SceneResources()> resources = nullptr);
 
         // Load a scene stack by name. Calls Engine::removeAllScenes() then invokes the
         // registered factory. Returns false if the name is not found.
@@ -142,6 +172,19 @@ namespace doriax {
 
         // Tracks the loading of a stack started without loadScene(), as the editor's Play does.
         static void setCurrentScene(uint32_t id);
+
+        // Loads the files of a scene stack in the background while the game runs, so a later
+        // loadScene() finds them ready. They are held until that load or cancelPreload().
+        // Without async loading one file loads per frame, and models are skipped.
+        static bool preloadScene(const std::string& name);
+        static bool preloadScene(uint32_t id);
+
+        // Loaded share of a preloadScene(), from 0 to 1; 0 when it was not requested.
+        static float getPreloadProgress(const std::string& name);
+        static float getPreloadProgress(uint32_t id);
+
+        static void cancelPreload(const std::string& name);
+        static void cancelPreload(uint32_t id);
 
         // Called by Engine after the scenes draw.
         static void updateLoading();

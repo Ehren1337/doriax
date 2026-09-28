@@ -415,6 +415,7 @@ namespace doriax::editor{
         void copyEngineApiToProject();
 
         void registerSceneManager();
+        SceneResources collectPlaySceneResources(uint32_t sceneId);
         void registerBundleManager();
 
         SceneProject* findSceneProjectByScene(Scene* scene);
@@ -437,6 +438,8 @@ namespace doriax::editor{
         // Runs transform over every stored asset reference (component textures and cubemap
         // faces, model and sound filenames, text fonts), rewriting the value in place.
         static bool visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
+        // The files of those references, for SceneManager::preloadScene()
+        static SceneResources collectResourcesInRegistry(EntityRegistry* registry);
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
         static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform);

@@ -937,9 +937,17 @@ std::string MeshSystem::getAsyncModelLoadKey(const std::string& filename) const{
 }
 
 bool MeshSystem::isAsyncModelLoadPending(const std::string& filename) const{
-    const std::string key = getAsyncModelLoadKey(filename);
+    return isModelPreloading(filename) || isAsyncModelLoadPending(scene, filename);
+}
+
+bool MeshSystem::isAsyncModelLoadPending(const Scene* scene, const std::string& filename){
+    const std::string key = getAsyncModelLoadKey(scene, filename);
     std::lock_guard<std::mutex> lock(getAsyncModelMutex());
     return getPendingModelLoads().count(key) > 0;
+}
+
+bool MeshSystem::isModelPreloading(const std::string& filename){
+    return isAsyncModelLoadPending(nullptr, filename);
 }
 
 bool MeshSystem::hasPendingAsyncModelLoads() const{
@@ -1006,7 +1014,10 @@ bool MeshSystem::isAsyncModelLoadPending(Entity entity, const std::string& filen
 
 void MeshSystem::cancelAsyncModelLoad(Entity entity, const std::string& filename){
     (void)entity;
-    const std::string key = getAsyncModelLoadKey(filename);
+    cancelAsyncModelLoadByKey(getAsyncModelLoadKey(filename));
+}
+
+void MeshSystem::cancelAsyncModelLoadByKey(const std::string& key){
     const uint64_t buildId = std::hash<std::string>{}(key);
     bool erased = false;
     {
@@ -1231,8 +1242,8 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
     return result;
 }
 
-std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncModelLoad(const std::string& filename, bool obj){
-    const std::string key = getAsyncModelLoadKey(filename);
+std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncModelLoad(const Scene* scene, const std::string& filename, bool obj){
+    const std::string key = getAsyncModelLoadKey(scene, filename);
     const uint64_t buildId = std::hash<std::string>{}(key);
 
     std::shared_future<std::shared_ptr<AsyncModelLoadResult>> future;
@@ -1304,6 +1315,88 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
     }
 
     return result;
+}
+
+bool MeshSystem::preloadModel(const std::string& filename, std::shared_ptr<void>& data){
+    // parsing on this thread would stall the game
+    if (!Engine::isAsyncLoading()){
+        return true;
+    }
+
+    const std::string poolKey = getModelFilenameKey(filename);
+    const bool obj = FileData::getFilePathExtension(filename) == "obj";
+
+    if (obj){
+        if (auto cached = ModelPool::getObj(poolKey)){
+            data = cached;
+            return true;
+        }
+    }else if (auto cached = ModelPool::getGLTF(poolKey)){
+        data = cached;
+        return true;
+    }
+
+    std::shared_ptr<AsyncModelLoadResult> result = pollOrStartAsyncModelLoad(nullptr, filename, obj);
+    if (!result){
+        // no result is a load still running, unless it could not start
+        return !isModelPreloading(filename);
+    }
+
+    if (!result->success){
+        return true;
+    }
+
+    // the worker leaves the build open for the scene that uses the model
+    ResourceProgress::completeBuild(std::hash<std::string>{}(getAsyncModelLoadKey(nullptr, filename)));
+
+    if (obj){
+        data = ModelPool::addObj(poolKey, result->objModel);
+    }else{
+        data = ModelPool::addGLTF(poolKey, result->gltfModel);
+        // as loadGLTF does, so the scene finds the textures pooled
+        for (auto& prebuilt : result->prebuiltTextures){
+            if (prebuilt.second){
+                TextureDataPool::put(prebuilt.first, prebuilt.second);
+            }
+        }
+    }
+
+    return true;
+}
+
+void MeshSystem::cancelPreloadModel(const std::string& filename){
+    cancelAsyncModelLoadByKey(getAsyncModelLoadKey(nullptr, filename));
+}
+
+void MeshSystem::releasePreloadedModel(const std::string& filename){
+    const std::string poolKey = getModelFilenameKey(filename);
+    if (FileData::getFilePathExtension(filename) == "obj"){
+        ModelPool::removeObj(poolKey);
+        return;
+    }
+
+    std::shared_ptr<tinygltf::Model> model = ModelPool::getGLTF(poolKey);
+    if (!model){
+        return;
+    }
+
+    std::vector<std::string> textureIds;
+    for (size_t i = 0; i < model->textures.size(); i++){
+        if (model->textures[i].source >= 0){
+            textureIds.push_back(gltfTextureDedupKey(poolKey, *model, static_cast<int>(i)));
+        }
+    }
+
+    model.reset();
+    ModelPool::removeGLTF(poolKey);
+    // a scene using the model keeps its images too
+    if (ModelPool::getGLTF(poolKey)){
+        return;
+    }
+
+    for (const std::string& id : textureIds){
+        TextureDataPool::remove(id);
+    }
 }
 
 void MeshSystem::addSubmeshAttribute(Submesh& submesh, const std::string& bufferName, AttributeType attribute, unsigned int elements, AttributeDataType dataType, size_t size, size_t offset, bool normalized){
@@ -4170,7 +4263,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     std::shared_ptr<AsyncModelLoadResult> asyncResult;
     if (asyncLoad){
-        asyncResult = pollOrStartAsyncModelLoad(filename, false);
+        // a preload of the file fills ModelPool, parsing it here too would double the work
+        if (isModelPreloading(filename)){
+            return false;
+        }
+        asyncResult = pollOrStartAsyncModelLoad(scene, filename, false);
         if (!asyncResult || !asyncResult->success || !asyncResult->gltfModel){
             return false;
         }
@@ -5421,7 +5518,11 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
 
     std::shared_ptr<AsyncModelLoadResult> asyncResult;
     if (asyncLoad){
-        asyncResult = pollOrStartAsyncModelLoad(filename, true);
+        // a preload of the file fills ModelPool, parsing it here too would double the work
+        if (isModelPreloading(filename)){
+            return false;
+        }
+        asyncResult = pollOrStartAsyncModelLoad(scene, filename, true);
         if (!asyncResult || !asyncResult->success || !asyncResult->objModel){
             return false;
         }

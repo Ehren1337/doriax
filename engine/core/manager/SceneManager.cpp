@@ -7,6 +7,10 @@
 #include "Log.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/MeshSystem.h"
+#include "pool/TexturePool.h"
+#include "pool/TextureDataPool.h"
+#include "pool/SoundPool.h"
 #include "thread/ResourceProgress.h"
 
 #include <algorithm>
@@ -29,6 +33,8 @@ size_t SceneManager::loadingCount = 0;
 double SceneManager::loadingProgressTime = 0.0;
 float SceneManager::loadingProgress = 0.0f;
 int SceneManager::loadingHolds = 0;
+
+std::vector<SceneManager::Preload> SceneManager::preloads;
 
 std::vector<uint32_t> SceneManager::buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds) {
     std::vector<uint32_t> result;
@@ -64,7 +70,7 @@ void SceneManager::registerScene(uint32_t id, const std::string& name, std::func
     registerScene(id, name, std::move(loadFactory), std::move(addFactory), std::vector<uint32_t>{id});
 }
 
-void SceneManager::registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory, const std::vector<uint32_t>& sceneIds) {
+void SceneManager::registerScene(uint32_t id, const std::string& name, std::function<void()> loadFactory, std::function<void()> addFactory, const std::vector<uint32_t>& sceneIds, std::function<SceneResources()> resources) {
     std::vector<uint32_t> stackSceneIds = buildSceneStackIds(id, sceneIds);
 
     // Overwrite if the id already exists
@@ -74,10 +80,11 @@ void SceneManager::registerScene(uint32_t id, const std::string& name, std::func
             entry.loadFactory = std::move(loadFactory);
             entry.addFactory = std::move(addFactory);
             entry.sceneIds = std::move(stackSceneIds);
+            entry.resources = std::move(resources);
             return;
         }
     }
-    entries.push_back({id, name, std::move(loadFactory), std::move(addFactory), std::move(stackSceneIds)});
+    entries.push_back({id, name, std::move(loadFactory), std::move(addFactory), std::move(stackSceneIds), std::move(resources)});
 }
 
 bool SceneManager::loadScene(const std::string& name) {
@@ -331,7 +338,201 @@ void SceneManager::setCurrentScene(uint32_t id) {
     resetLoadProgress();
 }
 
+SceneManager::Preload* SceneManager::findPreload(uint32_t id) {
+    for (auto& preload : preloads) {
+        if (preload.id == id) return &preload;
+    }
+    return nullptr;
+}
+
+bool SceneManager::preloadScene(const std::string& name) {
+    uint32_t id = getSceneId(name);
+    if (id == 0) {
+        Log::error("SceneManager: scene '%s' not found", name.c_str());
+        return false;
+    }
+
+    return preloadScene(id);
+}
+
+bool SceneManager::preloadScene(uint32_t id) {
+    if (!findEntry(id)) {
+        Log::error("SceneManager: scene id %u not found", id);
+        return false;
+    }
+
+    // started at the end of the frame, not inside the calling script
+    Preload* preload = findPreload(id);
+    if (!preload) {
+        preloads.push_back({id});
+    } else if (preload->cancelled) {
+        preload->cancelled = false;
+        preload->started = false;
+    }
+    return true;
+}
+
+float SceneManager::getPreloadProgress(const std::string& name) {
+    return getPreloadProgress(getSceneId(name));
+}
+
+float SceneManager::getPreloadProgress(uint32_t id) {
+    Preload* preload = findPreload(id);
+    if (!preload || !preload->started || preload->cancelled) return 0.0f;
+    if (preload->total == 0) return 1.0f;
+
+    const SceneResources& pending = preload->pending;
+    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size();
+    return (float)(preload->total - remaining) / (float)preload->total;
+}
+
+void SceneManager::cancelPreload(const std::string& name) {
+    cancelPreload(getSceneId(name));
+}
+
+void SceneManager::cancelPreload(uint32_t id) {
+    Preload* preload = findPreload(id);
+    if (!preload) return;
+
+    // loads in flight still end, then everything no scene uses is released
+    preload->cancelled = true;
+    preload->held.clear();
+    if (!Engine::isAsyncLoading()) {
+        preload->pending.textures.clear();
+        preload->pending.sounds.clear();
+    }
+}
+
+void SceneManager::startPreload(uint32_t id) {
+    SceneEntry* entry = findEntry(id);
+    Preload* preload = findPreload(id);
+    if (!entry || !preload) return;
+
+    // copied, a resource function can register scenes and add preloads
+    std::vector<uint32_t> sceneIds = entry->sceneIds;
+    SceneResources pending = preload->pending;
+
+    auto addFile = [](std::vector<std::string>& files, const std::string& file) {
+        if (std::find(files.begin(), files.end(), file) == files.end()) {
+            files.push_back(file);
+        }
+    };
+
+    for (uint32_t sceneId : sceneIds) {
+        // a running scene has its files already
+        Scene* scene = getScenePtr(sceneId);
+        if (scene && Engine::isSceneRunning(scene)) continue;
+
+        SceneEntry* sceneEntry = findEntry(sceneId);
+        if (!sceneEntry || !sceneEntry->resources) continue;
+
+        SceneResources resources = sceneEntry->resources();
+        for (const Texture& texture : resources.textures) {
+            auto sameId = [&texture](const Texture& other) { return other.getId() == texture.getId(); };
+            if (std::none_of(pending.textures.begin(), pending.textures.end(), sameId)) {
+                pending.textures.push_back(texture);
+            }
+        }
+        for (const std::string& sound : resources.sounds) {
+            addFile(pending.sounds, sound);
+        }
+        for (const std::string& model : resources.models) {
+            addFile(pending.models, model);
+        }
+    }
+
+    preload = findPreload(id);
+    if (!preload) return;
+
+    preload->started = true;
+    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size();
+    preload->pending = std::move(pending);
+}
+
+void SceneManager::releasePreload(Preload& preload) {
+    preload.held.clear();
+    for (const auto& release : preload.releases) {
+        release();
+    }
+    preload.releases.clear();
+}
+
+void SceneManager::updatePreloads() {
+    // a synchronous load stalls this thread, so only one goes per frame
+    const bool oneFile = !Engine::isAsyncLoading();
+
+    // by index, a resource function can add a preload
+    for (size_t i = 0; i < preloads.size();) {
+        if (!preloads[i].started && !preloads[i].cancelled) {
+            startPreload(preloads[i].id);
+        }
+
+        Preload& preload = preloads[i];
+        SceneResources& pending = preload.pending;
+
+        auto keep = [&preload](std::shared_ptr<void> data, std::function<void()> release) {
+            if (!data) return;
+            if (!preload.cancelled) preload.held.push_back(std::move(data));
+            preload.releases.push_back(std::move(release));
+        };
+
+        // true once a load ended, keeping what it loaded
+        auto finished = [&keep](const auto& result, std::function<void()> release) {
+            if (result.state == ResourceLoadState::Loading) return false;
+            keep(result.data, std::move(release));
+            return true;
+        };
+
+        for (auto it = pending.textures.begin(); it != pending.textures.end();) {
+            const std::string id = it->getId();
+            auto release = [id]() {
+                TexturePool::remove(id);
+                TextureDataPool::remove(id);
+            };
+
+            // on the GPU for a running scene, held so the switch does not free it
+            if (std::shared_ptr<TextureRender> render = TexturePool::get(id)) {
+                keep(render, release);
+                it = pending.textures.erase(it);
+                continue;
+            }
+
+            it = finished(it->load(), release) ? pending.textures.erase(it) : it + 1;
+            if (oneFile) return;
+        }
+
+        for (auto it = pending.sounds.begin(); it != pending.sounds.end();) {
+            const std::string name = *it;
+            auto release = [name]() { SoundPool::remove(name); };
+            it = finished(SoundPool::loadFromFile(name, name), release) ? pending.sounds.erase(it) : it + 1;
+            if (oneFile) return;
+        }
+
+        for (auto it = pending.models.begin(); it != pending.models.end();) {
+            std::shared_ptr<void> data;
+            if (!MeshSystem::preloadModel(*it, data)) {
+                ++it;
+                continue;
+            }
+
+            const std::string file = *it;
+            keep(data, [file]() { MeshSystem::releasePreloadedModel(file); });
+            it = pending.models.erase(it);
+        }
+
+        const bool inFlight = !pending.textures.empty() || !pending.sounds.empty() || !pending.models.empty();
+        if (preload.cancelled && !inFlight) {
+            releasePreload(preload);
+            preloads.erase(preloads.begin() + i);
+        } else {
+            i++;
+        }
+    }
+}
+
 void SceneManager::updateLoading() {
+    updatePreloads();
+
     if (loadingState == LoadingState::None) return;
 
     double now = Engine::getSystemTime();
@@ -374,6 +575,9 @@ void SceneManager::updateLoading() {
         loadingSceneShown = false;
     }
     loadingState = LoadingState::None;
+
+    // the new scenes hold their own files now
+    cancelPreload(currentId);
 }
 
 bool SceneManager::addChildScene(uint32_t id) {
@@ -500,6 +704,15 @@ void SceneManager::clearAll() {
     loadingState = LoadingState::None;
     loadingSceneShown = false;
     loadingHolds = 0;
+
+    // a model still parsing would keep its build open
+    for (Preload& preload : preloads) {
+        for (const std::string& model : preload.pending.models) {
+            MeshSystem::cancelPreloadModel(model);
+        }
+        releasePreload(preload);
+    }
+    preloads.clear();
 }
 
 void SceneManager::setScenePtr(uint32_t id, Scene* scene) {

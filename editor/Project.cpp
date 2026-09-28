@@ -748,6 +748,114 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
     return changed;
 }
 
+SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* registry) {
+    SceneResources resources;
+    if (!registry) {
+        return resources;
+    }
+
+    // alphaBorderAuto is part of the pool id, so it is set like the system drawing it does
+    auto addTexture = [&resources](const Texture& texture, bool alphaBorderAuto) {
+        if (texture.getPath(0).empty() || texture.isFramebuffer()) {
+            return;
+        }
+
+        Texture file(texture);
+        if (alphaBorderAuto) {
+            file.setAlphaBorderAuto(true);
+        }
+
+        auto sameId = [&file](const Texture& other) { return other.getId() == file.getId(); };
+        if (std::none_of(resources.textures.begin(), resources.textures.end(), sameId)) {
+            resources.textures.push_back(file);
+        }
+    };
+
+    auto addFile = [](std::vector<std::string>& files, const std::string& file) {
+        if (!file.empty() && std::find(files.begin(), files.end(), file) == files.end()) {
+            files.push_back(file);
+        }
+    };
+
+    auto visitComponents = [&](auto* componentArray, auto&& visitComponent) {
+        for (size_t i = 0; i < componentArray->size(); i++) {
+            visitComponent(componentArray->getComponentFromIndex(i));
+        }
+    };
+
+    auto meshes = registry->getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++) {
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        Signature signature = registry->getSignature(meshes->getEntity(i));
+        // see RenderSystem::loadMesh
+        bool bordered = signature.test(registry->getComponentId<SpriteComponent>()) ||
+                        signature.test(registry->getComponentId<TilemapComponent>()) ||
+                        signature.test(registry->getComponentId<MeshPolygonComponent>());
+
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+            Material& material = mesh.submeshes[s].material;
+            addTexture(material.baseColorTexture, bordered);
+            addTexture(material.emissiveTexture, false);
+            addTexture(material.metallicRoughnessTexture, false);
+            addTexture(material.occlusionTexture, false);
+            addTexture(material.normalTexture, false);
+        }
+    }
+
+    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
+        addTexture(ui.texture, true);
+    });
+
+    visitComponents(registry->getComponentArray<ButtonComponent>(), [&](ButtonComponent& button) {
+        addTexture(button.textureNormal, true);
+        addTexture(button.textureHovered, true);
+        addTexture(button.texturePressed, true);
+        addTexture(button.textureDisabled, true);
+    });
+
+    visitComponents(registry->getComponentArray<SkyComponent>(), [&](SkyComponent& sky) {
+        addTexture(sky.texture, false);
+    });
+
+    visitComponents(registry->getComponentArray<TerrainComponent>(), [&](TerrainComponent& terrain) {
+        addTexture(terrain.heightMap, false);
+        for (Texture& blendMap : terrain.blendMaps) {
+            addTexture(blendMap, false);
+        }
+        for (TerrainSurfaceLayer& layer : terrain.surfaceLayers) {
+            forEachTerrainLayerTexture(layer, [&](Texture& texture) {
+                addTexture(texture, false);
+            });
+        }
+        for (TerrainFoliageLayer& layer : terrain.foliageLayers) {
+            addTexture(layer.densityMap, false);
+            addFile(resources.models, layer.meshPath);
+        }
+    });
+
+    visitComponents(registry->getComponentArray<LightComponent>(), [&](LightComponent& light) {
+        addTexture(light.spotMask, false);
+    });
+
+    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) {
+        addTexture(points.texture, true);
+    });
+
+    visitComponents(registry->getComponentArray<ReflectionProbeComponent>(), [&](ReflectionProbeComponent& probe) {
+        addTexture(probe.texture, false);
+    });
+
+    visitComponents(registry->getComponentArray<ModelComponent>(), [&](ModelComponent& model) {
+        addFile(resources.models, model.filename);
+    });
+
+    visitComponents(registry->getComponentArray<SoundComponent>(), [&](SoundComponent& sound) {
+        addFile(resources.sounds, sound.filename);
+    });
+
+    return resources;
+}
+
 bool editor::Project::visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform) {
     if (!registry) {
         return false;
@@ -4963,7 +5071,7 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
 
 void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
     std::vector<BundleInstanceInfo> bundleInstances = generator.writeBundleSources(entityBundles, sceneProject->id, getProjectPath(), getProjectInternalPath());
-    generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), bundleInstances);
+    generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), bundleInstances, collectResourcesInRegistry(sceneProject->scene));
 }
 
 bool editor::Project::hasMissingSceneSources() const {
@@ -8334,7 +8442,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 }
 
                 std::vector<BundleInstanceInfo> bundleInstances = generator.writeBundleSources(entityBundles, currentSceneProject.id, getProjectPath(), getProjectInternalPath());
-                generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), bundleInstances);
+                generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), bundleInstances, collectResourcesInRegistry(entry.runtime->scene));
 
                 {
                     std::scoped_lock lock(playSessionMutex);
@@ -8666,8 +8774,53 @@ void editor::Project::registerSceneManager() {
             // SceneManager::addChildScene() puts the scenes on screen
             std::vector<size_t> stackIndices;
             buildRuntimeSceneStack(sceneId, stackIndices);
-        }, stackSceneIds);
+        }, stackSceneIds, [this, sceneId = sceneProject.id]() {
+            return collectPlaySceneResources(sceneId);
+        });
     }
+}
+
+// The Play copy when the session built one, else the open scene, else a probe of its file
+SceneResources editor::Project::collectPlaySceneResources(uint32_t sceneId) {
+    Scene* runtimeScene = nullptr;
+    {
+        std::scoped_lock lock(playSessionMutex);
+        if (activePlaySession) {
+            for (const PlayRuntimeScene& entry : activePlaySession->runtimeScenes) {
+                if (entry.sourceSceneId == sceneId && entry.runtime && entry.runtime->scene) {
+                    runtimeScene = entry.runtime->scene;
+                    break;
+                }
+            }
+        }
+    }
+    if (runtimeScene) {
+        return collectResourcesInRegistry(runtimeScene);
+    }
+
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject) {
+        return {};
+    }
+    if (sceneProject->scene) {
+        return collectResourcesInRegistry(sceneProject->scene);
+    }
+
+    SceneResources resources;
+    std::unique_ptr<SceneProject> probe;
+    try {
+        probe.reset(createRuntimeCloneFromSource(sceneProject));
+        resources = collectResourcesInRegistry(probe->scene);
+    } catch (const std::exception& e) {
+        Out::warning("Files of scene '%s' not preloaded: %s", sceneProject->name.c_str(), e.what());
+    }
+    if (probe) {
+        deleteSceneProject(probe.get());
+    }
+    // forget the bundle instances the probe registered
+    cleanupEntityBundlesForScene(sceneId);
+
+    return resources;
 }
 
 editor::SceneProject* editor::Project::findSceneProjectByScene(Scene* scene) {

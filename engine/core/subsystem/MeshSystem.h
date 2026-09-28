@@ -94,8 +94,11 @@ namespace doriax{
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
-        std::shared_ptr<AsyncModelLoadResult> pollOrStartAsyncModelLoad(const std::string& filename, bool obj);
+        static std::shared_ptr<AsyncModelLoadResult> pollOrStartAsyncModelLoad(const Scene* scene, const std::string& filename, bool obj);
+        static void cancelAsyncModelLoadByKey(const std::string& key);
         bool isAsyncModelLoadPending(const std::string& filename) const;
+        static bool isAsyncModelLoadPending(const Scene* scene, const std::string& filename);
+        static bool isModelPreloading(const std::string& filename);
         static std::shared_ptr<AsyncModelLoadResult> loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId);
         template<typename T>
         static bool isValidGLTFIndex(int index, const std::vector<T>& values) {
@@ -189,6 +192,13 @@ namespace doriax{
 
         bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
+
+        // Parses a model file into ModelPool without a scene, for SceneManager::preloadScene().
+        // False while it loads; data then holds the model, or stays empty when it failed.
+        static bool preloadModel(const std::string& filename, std::shared_ptr<void>& data);
+        static void cancelPreloadModel(const std::string& filename);
+        // Drops a preloaded model and its images from the pools, unless a scene uses them
+        static void releasePreloadedModel(const std::string& filename);
 
         // Caps the resolution glTF images are decoded to on the CALLING thread (0 = full resolution).
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.

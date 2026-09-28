@@ -1369,12 +1369,12 @@ std::vector<editor::BundleInstanceInfo> editor::Generator::writeBundleSources(co
     return bundleInstances;
 }
 
-void editor::Generator::writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<BundleInstanceInfo>& bundleInstances){
+void editor::Generator::writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<BundleInstanceInfo>& bundleInstances, const SceneResources& resources){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     std::string sceneIdStr = Factory::toIdentifier(sceneName);
 
-    std::string sceneContent = Factory::createScene(0, scene, sceneName, entities, camera, projectPath, generatedPath, bundleInstances);
+    std::string sceneContent = Factory::createScene(0, scene, sceneName, entities, camera, projectPath, generatedPath, bundleInstances, resources);
 
     std::string filename = sceneIdStr + ".cpp";
     const fs::path sourceFile = generatedPath / filename;
@@ -1397,8 +1397,10 @@ void editor::Generator::clearSceneSource(const std::string& sceneName, const fs:
 }
 
 bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) const {
-    std::error_code ec;
-    return fs::exists(getGeneratedPath(projectInternalPath) / (Factory::toIdentifier(sceneName) + ".cpp"), ec);
+    // one written by an older editor lacks what main.cpp calls
+    std::ifstream file(getGeneratedPath(projectInternalPath) / (Factory::toIdentifier(sceneName) + ".cpp"));
+    std::string header;
+    return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
 void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings){
@@ -1433,6 +1435,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     for (const auto& sceneData : scenes) {
         std::string sceneName = Factory::toIdentifier(sceneData.name);
         mainContent += "void create_" + sceneName + "(Scene* scene);\n";
+        mainContent += "SceneResources resources_" + sceneName + "();\n";
     }
     mainContent += "extern \"C\" void initScripts(doriax::Scene* scene);\n";
     mainContent += "extern \"C\" void cleanupScripts(doriax::Scene* scene);\n";
@@ -1574,7 +1577,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             if (i > 0) sceneIds += ", ";
             sceneIds += std::to_string(sceneData.activeScenes[i]);
         }
-        mainContent += "    SceneManager::registerScene(" + std::to_string(sceneData.id) + ", \"" + sceneData.name + "\", load_" + stackId + ", add_" + stackId + ", {" + sceneIds + "});\n";
+        mainContent += "    SceneManager::registerScene(" + std::to_string(sceneData.id) + ", \"" + sceneData.name + "\", load_" + stackId + ", add_" + stackId + ", {" + sceneIds + "}, resources_" + stackId + ");\n";
     }
     mainContent += "\n";
 

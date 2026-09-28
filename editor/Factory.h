@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Scene.h"
+#include "SceneManager.h"
 #include "Catalog.h"
 #include "action/Ease.h"
 #include <string>
@@ -114,7 +115,11 @@ namespace doriax::editor{
 
         static std::string createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
-        static std::string createScene(int indentSpaces, Scene* scene, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<BundleInstanceInfo>& bundleInstances = {});
+        // First line of a generated scene source. Its number follows the source's shape, so an
+        // older source counts as missing and is written again.
+        static const char* const sceneSourceHeader;
+
+        static std::string createScene(int indentSpaces, Scene* scene, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<BundleInstanceInfo>& bundleInstances = {}, const SceneResources& resources = {});
 
         static std::string createBundle(const std::filesystem::path& bundlePath, EntityRegistry* registry, const std::vector<Entity>& registryEntities, const fs::path& projectPath, const fs::path& generatedPath);
         static std::string createBundleHeader(const std::filesystem::path& bundlePath);
