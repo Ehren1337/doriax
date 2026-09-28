@@ -1175,7 +1175,7 @@ void editor::Structure::showTreeNode(editor::TreeNode& node) {
         // Model entities can exist for a few frames as leaves while their children load
         // asynchronously. Initialize tree state only once children exist so imported
         // model hierarchies start collapsed instead of inheriting an earlier leaf state.
-        ImGui::SetNextItemOpen(!node.isBone && !isModelWithChildren, ImGuiCond_Once);
+        ImGui::SetNextItemOpen(!node.isBone && !node.isBundleRoot && !isModelWithChildren, ImGuiCond_Once);
     }
 
     if(!node.isScene && openParent == node.id) {
@@ -2152,6 +2152,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
                     enode.isMainCamera = (entity == childScene->mainCamera);
                     enode.hasScript = hasScripts(childScene->scene, entity);
                     enode.isBone = signature.test(childScene->scene->getComponentId<BoneComponent>());
+                    enode.isBundleRoot = signature.test(childScene->scene->getComponentId<BundleComponent>());
                     enode.order = order++;
                     enode.name = childScene->scene->getEntityName(entity);
                     childSceneNode.children.push_back(enode);
@@ -2174,6 +2175,7 @@ void editor::Structure::rebuildEntityTree(SceneProject* sceneProject, TreeNode& 
                     enode.isMainCamera = (entity == childScene->mainCamera);
                     enode.hasScript = hasScripts(childScene->scene, entity);
                     enode.isBone = signature.test(childScene->scene->getComponentId<BoneComponent>());
+                    enode.isBundleRoot = signature.test(childScene->scene->getComponentId<BundleComponent>());
                     enode.hasTransform = true;
                     enode.isLocked = ProjectUtils::isEntityLocked(childScene->scene, entity);
                     enode.order = order++;
