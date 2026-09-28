@@ -455,6 +455,8 @@ namespace doriax {
         static FunctionSubscribe<void()> onPause;
         static FunctionSubscribe<void()> onResume;
         static FunctionSubscribe<void()> onShutdown;
+        // The stack loaded by SceneManager is ready, before its loading scene closes.
+        static FunctionSubscribe<void()> onSceneLoaded;
         static FunctionSubscribe<void(int,float,float)> onTouchStart;
         static FunctionSubscribe<void(int,float,float)> onTouchEnd;
         static FunctionSubscribe<void(int,float,float)> onTouchMove;

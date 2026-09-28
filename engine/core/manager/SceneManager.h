@@ -45,7 +45,8 @@ namespace doriax {
         enum class LoadingState {
             None,
             Covering,   // loading scene over the old stack, switch pending
-            Loading     // new stack loading its resources
+            Loading,    // new stack loading its resources
+            Loaded      // new stack loaded, holds keep the loading scene up
         };
 
         static std::vector<SceneEntry> entries;
@@ -55,12 +56,14 @@ namespace doriax {
 
         static uint32_t loadingSceneId;
         static float loadingDelay;
+        static float loadingTimeout;
         static LoadingState loadingState;
         static bool loadingSceneShown;
         static bool loadingSceneReady;
         static double loadingStateTime;
         static size_t loadingCount;
         static double loadingProgressTime;
+        static int loadingHolds;
 
         static std::vector<uint32_t> buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds);
         static SceneEntry* findEntry(uint32_t id);
@@ -69,8 +72,10 @@ namespace doriax {
         static std::vector<Scene*> getRunningScenes(uint32_t id);
         static bool canShowLoadingScene(uint32_t id);
         static void raiseLoadingScene();
-        static void beginLoading();
-        static void getLoadCount(size_t& loaded, size_t& total);
+        static void startLoading(uint32_t id);
+        static void resetLoadProgress();
+        static bool isLoadProgressing(size_t loaded, double now);
+        static void getLoadCount(uint32_t id, size_t& loaded, size_t& total);
 
     public:
         // Register a named scene stack.
@@ -116,11 +121,26 @@ namespace doriax {
         static void setLoadingDelay(float seconds);
         static float getLoadingDelay();
 
-        // True from loadScene() until the new stack has loaded its resources.
+        // Seconds without load progress before a load stops waiting.
+        static void setLoadingTimeout(float seconds);
+        static float getLoadingTimeout();
+
+        // True from loadScene() until the new stack has loaded and every hold is released.
         static bool isLoading();
 
         // Loaded share of the new stack's drawables, from 0 to 1.
         static float getLoadingProgress();
+
+        // Keeps the loading scene up after the new stack has loaded, until released.
+        // Returns false when nothing is loading.
+        static bool holdLoading();
+        static void releaseLoading();
+
+        // True for a scene below the shown loading scene, which gets no UI input.
+        static bool isCoveredByLoading(Scene* scene);
+
+        // Tracks the loading of a stack started without loadScene(), as the editor's Play does.
+        static void setCurrentScene(uint32_t id);
 
         // Called by Engine after the scenes draw.
         static void updateLoading();

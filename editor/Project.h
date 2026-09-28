@@ -319,6 +319,7 @@ namespace doriax::editor{
         CommandHistory projectHistory;
 
         uint32_t startSceneId;
+        LoadingSettings loadingSettings;
         TerrainEditorSettings terrainEditorSettings;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -634,6 +635,9 @@ namespace doriax::editor{
         uint32_t getStartSceneId() const;
         void setStartSceneId(uint32_t sceneId);
 
+        LoadingSettings& getLoadingSettings();
+        const LoadingSettings& getLoadingSettings() const;
+
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;
 
@@ -657,6 +661,7 @@ namespace doriax::editor{
 
         void refreshLinkedMaterials(bool force = false);
         void updateGeneratedSources();
+        void markGeneratedSourcesDirty();
 
         //=== Linked Material part ===
 

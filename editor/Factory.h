@@ -76,7 +76,6 @@ namespace doriax::editor{
         static std::string formatScriptType(ScriptType type);
         static std::string formatQuaternion(const Quaternion& q);
         static std::string formatBool(bool value);
-        static std::string formatFloat(float value);
         static std::string formatPositiveFloat(float value, float fallback = 1.0f);
         static std::string formatDouble(double value);
         static std::string formatInt(int value);
@@ -107,6 +106,7 @@ namespace doriax::editor{
         static std::vector<Entity> getBundleMemberEntities(EntityRegistry* registry, const std::vector<Entity>& registryEntities);
 
         static std::string toIdentifier(const std::string& name);
+        static std::string formatFloat(float value);
 
         static std::string bundleToFunctionName(const std::filesystem::path& bundlePath);
         static std::string bundleToBuildFunctionName(const std::filesystem::path& bundlePath);

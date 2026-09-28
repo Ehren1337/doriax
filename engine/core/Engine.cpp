@@ -108,6 +108,7 @@ FunctionSubscribe<void()> Engine::onPostUpdate;
 FunctionSubscribe<void()> Engine::onPause;
 FunctionSubscribe<void()> Engine::onResume;
 FunctionSubscribe<void()> Engine::onShutdown;
+FunctionSubscribe<void()> Engine::onSceneLoaded;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchStart;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchEnd;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchMove;
@@ -798,6 +799,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onPause.removeByTagSubstring(substring);
     onResume.removeByTagSubstring(substring);
     onShutdown.removeByTagSubstring(substring);
+    onSceneLoaded.removeByTagSubstring(substring);
 }
 
 void Engine::clearAllSubscriptions(bool includeLifecycle) {
@@ -805,6 +807,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     onUpdate.clear();
     onFixedUpdate.clear();
     onPostUpdate.clear();
+    onSceneLoaded.clear();
 
     onTouchStart.clear();
     onTouchEnd.clear();
@@ -1238,6 +1241,11 @@ void Engine::systemResume(){
     paused = false;
 }
 
+// Scenes below a loading scene only get pointer-up, so nothing stays pressed
+static bool canSendUIEvents(Scene* scene){
+    return scene->canReceiveUIEvents() && !SceneManager::isCoveredByLoading(scene);
+}
+
 bool Engine::transformCoordPos(float& x, float& y){
 
     x = (x - viewRect.getX()) / viewRect.getWidth();
@@ -1259,7 +1267,7 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
-            if (scene->canReceiveUIEvents())
+            if (canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                     uiEventReceived = true;
         }
@@ -1313,7 +1321,7 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
-            if (scene->canReceiveUIEvents())
+            if (canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;
         }
@@ -1361,7 +1369,7 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
-            if (scene->canReceiveUIEvents())
+            if (canSendUIEvents(scene))
                 if (button == D_MOUSE_BUTTON_1)
                     if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                         uiEventReceived = true;
@@ -1419,7 +1427,7 @@ void Engine::systemMouseMove(float x, float y, int mods){
 
         uiEventReceived = false;
         for (Scene* scene : getScenesSnapshot()){
-            if (scene->canReceiveUIEvents())
+            if (canSendUIEvents(scene))
                 if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;
         }
@@ -1471,7 +1479,7 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
     Engine::onKeyDown.call(key, repeat, mods);
 
     for (Scene* scene : getScenesSnapshot()){
-        if (scene->canReceiveUIEvents())
+        if (canSendUIEvents(scene))
             scene->getSystem<UISystem>()->eventOnKeyDown(key, repeat, mods);
     }
     //-----------------
@@ -1489,7 +1497,7 @@ void Engine::systemCharInput(wchar_t codepoint){
     onCharInput.call(codepoint);
 
     for (Scene* scene : getScenesSnapshot()){
-        if (scene->canReceiveUIEvents())
+        if (canSendUIEvents(scene))
             scene->getSystem<UISystem>()->eventOnCharInput(codepoint);
     }
 }

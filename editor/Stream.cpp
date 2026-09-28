@@ -2013,6 +2013,17 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["startSceneId"] = project->getStartSceneId();
     }
 
+    {
+        const LoadingSettings& loading = project->getLoadingSettings();
+        const LoadingSettings defaults;
+        YAML::Node loadingNode;
+        if (loading.sceneId != defaults.sceneId) loadingNode["sceneId"] = loading.sceneId;
+        if (loading.delay != defaults.delay) loadingNode["delay"] = loading.delay;
+        if (loading.timeout != defaults.timeout) loadingNode["timeout"] = loading.timeout;
+        if (loading.asyncLoading != defaults.asyncLoading) loadingNode["asyncLoading"] = loading.asyncLoading;
+        if (loadingNode.size()) root["loading"] = loadingNode;
+    }
+
     if (!project->getStandaloneBundles().empty()) {
         YAML::Node bundlesNode;
         for (const fs::path& bundlePath : project->getStandaloneBundles()) {
@@ -2313,6 +2324,15 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["startSceneId"]) {
         project->setStartSceneId(node["startSceneId"].as<uint32_t>());
+    }
+
+    if (node["loading"]) {
+        const YAML::Node loadingNode = node["loading"];
+        LoadingSettings& loading = project->getLoadingSettings();
+        if (loadingNode["sceneId"]) loading.sceneId = loadingNode["sceneId"].as<uint32_t>();
+        loading.delay = std::max(0.0f, decodeFinite(loadingNode["delay"], loading.delay));
+        loading.timeout = std::max(0.0f, decodeFinite(loadingNode["timeout"], loading.timeout));
+        if (loadingNode["asyncLoading"]) loading.asyncLoading = loadingNode["asyncLoading"].as<bool>();
     }
 
     if (node["standaloneBundles"]) {

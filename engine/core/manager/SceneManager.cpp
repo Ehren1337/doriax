@@ -12,10 +12,6 @@
 
 using namespace doriax;
 
-// seconds before giving up on a loading scene or on a stack that stopped loading
-static const double LOADING_SCENE_TIMEOUT = 2.0;
-static const double LOADING_STALL_TIMEOUT = 5.0;
-
 std::vector<SceneManager::SceneEntry> SceneManager::entries;
 uint32_t SceneManager::currentId = 0;
 std::optional<uint32_t> SceneManager::pendingId;
@@ -23,12 +19,14 @@ std::map<uint32_t, Scene*> SceneManager::scenePtrs;
 
 uint32_t SceneManager::loadingSceneId = 0;
 float SceneManager::loadingDelay = 0.0f;
+float SceneManager::loadingTimeout = 5.0f;
 SceneManager::LoadingState SceneManager::loadingState = SceneManager::LoadingState::None;
 bool SceneManager::loadingSceneShown = false;
 bool SceneManager::loadingSceneReady = false;
 double SceneManager::loadingStateTime = 0.0;
 size_t SceneManager::loadingCount = 0;
 double SceneManager::loadingProgressTime = 0.0;
+int SceneManager::loadingHolds = 0;
 
 std::vector<uint32_t> SceneManager::buildSceneStackIds(uint32_t id, const std::vector<uint32_t>& sceneIds) {
     std::vector<uint32_t> result;
@@ -139,9 +137,7 @@ bool SceneManager::loadScene(uint32_t id) {
         return true;
     }
 
-    pendingId.reset();
-    runFactory(id);
-    beginLoading();
+    startLoading(id);
     return true;
 }
 
@@ -160,6 +156,7 @@ void SceneManager::applyPendingLoad() {
         loadingSceneReady = false;
         loadingState = LoadingState::Covering;
         loadingStateTime = Engine::getSystemTime();
+        resetLoadProgress();
         return;
     }
 
@@ -170,9 +167,7 @@ void SceneManager::applyPendingLoad() {
         }
     }
 
-    pendingId.reset();
-    runFactory(id);
-    beginLoading();
+    startLoading(id);
 }
 
 std::vector<Scene*> SceneManager::getRunningScenes(uint32_t id) {
@@ -213,17 +208,33 @@ void SceneManager::raiseLoadingScene() {
     }
 }
 
-void SceneManager::beginLoading() {
+void SceneManager::startLoading(uint32_t id) {
+    pendingId.reset();
+    // before the factory, so the scripts it builds see isLoading()
     loadingState = LoadingState::Loading;
+    runFactory(id);
+    resetLoadProgress();
+}
+
+void SceneManager::resetLoadProgress() {
     loadingCount = 0;
     loadingProgressTime = Engine::getSystemTime();
 }
 
-void SceneManager::getLoadCount(size_t& loaded, size_t& total) {
+bool SceneManager::isLoadProgressing(size_t loaded, double now) {
+    if (loaded != loadingCount || ResourceProgress::hasActiveBuilds()) {
+        loadingCount = loaded;
+        loadingProgressTime = now;
+    }
+
+    return now - loadingProgressTime < loadingTimeout;
+}
+
+void SceneManager::getLoadCount(uint32_t id, size_t& loaded, size_t& total) {
     loaded = 0;
     total = 0;
 
-    for (Scene* scene : getRunningScenes(currentId)) {
+    for (Scene* scene : getRunningScenes(id)) {
         size_t sceneLoaded = 0;
         size_t sceneTotal = 0;
         scene->getSystem<RenderSystem>()->getLoadCount(sceneLoaded, sceneTotal);
@@ -269,19 +280,52 @@ float SceneManager::getLoadingDelay() {
     return loadingDelay;
 }
 
+void SceneManager::setLoadingTimeout(float seconds) {
+    loadingTimeout = std::max(0.0f, seconds);
+}
+
+float SceneManager::getLoadingTimeout() {
+    return loadingTimeout;
+}
+
 bool SceneManager::isLoading() {
     return pendingId.has_value() || loadingState != LoadingState::None;
 }
 
 float SceneManager::getLoadingProgress() {
     if (pendingId || loadingState == LoadingState::Covering) return 0.0f;
-    if (loadingState == LoadingState::None) return 1.0f;
+    if (loadingState == LoadingState::None || loadingState == LoadingState::Loaded) return 1.0f;
 
     size_t loaded;
     size_t total;
-    getLoadCount(loaded, total);
+    getLoadCount(currentId, loaded, total);
 
     return (total > 0) ? (float)loaded / (float)total : 1.0f;
+}
+
+bool SceneManager::holdLoading() {
+    if (!isLoading()) return false;
+
+    loadingHolds++;
+    return true;
+}
+
+void SceneManager::releaseLoading() {
+    if (loadingHolds > 0) loadingHolds--;
+}
+
+bool SceneManager::isCoveredByLoading(Scene* scene) {
+    if (!loadingSceneShown) return false;
+
+    std::vector<Scene*> loadingScenes = getRunningScenes(loadingSceneId);
+    return std::find(loadingScenes.begin(), loadingScenes.end(), scene) == loadingScenes.end();
+}
+
+void SceneManager::setCurrentScene(uint32_t id) {
+    pendingId.reset();
+    currentId = id;
+    loadingState = LoadingState::Loading;
+    resetLoadProgress();
 }
 
 void SceneManager::updateLoading() {
@@ -291,29 +335,31 @@ void SceneManager::updateLoading() {
 
     if (loadingState == LoadingState::Covering) {
         if (!loadingSceneReady) {
-            bool ready = true;
-            for (Scene* scene : getRunningScenes(loadingSceneId)) {
-                ready = ready && scene->getSystem<RenderSystem>()->isAllLoaded();
-            }
-            loadingSceneReady = ready || now - loadingStateTime > LOADING_SCENE_TIMEOUT;
+            size_t loaded;
+            size_t total;
+            getLoadCount(loadingSceneId, loaded, total);
+            loadingSceneReady = loaded >= total || !isLoadProgressing(loaded, now);
         }
         return;
     }
 
-    size_t loaded;
-    size_t total;
-    getLoadCount(loaded, total);
+    if (loadingState == LoadingState::Loading) {
+        size_t loaded;
+        size_t total;
+        getLoadCount(currentId, loaded, total);
 
-    if (loaded != loadingCount || ResourceProgress::hasActiveBuilds()) {
-        loadingCount = loaded;
-        loadingProgressTime = now;
+        if (loaded < total) {
+            if (isLoadProgressing(loaded, now)) return;
+            Log::warn("SceneManager: %zu of %zu drawables of '%s' did not load",
+                total - loaded, total, getSceneName(currentId).c_str());
+        }
+
+        loadingState = LoadingState::Loaded;
+        // a handler can hold the load or start another one
+        Engine::onSceneLoaded.call();
     }
 
-    if (loaded < total) {
-        if (now - loadingProgressTime < LOADING_STALL_TIMEOUT) return;
-        Log::warn("SceneManager: %zu of %zu drawables of '%s' did not load",
-            total - loaded, total, getSceneName(currentId).c_str());
-    }
+    if (loadingHolds > 0 || pendingId) return;
 
     if (loadingSceneShown) {
         removeChildScene(loadingSceneId);
@@ -442,8 +488,10 @@ void SceneManager::clearAll() {
 
     loadingSceneId = 0;
     loadingDelay = 0.0f;
+    loadingTimeout = 5.0f;
     loadingState = LoadingState::None;
     loadingSceneShown = false;
+    loadingHolds = 0;
 }
 
 void SceneManager::setScenePtr(uint32_t id, Scene* scene) {

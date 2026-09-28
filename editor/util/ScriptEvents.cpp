@@ -60,6 +60,7 @@ const std::vector<ScriptEvent>& eventList() {
         {S::Engine, "onPause", "Application", "The application is paused", {}},
         {S::Engine, "onResume", "Application", "The application resumes", {}},
         {S::Engine, "onShutdown", "Application", "The application shuts down", {}},
+        {S::Engine, "onSceneLoaded", "Scene", "The scene loaded by SceneManager is ready", {}},
 
         {S::Input, "onKeyDown", "Keyboard", "A key is pressed", key},
         {S::Input, "onKeyUp", "Keyboard", "A key is released", key},

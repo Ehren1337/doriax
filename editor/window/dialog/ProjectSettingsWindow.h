@@ -44,6 +44,7 @@ namespace doriax::editor {
         // at the end of each draw (same lifecycle as Properties).
         std::unordered_map<std::string, Texture> m_thumbnailTextures;
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
+        LoadingSettings m_loadingSettings;
         fs::path m_assetsDir;
         fs::path m_luaDir;
         std::vector<fs::path> m_scriptDirs;

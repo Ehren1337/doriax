@@ -2596,6 +2596,14 @@ void editor::Project::setStartSceneId(uint32_t sceneId){
     startSceneId = sceneId;
 }
 
+editor::LoadingSettings& editor::Project::getLoadingSettings(){
+    return loadingSettings;
+}
+
+const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
+    return loadingSettings;
+}
+
 editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
     return terrainEditorSettings;
 }
@@ -3517,6 +3525,9 @@ void editor::Project::removeScene(uint32_t sceneId) {
     if (startSceneId == sceneId) {
         startSceneId = NULL_PROJECT_SCENE;
     }
+    if (loadingSettings.sceneId == sceneId) {
+        loadingSettings.sceneId = NULL_PROJECT_SCENE;
+    }
 
     // CMakeLists.txt still lists its source
     generatedSourcesDirty.store(true);
@@ -3897,6 +3908,7 @@ void editor::Project::resetConfigs() {
     selectedScene = NULL_PROJECT_SCENE;
     selectedSceneForProperties = NULL_PROJECT_SCENE;
     startSceneId = NULL_PROJECT_SCENE;
+    loadingSettings = {};
     terrainEditorSettings = {};
     projectPath.clear();
     materialFileLinks.clear();
@@ -5003,7 +5015,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings);
 }
 
 void editor::Project::updateGeneratedSources() {
@@ -5024,6 +5036,10 @@ void editor::Project::updateGeneratedSources() {
     } catch (const std::exception& e) {
         Out::error("Failed to update generated sources: %s", e.what());
     }
+}
+
+void editor::Project::markGeneratedSourcesDirty() {
+    generatedSourcesDirty.store(true);
 }
 
 void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback) {
@@ -8355,7 +8371,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<BundleSceneInfo> bundleBuildInfos = collectAllBundles();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings());
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, bundleBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }
@@ -8445,6 +8461,15 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 Engine::setScalingMode(scalingMode);
                 Engine::setTextureStrategy(textureStrategy);
                 Engine::systemViewChanged();
+
+                // asyncLoading is only for exports, the editor always loads asynchronously
+                if (getScene(loadingSettings.sceneId)) {
+                    SceneManager::setLoadingScene(loadingSettings.sceneId);
+                }
+                SceneManager::setLoadingDelay(loadingSettings.delay);
+                SceneManager::setLoadingTimeout(loadingSettings.timeout);
+                // so Engine::onSceneLoaded fires, as for the exported start scene
+                SceneManager::setCurrentScene(sceneId);
 
                 // By index, and guarded: a script here can call addChildScene(), which
                 // initializes another entry and appends to runtimeScenes. Initializing from

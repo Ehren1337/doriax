@@ -9,6 +9,7 @@
 #include "external/IconsFontAwesome6.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <cstring>
 
@@ -451,6 +452,16 @@ static void drawIntSetting(const char* label, const char* id, int& value, int de
     endSettingsRow(tooltip);
 }
 
+static void drawSecondsSetting(const char* label, const char* id, float& value, float defaultValue, const char* tooltip = nullptr) {
+    if (beginSettingsRow(label, value != defaultValue)) {
+        value = defaultValue;
+    }
+    ImGui::SetNextItemWidth(tooltip ? -helpMarkerWidth() : -1.0f);
+    ImGui::InputFloat(id, &value, 0.1f, 1.0f, "%.2f s");
+    value = std::isfinite(value) ? std::max(value, 0.0f) : defaultValue;
+    endSettingsRow(tooltip);
+}
+
 static void drawDirectorySetting(
     Project* project,
     const char* label,
@@ -888,6 +899,8 @@ void ProjectSettingsWindow::open(Project* project) {
         }
     }
 
+    m_loadingSettings = project->getLoadingSettings();
+
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
 }
@@ -1069,6 +1082,42 @@ void ProjectSettingsWindow::drawGeneralSettings() {
             endSettingsRow("Keep .gitignore and .gitattributes in the project up to date, so the editor's "
                 "working directory, this machine's build settings and each developer's own layout stay out "
                 "of the repository. A file the editor did not generate is never replaced.");
+
+            ImGui::EndTable();
+        }
+
+        if (ImGui::CollapsingHeader("Loading", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##LoadingSettingsTable")) {
+            const LoadingSettings defaults;
+            LoadingSettings& loading = m_loadingSettings;
+
+            if (beginSettingsRow("Loading Scene", loading.sceneId != defaults.sceneId)) {
+                loading.sceneId = defaults.sceneId;
+            }
+            const SceneProject* loadingScene = m_project->getScene(loading.sceneId);
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            if (ImGui::BeginCombo("##LoadingScene", loadingScene ? loadingScene->name.c_str() : "None")) {
+                if (ImGui::Selectable("None", !loadingScene)) loading.sceneId = NULL_PROJECT_SCENE;
+                for (const auto& scene : m_project->getScenes()) {
+                    if (scene.filepath.empty()) continue;
+
+                    bool selected = loading.sceneId == scene.id;
+                    if (ImGui::Selectable(scene.name.c_str(), selected)) loading.sceneId = scene.id;
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            endSettingsRow("Shown over scene changes until the new scene has loaded.");
+
+            drawSecondsSetting("Loading Delay", "##LoadingDelay", loading.delay, defaults.delay,
+                "Time the loading scene covers the old scene before replacing it.");
+            drawSecondsSetting("Loading Timeout", "##LoadingTimeout", loading.timeout, defaults.timeout,
+                "Time a load waits without progress before giving up.");
+
+            if (beginSettingsRow("Async Loading", loading.asyncLoading != defaults.asyncLoading)) {
+                loading.asyncLoading = defaults.asyncLoading;
+            }
+            ImGui::Checkbox("##AsyncLoading", &loading.asyncLoading);
+            endSettingsRow("Exported games load resources on worker threads. The editor always does.");
 
             ImGui::EndTable();
         }
@@ -1673,8 +1722,13 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->setStartSceneId(NULL_PROJECT_SCENE);
     }
 
+    m_project->getLoadingSettings() = m_loadingSettings;
+
     m_project->setPackNativeResources(m_packNativeResources);
     m_project->setVersionControlMetadata(m_versionControlMetadata);
+
+    // the standalone build's main.cpp bakes these settings in
+    m_project->markGeneratedSourcesDirty();
 
     return m_project->saveProjectFile();
 }

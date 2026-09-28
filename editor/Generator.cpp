@@ -1401,7 +1401,7 @@ bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::p
     return fs::exists(getGeneratedPath(projectInternalPath) / (Factory::toIdentifier(sceneName) + ".cpp"), ec);
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::BundleSceneInfo>& bundles, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -1587,6 +1587,31 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
     if (!bundles.empty()) {
         mainContent += "\n";
+    }
+
+    // Loading screen, after the scene it names is registered
+    const LoadingSettings defaults;
+    std::string loadingContent;
+    if (loadingSettings.asyncLoading) {
+        // web builds without pthreads load synchronously
+        loadingContent += "#ifndef NO_THREAD_SUPPORT\n";
+        loadingContent += "    Engine::setAsyncLoading(true);\n";
+        loadingContent += "#endif\n";
+    }
+    for (const auto& sceneData : scenes) {
+        if (sceneData.id == loadingSettings.sceneId) {
+            loadingContent += "    SceneManager::setLoadingScene(" + std::to_string(sceneData.id) + ");\n";
+            break;
+        }
+    }
+    if (loadingSettings.delay != defaults.delay) {
+        loadingContent += "    SceneManager::setLoadingDelay(" + Factory::formatFloat(loadingSettings.delay) + ");\n";
+    }
+    if (loadingSettings.timeout != defaults.timeout) {
+        loadingContent += "    SceneManager::setLoadingTimeout(" + Factory::formatFloat(loadingSettings.timeout) + ");\n";
+    }
+    if (!loadingContent.empty()) {
+        mainContent += loadingContent + "\n";
     }
 
     for (const auto& scene : scenes) {
