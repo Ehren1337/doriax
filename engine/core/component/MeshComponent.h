@@ -215,7 +215,7 @@ namespace doriax{
         bool transparent = false;
         bool autoTransparency = true;
 
-        // detail levels by projected error (Scene::setMeshLodThreshold); bias above 1 keeps detail longer
+        // opt-out of the scene's detail levels (Scene::setMeshLodEnabled); bias above 1 keeps detail longer
         bool lodEnabled = true;
         float lodBias = 1.0f;
         float lodError[MAX_MESH_LODS] = {}; // largest error of any submesh at each level

@@ -5930,9 +5930,9 @@ void editor::Properties::drawMeshComponent(ComponentType cpType, SceneProject* s
     propertyRow(RowPropertyType::Bool, cpType, "receiveShadows", "Receive Shadows", sceneProject, entities);
 
     RowSettings lodSettings;
-    lodSettings.help = "Draw simplified detail levels of this mesh when it is far away (scene Mesh Detail setting).";
+    lodSettings.help = "Let this mesh use simplified detail levels while the scene's Mesh Detail (LOD) is on. Turn off to always keep it at full detail.";
     propertyRow(RowPropertyType::Bool, cpType, "lodEnabled", "Detail Levels", sceneProject, entities, lodSettings);
-    if (sceneProject->scene->getComponent<MeshComponent>(entities[0]).lodEnabled) {
+    if (sceneProject->scene->isMeshLodEnabled() && sceneProject->scene->getComponent<MeshComponent>(entities[0]).lodEnabled) {
         RowSettings lodBiasSettings;
         lodBiasSettings.help = "Scales how far detail is kept: above 1 keeps it longer, below 1 drops it sooner.";
         lodBiasSettings.secondColSize = 6 * ImGui::GetFontSize();
@@ -13604,7 +13604,7 @@ void editor::Properties::show(){
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     drawScenePropertyRow<bool>(sceneProject, "mesh_lod_enabled", "Enabled", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
-                        "Draw simplified versions of meshes when their detail no longer shows on screen.");
+                        "Draw simplified versions of meshes when their detail no longer shows on screen. Off: every mesh draws at full detail and no levels are built.");
                     if (doriax::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "mesh_lod_enabled")) {
                         drawScenePropertyRow<float>(sceneProject, "mesh_lod_threshold", "Threshold", ScenePropertyInputType::SliderFloat, -1.0f, 0.25f, 8.0f,
                             "Screen pixels of geometric error a simplified mesh may show. Lower keeps more detail.");

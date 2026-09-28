@@ -264,6 +264,8 @@ namespace doriax{
 		bool capturingReflectionProbe;
 		// batch order currently baked into the shared points/instance arrays
 		bool lastBatchSort;
+		// scene mesh LOD switch the levels were built (or freed) for
+		bool lastMeshLodEnabled = false;
 		// pipelines the objects were loaded with, to catch a destination change
 		uint16_t loadedPipelines;
 
@@ -574,6 +576,8 @@ namespace doriax{
 		static uint64_t attributeHash(uint64_t seed, const LodAttribute& attribute);
 		static bool readLodSource(const LodAttributes& attributes, MeshLodSource& source);
 		void pollMeshLod(MeshComponent& mesh, Submesh& submesh);
+		static bool releaseSubmeshLod(Submesh& submesh);
+		void releaseMeshLods(MeshComponent& mesh);
 		static bool isMeshLodPending(Submesh& submesh);
 		void updateMeshLodErrors(MeshComponent& mesh);
 		void updateMainLodView(CameraComponent& camera, Transform& cameraTransform);

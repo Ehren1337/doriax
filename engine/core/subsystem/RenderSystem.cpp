@@ -316,6 +316,7 @@ void RenderSystem::load(){
     lastMultiCameraDraw = false;
     capturingReflectionProbe = false;
     lastBatchSort = true;
+    lastMeshLodEnabled = false;
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
@@ -3315,10 +3316,12 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 }
 
 // Levels come from MeshLodPool asynchronously; a load rehashes the geometry so a mesh
-// that changed never draws stale levels
+// that changed never draws stale levels. A mesh that should not have levels drops them
 void RenderSystem::updateMeshLods(Entity entity, MeshComponent& mesh, bool rehash){
-    if (!mesh.lodEnabled || scene->findComponent<TerrainComponent>(entity) || scene->findComponent<TilemapComponent>(entity))
+    if (!scene->isMeshLodEnabled() || !mesh.lodEnabled || scene->findComponent<TerrainComponent>(entity) || scene->findComponent<TilemapComponent>(entity)){
+        releaseMeshLods(mesh);
         return;
+    }
 
     std::map<std::string, Buffer*> buffers;
     if (mesh.buffer.getSize() > 0)
@@ -3338,8 +3341,8 @@ void RenderSystem::updateMeshLods(Entity entity, MeshComponent& mesh, bool rehas
 
         LodAttributes attributes;
         if (!findLodAttributes(submesh, buffers, attributes)){
-            submesh.lodKey = 0;
-            submesh.lodData.reset();
+            if (releaseSubmeshLod(submesh))
+                updateMeshLodErrors(mesh);
             continue;
         }
 
@@ -3472,6 +3475,26 @@ void RenderSystem::pollMeshLod(MeshComponent& mesh, Submesh& submesh){
     if (submesh.lodData->numLevels > 1 && !submesh.lodIndices.getRender()->isCreated()){
         submesh.lodIndices.getRender()->createBuffer(submesh.lodIndices.getSize(), submesh.lodIndices.getData(), BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE);
     }
+}
+
+// true when the submesh had levels; builds already started still finish, and the pool
+// keeps its copy until pools are cleared
+bool RenderSystem::releaseSubmeshLod(Submesh& submesh){
+    if (submesh.lodKey == 0 && !submesh.lodData && !submesh.lodIndices.getRender()->isCreated())
+        return false;
+    submesh.lodIndices.getRender()->destroyBuffer();
+    submesh.lodIndices.clearAll();
+    submesh.lodData.reset();
+    submesh.lodKey = 0;
+    return true;
+}
+
+void RenderSystem::releaseMeshLods(MeshComponent& mesh){
+    bool hadLods = false;
+    for (unsigned int i = 0; i < mesh.numSubmeshes; i++)
+        hadLods |= releaseSubmeshLod(mesh.submeshes[i]);
+    if (hadLods)
+        updateMeshLodErrors(mesh);
 }
 
 bool RenderSystem::hasPendingMeshLods() const{
@@ -7482,6 +7505,10 @@ void RenderSystem::update(double dt){
     bool batchSortChanged = batchSort != lastBatchSort;
     lastBatchSort = batchSort;
 
+    // levels exist only while the scene switch is on, so a change builds or frees them
+    bool meshLodToggled = scene->isMeshLodEnabled() != lastMeshLodEnabled;
+    lastMeshLodEnabled = scene->isMeshLodEnabled();
+
     // the destination is baked into the pipelines at load, so a scene entering or
     // leaving a stack (or fixed resolution switching) has to reload with the new set
     if (pipelines != loadedPipelines){
@@ -7593,7 +7620,9 @@ void RenderSystem::update(double dt){
                 }
             }
 
-            if (mesh.loaded && !mesh.needReload){
+            if (meshLodToggled && mesh.loadCalled && !mesh.needReload){
+                updateMeshLods(entity, mesh, true);
+            }else if (mesh.loaded && !mesh.needReload){
                 for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
                     if (isMeshLodPending(mesh.submeshes[s])){
                         updateMeshLods(entity, mesh, false);

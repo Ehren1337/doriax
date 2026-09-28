@@ -57,8 +57,8 @@ namespace doriax{
         Vector4 backgroundColor = Vector4(0.0, 0.0, 0.0, 1.0); // sRGB
         ShadowQuality shadowQuality = ShadowQuality::LOW;
 
-        // a mesh detail level is drawn once its error projects below this many pixels
-        bool meshLodEnabled = true;
+        // off builds no levels at all; a detail level is drawn once its error projects below this many pixels
+        bool meshLodEnabled = false;
         float meshLodThreshold = 1.0f;
 
         // depth-only pass before the opaque draws; pays off with heavy overdraw
