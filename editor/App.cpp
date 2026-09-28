@@ -33,6 +33,7 @@
 #include "shader/ShaderBuilder.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/UISystem.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -2026,6 +2027,9 @@ void editor::App::engineRender(){
             // A parsed model still has per-mesh work that only runs while drawing.
             auto rs = sp.scene->getSystem<RenderSystem>();
             if (rs && !rs->isAllLoaded()) active = true;
+            // isAllLoaded skips empty UIs, and an image builds its geometry only once its texture loads
+            auto us = sp.scene->getSystem<UISystem>();
+            if (us && us->hasPendingImages()) active = true;
             if (sp.sceneRender->isPreviewCameraActive()) active = true;
             gaugeAnimating = sp.sceneRender->getUILayer()->isCameraGaugeAnimating();
             if (thumbnailsPending) active = true;
@@ -2212,10 +2216,12 @@ void editor::App::tickBenchmark() {
 
     auto meshSystem = selected->scene->getSystem<MeshSystem>();
     auto renderSystem = selected->scene->getSystem<RenderSystem>();
+    auto uiSystem = selected->scene->getSystem<UISystem>();
     const bool loading =
         Engine::getQueuedResourceCount() > 0 ||
         (meshSystem && (meshSystem->hasPendingAsyncModelLoads() || meshSystem->hasPendingFoliageUpdates())) ||
-        (renderSystem && (!renderSystem->isAllLoaded() || renderSystem->hasPendingMeshLods()));
+        (renderSystem && (!renderSystem->isAllLoaded() || renderSystem->hasPendingMeshLods())) ||
+        (uiSystem && uiSystem->hasPendingImages());
 
     if (benchmarkPhase == 0) {
         if (benchmarkWaitStart.time_since_epoch().count() == 0)

@@ -45,6 +45,8 @@ namespace doriax{
         int anchorReferenceWidth;
         int anchorReferenceHeight;
 
+        bool pendingImages; // an image waited for its texture in the last update
+
         void createOrUpdateUiComponent(UILayoutComponent& layout, Entity entity, Signature signature);
         void getPanelEdges(const PanelComponent& panel, const UILayoutComponent& layout, const Transform& transform, const UILayoutComponent& headerlayout,  Rect& edgeRight, Rect& edgeRightBottom, Rect& edgeBottom, Rect& edgeLeftBottom, Rect& edgeLeft);
         Rect fitOnPanel(Rect uiRect, Entity parentPanel);
@@ -135,6 +137,9 @@ namespace doriax{
         int getAnchorReferenceHeight() const;
 
         bool isTextEditFocused();
+
+        // an image is still waiting for its texture to build its geometry
+        bool hasPendingImages() const;
 
         Vector2 getTextMinSize(TextComponent& text);
 

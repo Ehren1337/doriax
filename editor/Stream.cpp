@@ -3623,6 +3623,12 @@ bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature s
            signature.test(registry->getComponentId<TerrainComponent>());
 }
 
+bool editor::Stream::isGeneratedUI(const EntityRegistry* registry, Signature signature) {
+    return signature.test(registry->getComponentId<ImageComponent>()) ||
+           signature.test(registry->getComponentId<TextComponent>()) ||
+           signature.test(registry->getComponentId<PolygonComponent>());
+}
+
 YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityRegistry* registry, Signature signature) {
     YAML::Node compNode;
 
@@ -3647,8 +3653,9 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
 
     if (signature.test(registry->getComponentId<UIComponent>())) {
         const bool isText = signature.test(registry->getComponentId<TextComponent>());
+        bool isGenerated = isGeneratedUI(registry, signature);
         UIComponent ui = registry->getComponent<UIComponent>(entity);
-        compNode[Catalog::getComponentName(ComponentType::UIComponent, true)] = encodeUIComponent(ui, !isText);
+        compNode[Catalog::getComponentName(ComponentType::UIComponent, true)] = encodeUIComponent(ui, !isGenerated, !isText);
     }
 
     if (signature.test(registry->getComponentId<ButtonComponent>())) {
@@ -4791,14 +4798,16 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     return mesh;
 }
 
-YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool embedTextureData) {
+YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeBuffers, bool embedTextureData) {
     YAML::Node node;
     //node["loaded"] = ui.loaded;
     //node["loadCalled"] = ui.loadCalled;
-    node["buffer"] = encodeBuffer(ui.buffer);
-    node["indices"] = encodeBuffer(ui.indices);
-    node["minBufferCount"] = ui.minBufferCount;
-    node["minIndicesCount"] = ui.minIndicesCount;
+    if (encodeBuffers){
+        node["buffer"] = encodeBuffer(ui.buffer);
+        node["indices"] = encodeBuffer(ui.indices);
+        node["minBufferCount"] = ui.minBufferCount;
+        node["minIndicesCount"] = ui.minIndicesCount;
+    }
 
     //node["render"] = {}; // ObjectRender not serialized here
     //node["shader"] = {}; // shared_ptr<ShaderRender> not serialized

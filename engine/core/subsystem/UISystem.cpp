@@ -37,6 +37,8 @@ UISystem::UISystem(Scene* scene): SubSystem(scene){
 
     anchorReferenceWidth = 0;
     anchorReferenceHeight = 0;
+
+    pendingImages = false;
 }
 
 UISystem::~UISystem(){
@@ -1830,10 +1832,14 @@ void UISystem::draw(){
 void UISystem::createOrUpdateUiComponent(UILayoutComponent& layout, Entity entity, Signature signature){
     if (signature.test(scene->getComponentId<UIComponent>())){
         UIComponent& ui = scene->getComponent<UIComponent>(entity);
+        // replaced or deserialized without its geometry (not saved for images, texts or polygons)
+        const bool noGeometry = !ui.buffer.getAttribute(AttributeType::POSITION);
 
         // Texts
         if (signature.test(scene->getComponentId<TextComponent>())){
             TextComponent& text = scene->getComponent<TextComponent>(entity);
+
+            if (noGeometry) text.needUpdateText = true;
 
             if (TextEditComponent* ownerEdit = findTextEditForTextChild(entity)){
                 if (text.needUpdateText || text.needReloadAtlas || isFontAtlasStale(text)){
@@ -1848,6 +1854,8 @@ void UISystem::createOrUpdateUiComponent(UILayoutComponent& layout, Entity entit
         if (signature.test(scene->getComponentId<PolygonComponent>())){
             PolygonComponent& polygon = scene->getComponent<PolygonComponent>(entity);
 
+            if (noGeometry) polygon.needUpdatePolygon = true;
+
             createOrUpdatePolygon(polygon, ui, layout);
         }
 
@@ -1855,7 +1863,9 @@ void UISystem::createOrUpdateUiComponent(UILayoutComponent& layout, Entity entit
         if (signature.test(scene->getComponentId<ImageComponent>())){
             ImageComponent& img = scene->getComponent<ImageComponent>(entity);
 
-            createOrUpdateImage(img, ui, layout);
+            if (noGeometry) img.needUpdatePatches = true;
+
+            if (!createOrUpdateImage(img, ui, layout)) pendingImages = true;
 
             // Buttons
             if (signature.test(scene->getComponentId<ButtonComponent>())){
@@ -1989,6 +1999,8 @@ void UISystem::calculateUIAABB(UIComponent& ui){
 }
 
 void UISystem::update(double dt){
+    pendingImages = false;
+
     if (paused) {
         return;
     }
@@ -2556,6 +2568,10 @@ void UISystem::update(double dt){
         }
     }
 
+}
+
+bool UISystem::hasPendingImages() const{
+    return pendingImages;
 }
 
 bool UISystem::isTextEditFocused(){

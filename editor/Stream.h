@@ -195,6 +195,10 @@ namespace doriax::editor {
         // polygon or terrain component, so its buffers and bones must not be serialized.
         static bool isGeneratedMesh(const EntityRegistry* registry, Signature signature);
 
+        // True when a UIComponent's geometry is rebuilt on load from its image, text or
+        // polygon component, so its buffers must not be serialized.
+        static bool isGeneratedUI(const EntityRegistry* registry, Signature signature);
+
         // Scaled single-shape offset above which physics may become unstable;
         // shared by the load-time warning and the Properties inspector warning
         static constexpr float MAX_SINGLE_SHAPE_PHYSICS_OFFSET = 50.0f;
@@ -262,7 +266,7 @@ namespace doriax::editor {
         static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true);
         static MeshComponent decodeMeshComponent(const YAML::Node& node, const MeshComponent* oldMesh = nullptr);
 
-        static YAML::Node encodeUIComponent(const UIComponent& ui, bool embedTextureData = true);
+        static YAML::Node encodeUIComponent(const UIComponent& ui, bool encodeBuffers = true, bool embedTextureData = true);
         static UIComponent decodeUIComponent(const YAML::Node& node, const UIComponent* oldUI = nullptr);
 
         static YAML::Node encodeButtonComponent(const ButtonComponent& button);
